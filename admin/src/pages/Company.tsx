@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Save, Loader2, AlertCircle, Building, CheckCircle2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -99,7 +98,7 @@ export default function Company() {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       </div>
@@ -110,14 +109,14 @@ export default function Company() {
     <div className="p-6 max-w-3xl">
       {/* 頁首 */}
       <div className="flex items-center gap-3 mb-6">
-        <Building className="w-6 h-6 text-muted-foreground" />
+        <span className="text-xl text-muted-foreground">🏢</span>
         <h1 className="text-2xl font-bold">公司信息</h1>
       </div>
 
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -125,7 +124,7 @@ export default function Company() {
       {/* 成功提示 */}
       {success && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">✅</span>
           公司信息已成功保存
         </div>
       )}
@@ -324,7 +323,7 @@ export default function Company() {
               'inline-flex items-center gap-1.5 px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm disabled:opacity-50',
             )}
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? <span className="animate-spin inline-block">🔄</span> : <span>💾</span>}
             {saving ? '保存中...' : '保存'}
           </button>
         </div>

@@ -11,7 +11,7 @@
  *
  * 所有 SQL 均使用 D1 binding 的參數化查詢, 禁止字符串拼接值
  */
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, SendEmail, ExecutionContext } from '@cloudflare/workers-types';
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { triggerNotify, type NotifyField } from './notify';
@@ -708,6 +708,8 @@ export async function handleDeleteMessage(db: D1Database, id: number): Promise<R
 export async function handleSubmitMessage(
   db: D1Database,
   kv: KVNamespace | null,
+  emailBinding: SendEmail | null,
+  ctx: ExecutionContext | null,
   userIp: string,
   userAgent: string,
   sourceUrl: string,
@@ -756,14 +758,17 @@ export async function handleSubmitMessage(
     }
 
     // 觸發郵件 + Webhook 通知 (參考 Go 版 front.go Message() 通知邏輯)
+    // 使用 ctx.waitUntil 保持通知異步執行的生命週期 (否則 Workers 響應返回後會終止)
     const fields: NotifyField[] = [
       { label: '聯繫人', value: body.contacts || '' },
       { label: '手機', value: body.mobile || '' },
       { label: '留言內容', value: content },
     ];
-    // 異步觸發通知, 不阻塞用戶請求 (通知失敗不影響留言保存)
-    if (kv) {
-      triggerNotify(db, kv, 'message', '在線留言', fields, userIp, userAgent, sourceUrl).catch(() => {});
+    const notifyPromise = triggerNotify(db, kv, emailBinding, 'message', '在線留言', fields, userIp, userAgent, sourceUrl);
+    if (ctx) {
+      ctx.waitUntil(notifyPromise);
+    } else {
+      notifyPromise.catch(() => {});
     }
 
     return ok('留言提交成功');

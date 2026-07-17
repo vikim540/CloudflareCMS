@@ -1,24 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import {
-  Image as ImageIcon,
-  FileText,
-  Video,
-  File,
-  Upload,
-  Trash2,
-  Copy,
-  Check,
-  Loader2,
-  RefreshCw,
-  Search,
-  Lock,
-  Unlock,
-  Bookmark,
-  AlertTriangle,
-  Filter,
-  Trash,
-  X,
-} from 'lucide-react'
 import { api } from '../lib/api'
 
 /** S3 文件信息（含使用狀態與標記狀態） */
@@ -104,24 +84,24 @@ function getFileUrl(key: string, publicUrl: string, endpoint: string, bucket: st
 function FileIcon({ category }: { category: string }) {
   switch (category) {
     case 'image':
-      return <ImageIcon className="w-8 h-8 text-blue-400" />
+      return <span className="text-2xl text-blue-400">🖼️</span>
     case 'document':
-      return <FileText className="w-8 h-8 text-green-400" />
+      return <span className="text-2xl text-green-400">📄</span>
     case 'video':
-      return <Video className="w-8 h-8 text-purple-400" />
+      return <span className="text-2xl text-purple-400">🎥</span>
     default:
-      return <File className="w-8 h-8 text-gray-400" />
+      return <span className="text-2xl text-gray-400">📄</span>
   }
 }
 
 /** 過濾標籤配置 */
-const FILTER_TABS: { key: FilterType; label: string; icon: typeof Filter }[] = [
-  { key: 'all', label: '全部', icon: Filter },
-  { key: 'image', label: '圖片', icon: ImageIcon },
-  { key: 'document', label: '文檔', icon: FileText },
-  { key: 'video', label: '視頻', icon: Video },
-  { key: 'unused', label: '未使用', icon: AlertTriangle },
-  { key: 'marked', label: '已標記', icon: Bookmark },
+const FILTER_TABS: { key: FilterType; label: string; icon: string }[] = [
+  { key: 'all', label: '全部', icon: '🔽' },
+  { key: 'image', label: '圖片', icon: '🖼️' },
+  { key: 'document', label: '文檔', icon: '📄' },
+  { key: 'video', label: '視頻', icon: '🎥' },
+  { key: 'unused', label: '未使用', icon: '⚠️' },
+  { key: 'marked', label: '已標記', icon: '📑' },
 ]
 
 export default function MediaLibrary() {
@@ -376,7 +356,7 @@ export default function MediaLibrary() {
             disabled={loading}
             className="inline-flex items-center gap-1.5 border border-gray-300 px-3 py-2 rounded-md text-sm hover:bg-gray-50 disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span className={`${loading ? 'animate-spin inline-block' : ''}`}>🔄</span>
             刷新
           </button>
           <button
@@ -384,11 +364,11 @@ export default function MediaLibrary() {
             disabled={cleaning}
             className="inline-flex items-center gap-1.5 bg-orange-500 text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
           >
-            {cleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash className="w-4 h-4" />}
+            {cleaning ? <span className="animate-spin inline-block">🔄</span> : <span>🗑️</span>}
             清理未使用
           </button>
           <label className="inline-flex items-center gap-1.5 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 cursor-pointer disabled:opacity-50">
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? <span className="animate-spin inline-block">🔄</span> : <span>📤</span>}
             上傳文件
             <input
               ref={fileInputRef}
@@ -405,7 +385,7 @@ export default function MediaLibrary() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span className="flex-shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -430,7 +410,7 @@ export default function MediaLibrary() {
                 : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
             }`}
           >
-            <Icon className="w-3.5 h-3.5" />
+            <span className="text-sm">{Icon}</span>
             {label}
           </button>
         ))}
@@ -438,7 +418,7 @@ export default function MediaLibrary() {
 
       {/* 搜索框 */}
       <div className="mb-4 relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">🔍</span>
         <input
           type="text"
           value={search}
@@ -451,12 +431,12 @@ export default function MediaLibrary() {
       {/* 文件網格 */}
       {loading && files.length === 0 ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       ) : filteredFiles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <ImageIcon className="w-12 h-12 mb-3 opacity-30" />
+          <span className="text-3xl mb-3 opacity-30">🖼️</span>
           <p>暫無文件，點擊「上傳文件」按鈕上傳</p>
         </div>
       ) : (
@@ -508,7 +488,7 @@ export default function MediaLibrary() {
                     {/* 鎖定圖標覆蓋（已標記文件顯示） */}
                     {isMarked && (
                       <div className="absolute top-2 right-2 bg-amber-500 text-white rounded-full p-1">
-                        <Lock className="w-3 h-3" />
+                        <span className="text-xs">🔒</span>
                       </div>
                     )}
 
@@ -527,11 +507,11 @@ export default function MediaLibrary() {
                       }`}
                     >
                       {markingKey === file.key ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span className="animate-spin inline-block text-xs">🔄</span>
                       ) : isMarked ? (
-                        <Unlock className="w-3 h-3" />
+                        <span className="text-xs">🔓</span>
                       ) : (
-                        <Bookmark className="w-3 h-3" />
+                        <span className="text-xs">📑</span>
                       )}
                     </button>
                   </div>
@@ -554,9 +534,9 @@ export default function MediaLibrary() {
                         title="複製 URL"
                       >
                         {copiedKey === file.key ? (
-                          <Check className="w-3.5 h-3.5 text-green-500" />
+                          <span className="text-sm text-green-500">✅</span>
                         ) : (
-                          <Copy className="w-3.5 h-3.5" />
+                          <span className="text-sm">📋</span>
                         )}
                       </button>
                       {isImage && fileUrl && (
@@ -568,7 +548,7 @@ export default function MediaLibrary() {
                           className="p-1.5 hover:bg-gray-100 rounded text-muted-foreground hover:text-foreground"
                           title="查看"
                         >
-                          <ImageIcon className="w-3.5 h-3.5" />
+                          <span className="text-sm">🖼️</span>
                         </a>
                       )}
                       <button
@@ -579,7 +559,7 @@ export default function MediaLibrary() {
                         className="p-1.5 hover:bg-red-50 rounded text-muted-foreground hover:text-red-500 ml-auto"
                         title="刪除"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-sm">🗑️</span>
                       </button>
                     </div>
                   </div>
@@ -596,7 +576,7 @@ export default function MediaLibrary() {
                 disabled={loading}
                 className="px-6 py-2 border rounded-md text-sm hover:bg-accent disabled:opacity-50"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : '加載更多'}
+                {loading ? <span className="animate-spin inline-block">🔄</span> : '加載更多'}
               </button>
             </div>
           )}
@@ -616,14 +596,14 @@ export default function MediaLibrary() {
             {/* Modal 頭部 */}
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h2 className="text-lg font-semibold flex items-center gap-2">
-                <FileText className="w-5 h-5 text-blue-500" />
+                <span className="text-lg text-blue-500">📄</span>
                 文件詳情
               </h2>
               <button
                 onClick={handleCloseDetail}
                 className="p-1 hover:bg-gray-100 rounded"
               >
-                <X className="w-5 h-5" />
+                ❌
               </button>
             </div>
 
@@ -631,7 +611,7 @@ export default function MediaLibrary() {
             <div className="flex-1 overflow-y-auto p-6">
               {detailLoading ? (
                 <div className="flex items-center justify-center py-12 text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  <span className="animate-spin inline-block mr-2">🔄</span>
                   載入中...
                 </div>
               ) : detail ? (
@@ -688,7 +668,7 @@ export default function MediaLibrary() {
                             }`}>
                               {detail.isMarked ? (
                                 <>
-                                  <Lock className="w-3 h-3" />
+                                  <span className="text-xs">🔒</span>
                                   已標記保護
                                 </>
                               ) : (detail.isUsed ?? detail.usages.length > 0) ? (
@@ -706,7 +686,7 @@ export default function MediaLibrary() {
                   {/* 使用位置列表 */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-500 mb-3 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4" />
+                      <span>⚠️</span>
                       使用位置
                       {detail.usages.length > 0 && (
                         <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">
@@ -765,11 +745,11 @@ export default function MediaLibrary() {
                   }`}
                 >
                   {markingKey === detail.key ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="animate-spin inline-block">🔄</span>
                   ) : detail.isMarked ? (
-                    <Unlock className="w-4 h-4" />
+                    <span>🔓</span>
                   ) : (
-                    <Lock className="w-4 h-4" />
+                    <span>🔒</span>
                   )}
                   {detail.isMarked ? '取消標記保護' : '標記保護'}
                 </button>
@@ -781,9 +761,9 @@ export default function MediaLibrary() {
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm border border-gray-300 hover:bg-gray-100"
                   >
                     {copiedKey === detail.key ? (
-                      <Check className="w-4 h-4 text-green-500" />
+                      <span className="text-green-500">✅</span>
                     ) : (
-                      <Copy className="w-4 h-4" />
+                      <span>📋</span>
                     )}
                     複製 URL
                   </button>
@@ -803,7 +783,7 @@ export default function MediaLibrary() {
                     }}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm bg-red-500 text-white hover:bg-red-600"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <span>🗑️</span>
                     刪除
                   </button>
                 </div>

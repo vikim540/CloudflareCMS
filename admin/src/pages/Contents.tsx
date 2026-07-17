@@ -1,19 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import {
-  Plus,
-  Search,
-  Edit,
-  Trash2,
-  RotateCcw,
-  Pin,
-  Star,
-  Newspaper,
-  CheckSquare,
-  Square,
-  ChevronDown,
-} from 'lucide-react'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 
@@ -454,7 +441,7 @@ export default function Contents() {
           }
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
-          <Plus className="w-4 h-4" />
+          <span className="mr-1">➕</span>
           新建內容
         </Link>
       </div>
@@ -516,7 +503,7 @@ export default function Contents() {
       {/* 搜尋與欄目篩選欄 */}
       <form onSubmit={handleSearch} className="mb-4 flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">🔍</span>
           <input
             type="text"
             value={keyword}
@@ -539,7 +526,7 @@ export default function Contents() {
               </option>
             ))}
           </select>
-          <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">⬇️</span>
         </div>
         <button
           type="submit"
@@ -559,7 +546,7 @@ export default function Contents() {
               disabled={batchLoading}
               className="inline-flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors disabled:opacity-50"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <span className="text-sm">🗑️</span>
               批量刪除
             </button>
             <button
@@ -586,11 +573,11 @@ export default function Contents() {
                     title={allSelected ? '取消全選' : '全選當前頁'}
                   >
                     {allSelected ? (
-                      <CheckSquare className="w-4 h-4 text-primary" />
+                      <span className="text-primary">✅</span>
                     ) : someSelected ? (
-                      <CheckSquare className="w-4 h-4 text-primary opacity-50" />
+                      <span className="text-primary opacity-50">☑️</span>
                     ) : (
-                      <Square className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">⬜</span>
                     )}
                   </button>
                 </th>
@@ -645,9 +632,9 @@ export default function Contents() {
                           title={isSelected ? '取消選擇' : '選擇'}
                         >
                           {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-primary" />
+                            <span className="text-primary">✅</span>
                           ) : (
-                            <Square className="w-4 h-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">⬜</span>
                           )}
                         </button>
                       </td>
@@ -675,7 +662,7 @@ export default function Contents() {
                             )}
                             {item.isheadline === '1' && (
                               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-700">
-                                <Newspaper className="w-2.5 h-2.5" />
+                                <span className="text-[10px]">📰</span>
                                 頭條
                               </span>
                             )}
@@ -730,7 +717,7 @@ export default function Contents() {
                           )}
                           title={item.istop === '1' ? '取消置頂' : '置頂'}
                         >
-                          <Pin className="w-3.5 h-3.5" />
+                          <span className="text-sm">📌</span>
                         </button>
                       </td>
                       {/* 推薦切換鈕 */}
@@ -746,7 +733,7 @@ export default function Contents() {
                           )}
                           title={item.isrecommend === '1' ? '取消推薦' : '推薦'}
                         >
-                          <Star className="w-3.5 h-3.5" />
+                          <span className="text-sm">⭐</span>
                         </button>
                       </td>
                       {/* 日期（發佈時間 + 修改時間） */}
@@ -770,7 +757,7 @@ export default function Contents() {
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
                                 title="還原"
                               >
-                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span className="text-sm">🔄</span>
                                 還原
                               </button>
                               <button
@@ -779,7 +766,7 @@ export default function Contents() {
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                                 title="永久刪除"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="text-sm">🗑️</span>
                                 永久刪除
                               </button>
                             </>
@@ -790,7 +777,7 @@ export default function Contents() {
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
                                 title="編輯"
                               >
-                                <Edit className="w-3.5 h-3.5" />
+                                <span className="text-sm">✏️</span>
                                 編輯
                               </Link>
                               <button
@@ -799,7 +786,7 @@ export default function Contents() {
                                 className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                                 title="移至回收站"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="text-sm">🗑️</span>
                                 刪除
                               </button>
                             </>
@@ -836,7 +823,7 @@ export default function Contents() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none text-xs">⬇️</span>
                 </div>
                 <span className="text-sm text-muted-foreground">條</span>
               </div>

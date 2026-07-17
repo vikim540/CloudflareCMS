@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Edit, Trash2, X, Loader2, AlertCircle, Users as UsersIcon, Lock, Shield } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 
@@ -200,7 +199,7 @@ export default function Users() {
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
-          <Plus className="w-4 h-4" />
+          <span className="mr-1">➕</span>
           新增用戶
         </button>
       </div>
@@ -208,7 +207,7 @@ export default function Users() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -216,7 +215,7 @@ export default function Users() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -224,13 +223,13 @@ export default function Users() {
       {/* 空狀態 */}
       {!loading && users.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <UsersIcon className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">👥</span>
           <p className="mb-3">尚未創建任何用戶</p>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <span className="mr-1">➕</span>
             新增用戶
           </button>
         </div>
@@ -268,7 +267,7 @@ export default function Users() {
                           <span className="font-medium">{item.username}</span>
                           {isSuperAdmin && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">
-                              <Shield className="w-2.5 h-2.5" />
+                              <span className="text-[10px]">🛡️</span>
                               超管
                             </span>
                           )}
@@ -300,7 +299,7 @@ export default function Users() {
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
                             title="編輯"
                           >
-                            <Edit className="w-3.5 h-3.5" />
+                            <span className="text-sm">✏️</span>
                             編輯
                           </button>
                           <button
@@ -314,7 +313,7 @@ export default function Users() {
                             )}
                             title={isSuperAdmin ? '超級管理員不可刪除' : '刪除'}
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="text-sm">🗑️</span>
                             刪除
                           </button>
                         </div>
@@ -338,7 +337,7 @@ export default function Users() {
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
               >
-                <X className="w-5 h-5" />
+                ❌
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
@@ -374,7 +373,7 @@ export default function Users() {
                 />
                 {editTarget && (
                   <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <Lock className="w-3 h-3" />
+                    <span className="text-xs">🔒</span>
                     留空則保持原密碼不變
                   </p>
                 )}
@@ -429,7 +428,7 @@ export default function Users() {
               </div>
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />
+                  <span className="mr-1">⚠️</span>
                   {actionError}
                 </p>
               )}
@@ -446,7 +445,7 @@ export default function Users() {
                 disabled={saving}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {saving && <span className="animate-spin inline-block">🔄</span>}
                 {saving ? '保存中...' : '保存'}
               </button>
             </div>

@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { RotateCcw, Trash2, Loader2, AlertCircle, Trash as TrashIcon } from 'lucide-react'
 import { api } from '../lib/api'
 import { formatDate } from '../lib/utils'
 
@@ -132,7 +131,7 @@ export default function Trash() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <TrashIcon className="w-6 h-6" />
+            <span className="text-xl">🗑️</span>
             回收站
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -144,7 +143,7 @@ export default function Trash() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -152,7 +151,7 @@ export default function Trash() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -160,7 +159,7 @@ export default function Trash() {
       {/* 空狀態 */}
       {!loading && contents.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <TrashIcon className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">🗑️</span>
           <p>回收站為空</p>
         </div>
       )}
@@ -201,7 +200,7 @@ export default function Trash() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
                           title="還原"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span className="text-sm">🔄</span>
                           還原
                         </button>
                         <button
@@ -210,7 +209,7 @@ export default function Trash() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           title="永久刪除"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-sm">🗑️</span>
                           永久刪除
                         </button>
                       </div>

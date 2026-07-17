@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { Plus, Edit, Trash2, X, Loader2, AlertCircle, Puzzle, Filter } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -290,7 +289,7 @@ export default function ExtFields() {
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
-          <Plus className="w-4 h-4" />
+          <span className="mr-1">➕</span>
           新增欄位
         </button>
       </div>
@@ -298,7 +297,7 @@ export default function ExtFields() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -306,7 +305,7 @@ export default function ExtFields() {
       {/* 篩選欄 */}
       <div className="mb-4 flex items-center gap-2">
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Filter className="w-4 h-4" />
+          <span>🔽</span>
           <span>所屬模型:</span>
         </div>
         <select
@@ -326,7 +325,7 @@ export default function ExtFields() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -334,13 +333,13 @@ export default function ExtFields() {
       {/* 空狀態 */}
       {!loading && fields.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <Puzzle className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">🧩</span>
           <p className="mb-3">尚未創建任何擴展欄位</p>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <span className="mr-1">➕</span>
             新增欄位
           </button>
         </div>
@@ -406,7 +405,7 @@ export default function ExtFields() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
                           title="編輯"
                         >
-                          <Edit className="w-3.5 h-3.5" />
+                          <span className="text-sm">✏️</span>
                           編輯
                         </button>
                         <button
@@ -415,7 +414,7 @@ export default function ExtFields() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           title="刪除"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-sm">🗑️</span>
                           刪除
                         </button>
                       </div>
@@ -438,7 +437,7 @@ export default function ExtFields() {
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
               >
-                <X className="w-5 h-5" />
+                ❌
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
@@ -579,7 +578,7 @@ export default function ExtFields() {
               </div>
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />
+                  <span className="mr-1">⚠️</span>
                   {actionError}
                 </p>
               )}
@@ -596,7 +595,7 @@ export default function ExtFields() {
                 disabled={saving}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {saving && <span className="animate-spin inline-block">🔄</span>}
                 {saving ? '保存中...' : '保存'}
               </button>
             </div>

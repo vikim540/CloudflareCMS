@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -129,7 +128,7 @@ export default function SingleEdit() {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       </div>
@@ -144,7 +143,7 @@ export default function SingleEdit() {
           onClick={() => navigate('/singles')}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <span className="mr-1">⬅️</span>
           返回
         </button>
         <h1 className="text-2xl font-bold">{isEdit ? '編輯單頁' : '新增單頁'}</h1>
@@ -153,7 +152,7 @@ export default function SingleEdit() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -260,7 +259,7 @@ export default function SingleEdit() {
               'inline-flex items-center gap-1.5 px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm disabled:opacity-50',
             )}
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? <span className="animate-spin inline-block">🔄</span> : <span>💾</span>}
             {saving ? '保存中...' : '保存'}
           </button>
           <button

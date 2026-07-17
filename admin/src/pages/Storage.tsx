@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Cloud, HardDrive, TestTube, Save, Upload, Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
 
 interface StorageConfig {
@@ -103,7 +102,7 @@ export default function Storage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <span className="animate-spin inline-block text-xl text-muted-foreground">🔄</span>
       </div>
     )
   }
@@ -118,7 +117,7 @@ export default function Storage() {
       {/* R2 快速配置提示 */}
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
         <div className="flex items-start gap-3">
-          <Cloud className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+          <span className="text-blue-500 mt-0.5 shrink-0">☁️</span>
           <div className="text-sm text-blue-900">
             <p className="font-medium mb-1">Cloudflare R2 配置指南</p>
             <p className="text-blue-700 mb-2">
@@ -235,7 +234,7 @@ export default function Storage() {
             disabled={saving}
             className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? <span className="animate-spin inline-block">🔄</span> : <span>💾</span>}
             保存配置
           </button>
           <button
@@ -243,7 +242,7 @@ export default function Storage() {
             disabled={testing}
             className="inline-flex items-center gap-2 border border-gray-300 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
-            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <TestTube className="w-4 h-4" />}
+            {testing ? <span className="animate-spin inline-block">🔄</span> : <span>🧪</span>}
             測試連接
           </button>
         </div>
@@ -262,12 +261,12 @@ export default function Storage() {
       {/* 文件上傳測試 */}
       <div className="bg-white rounded-lg border p-6 mt-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <HardDrive className="w-5 h-5" />
+          <span>💾</span>
           文件上傳測試
         </h2>
         <div className="flex items-center gap-3">
           <label className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 cursor-pointer">
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {uploading ? <span className="animate-spin inline-block">🔄</span> : <span>📤</span>}
             選擇文件
             <input type="file" onChange={handleUpload} className="hidden" disabled={uploading} />
           </label>

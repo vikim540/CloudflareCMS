@@ -1,19 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import {
-  Save,
-  Settings as SettingsIcon,
-  Loader2,
-  AlertCircle,
-  MessageSquare,
-  Shield,
-  Code,
-  Mail,
-  Bell,
-  Send,
-  Webhook,
-  Search,
-  CheckCircle2,
-} from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -32,16 +17,16 @@ interface ConfigGroup {
   min: number
   max: number
   title: string
-  icon: typeof SettingsIcon
+  icon: string
 }
 
 const CONFIG_GROUPS: ConfigGroup[] = [
-  { min: 20, max: 29, title: '留言表單', icon: MessageSquare },
-  { min: 30, max: 39, title: '安全配置', icon: Shield },
-  { min: 40, max: 49, title: 'WebAPI', icon: Code },
-  { min: 50, max: 59, title: '通知配置', icon: Bell },
-  { min: 60, max: 69, title: '搜索引擎推送', icon: Search },
-  { min: 90, max: 99, title: '郵件服務', icon: Mail },
+  { min: 20, max: 29, title: '留言表單', icon: '💬' },
+  { min: 30, max: 39, title: '安全配置', icon: '🛡️' },
+  { min: 40, max: 49, title: 'WebAPI', icon: '</>' },
+  { min: 50, max: 59, title: '通知配置', icon: '🔔' },
+  { min: 60, max: 69, title: '搜索引擎推送', icon: '🔍' },
+  { min: 90, max: 99, title: '郵件服務', icon: '📧' },
 ]
 
 /** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
@@ -286,7 +271,7 @@ export default function Settings() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <SettingsIcon className="w-6 h-6" />
+            <span className="text-xl">⚙️</span>
             系統設置
           </h1>
           <p className="text-sm text-muted-foreground mt-1">管理網站各項系統配置參數</p>
@@ -296,7 +281,7 @@ export default function Settings() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -304,7 +289,7 @@ export default function Settings() {
       {/* 成功提示 */}
       {successMsg && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">✅</span>
           {successMsg}
         </div>
       )}
@@ -312,7 +297,7 @@ export default function Settings() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           加載中...
         </div>
       )}
@@ -320,7 +305,7 @@ export default function Settings() {
       {/* 加載錯誤 */}
       {!loading && !configs.length && error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <AlertCircle className="w-8 h-8 mb-3 text-destructive" />
+          <span className="text-2xl mb-3 text-destructive">⚠️</span>
           <p className="mb-3">{error}</p>
           <button
             onClick={fetchConfigs}
@@ -338,7 +323,7 @@ export default function Settings() {
             <div key={group.min} className="bg-white rounded-lg border overflow-hidden">
               {/* 分組標題 */}
               <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
-                <group.icon className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">{group.icon}</span>
                 <h2 className="font-semibold">{group.title}</h2>
                 <span className="text-xs text-muted-foreground">（{items.length} 項）</span>
               </div>
@@ -357,9 +342,9 @@ export default function Settings() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {testMailLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span className="animate-spin inline-block text-sm">🔄</span>
                     ) : (
-                      <Send className="w-3.5 h-3.5" />
+                      <span className="text-sm">📤</span>
                     )}
                     測試郵件
                   </button>
@@ -370,9 +355,9 @@ export default function Settings() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     {testWebhookLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span className="animate-spin inline-block text-sm">🔄</span>
                     ) : (
-                      <Webhook className="w-3.5 h-3.5" />
+                      <span className="text-sm">🪝</span>
                     )}
                     測試 Webhook
                   </button>
@@ -385,7 +370,7 @@ export default function Settings() {
           {groupedConfigs.others.length > 0 && (
             <div className="bg-white rounded-lg border overflow-hidden">
               <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
-                <SettingsIcon className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">⚙️</span>
                 <h2 className="font-semibold">其他配置</h2>
                 <span className="text-xs text-muted-foreground">
                   （{groupedConfigs.others.length} 項）
@@ -430,9 +415,9 @@ export default function Settings() {
               className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="animate-spin inline-block">🔄</span>
               ) : (
-                <Save className="w-4 h-4" />
+                <span>💾</span>
               )}
               {saving ? '保存中...' : `保存配置${changedCount > 0 ? ` (${changedCount})` : ''}`}
             </button>

@@ -1,34 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  FileText,
-  FolderTree,
-  Settings,
-  HardDrive,
-  Image as ImageIcon,
-  LogOut,
-  Link as LinkIcon,
-  Tag,
-  Bookmark,
-  MessageSquare,
-  Globe,
-  Building,
-  Boxes,
-  Shield,
-  Server,
-  Database as DatabaseIcon,
-  ChevronDown,
-  ChevronRight,
-  Trash2,
-  Users,
-  ShieldCheck,
-  Menu as MenuIcon,
-  ScrollText,
-  Puzzle,
-  SlidersHorizontal,
-  Newspaper,
-} from 'lucide-react'
 import { api, clearToken } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -47,7 +18,7 @@ interface Model {
 interface NavItem {
   to: string
   label: string
-  icon: typeof FileText
+  icon: string // emoji 圖標
   /** 內容模型項目的 mcode，用於帶 query 參數時的 active 判斷 */
   mcode?: string
 }
@@ -55,7 +26,7 @@ interface NavItem {
 /** 導航分組 */
 interface NavGroup {
   title: string
-  icon: typeof FileText
+  icon: string // emoji 圖標
   items: NavItem[]
 }
 
@@ -63,53 +34,53 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   {
     title: '全局配置',
-    icon: Settings,
+    icon: '⚙️',
     items: [
-      { to: '/settings', label: '配置參數', icon: SlidersHorizontal },
-      { to: '/models', label: '模型管理', icon: Boxes },
-      { to: '/extfields', label: '模型欄位', icon: Puzzle },
+      { to: '/settings', label: '配置參數', icon: '🎛️' },
+      { to: '/models', label: '模型管理', icon: '📦' },
+      { to: '/extfields', label: '模型欄位', icon: '🧩' },
     ],
   },
   {
     title: '基礎內容',
-    icon: DatabaseIcon,
+    icon: '🗄️',
     items: [
-      { to: '/site', label: '站點信息', icon: Globe },
-      { to: '/company', label: '公司信息', icon: Building },
-      { to: '/categories', label: '內容欄目', icon: FolderTree },
+      { to: '/site', label: '站點信息', icon: '🌐' },
+      { to: '/company', label: '公司信息', icon: '🏢' },
+      { to: '/categories', label: '內容欄目', icon: '🗂️' },
     ],
   },
   {
     title: '文章內容',
-    icon: FileText,
+    icon: '📄',
     items: [
       // 列表型模型子菜單在組件中動態注入（見 navGroups）
-      { to: '/trash', label: '回收站', icon: Trash2 },
+      { to: '/trash', label: '回收站', icon: '🗑️' },
     ],
   },
   {
     title: '擴展內容',
-    icon: Boxes,
+    icon: '📦',
     items: [
-      { to: '/singles', label: '單頁管理', icon: FileText },
-      { to: '/links', label: '友情連結', icon: LinkIcon },
-      { to: '/slides', label: '幻燈片', icon: ImageIcon },
-      { to: '/tags', label: '標籤管理', icon: Tag },
-      { to: '/labels', label: '自定義標籤', icon: Bookmark },
-      { to: '/messages', label: '留言管理', icon: MessageSquare },
-      { to: '/media', label: '媒體庫', icon: ImageIcon },
+      { to: '/singles', label: '單頁管理', icon: '📄' },
+      { to: '/links', label: '友情連結', icon: '🔗' },
+      { to: '/slides', label: '幻燈片', icon: '🖼️' },
+      { to: '/tags', label: '標籤管理', icon: '🏷️' },
+      { to: '/labels', label: '自定義標籤', icon: '📑' },
+      { to: '/messages', label: '留言管理', icon: '💬' },
+      { to: '/media', label: '媒體庫', icon: '🖼️' },
     ],
   },
   {
     title: '系統管理',
-    icon: Shield,
+    icon: '🛡️',
     items: [
-      { to: '/users', label: '系統用戶', icon: Users },
-      { to: '/roles', label: '角色管理', icon: ShieldCheck },
-      { to: '/menus', label: '選單管理', icon: MenuIcon },
-      { to: '/logs', label: '系統日誌', icon: ScrollText },
-      { to: '/database', label: '資料庫管理', icon: Server },
-      { to: '/storage', label: '存儲設置', icon: HardDrive },
+      { to: '/users', label: '系統用戶', icon: '👥' },
+      { to: '/roles', label: '角色管理', icon: '🔐' },
+      { to: '/menus', label: '選單管理', icon: '📋' },
+      { to: '/logs', label: '系統日誌', icon: '📜' },
+      { to: '/database', label: '資料庫管理', icon: '🖥️' },
+      { to: '/storage', label: '存儲設置', icon: '💾' },
     ],
   },
 ]
@@ -139,7 +110,7 @@ export default function Layout() {
       .map((m) => ({
         to: `/contents?mcode=${encodeURIComponent(m.mcode)}`,
         label: `${m.name}列表`,
-        icon: Newspaper,
+        icon: '📰',
         mcode: m.mcode,
       }))
     return NAV_GROUPS.map((group) =>
@@ -200,7 +171,7 @@ export default function Layout() {
               )
             }
           >
-            <LayoutDashboard className="w-4 h-4" />
+            <span className="text-base">📊</span>
             儀表板
           </NavLink>
 
@@ -214,12 +185,8 @@ export default function Layout() {
                   onClick={() => toggleGroup(group.title)}
                   className="w-full flex items-center gap-2 px-6 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  {isCollapsed ? (
-                    <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                  )}
-                  <group.icon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-xs shrink-0">{isCollapsed ? '➡️' : '⬇️'}</span>
+                  <span className="text-sm shrink-0">{group.icon}</span>
                   <span>{group.title}</span>
                 </button>
 
@@ -246,7 +213,7 @@ export default function Layout() {
                             )
                           }}
                         >
-                          <item.icon className="w-4 h-4" />
+                          <span className="text-base">{item.icon}</span>
                           {item.label}
                         </NavLink>
                       )
@@ -262,7 +229,7 @@ export default function Layout() {
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm text-muted-foreground hover:text-destructive transition-colors"
           >
-            <LogOut className="w-4 h-4" />
+            <span className="text-base">🚪</span>
             退出登錄
           </button>
         </div>

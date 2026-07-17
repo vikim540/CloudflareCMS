@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, Upload, Image as ImageIcon, X, Link, Plus } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -132,7 +131,7 @@ interface ExtField {
   field: string
   type: string // 1=單行文本 ... 10=多圖
   mcode: string // 所屬模型代碼
-  value: string // 選項預設值（單選/多選/下拉的選項列表）
+  value: string // 選項選項預設值（單選/多選/下拉的選項列表）
   scode: string // 適用欄目（逗號分隔，空=全展示）
   required: string // "1"=必填, "0"=可選
   sorting: number
@@ -195,6 +194,186 @@ const EMPTY_FORM: FormData = {
   date: '',
 }
 
+/** 媒體庫文件信息 */
+interface MediaFile {
+  key: string
+  size: number
+  lastModified: string
+  etag: string
+  isUsed?: boolean
+  isMarked?: boolean
+}
+
+/** 媒體庫列表結果 */
+interface MediaListResult {
+  files: MediaFile[]
+  isTruncated: boolean
+  nextCursor: string
+}
+
+/** 存存儲配置（僅 picker 所需字段） */
+interface StorageConfig {
+  s3_public_url: string
+  s3_endpoint: string
+  s3_bucket: string
+}
+
+/** 圖片擴展名白名單 */
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif']
+
+/**
+ * 媒體庫選擇器 Modal
+ * - 可在任何圖片上傳區域打開
+ * - 從 GET /admin/media 載入文件，GET /admin/storage/config 載入存儲配置
+ * - 僅顯示圖片類型文件，支持搜索過濾
+ */
+function MediaPickerModal({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean
+  onClose: () => void
+  onSelect: (url: string) => void
+}) {
+  const [files, setFiles] = useState<MediaFile[]>([])
+  const [loading, setLoading] = useState(false)
+  const [search, setSearch] = useState('')
+  const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null)
+
+  // 打開時並行載入媒體文件與存儲配置
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    setFiles([])
+    setSearch('')
+    Promise.all([
+      api.get<MediaListResult>('/admin/media'),
+      api.get<StorageConfig>('/admin/storage/config'),
+    ])
+      .then(([mediaRes, configRes]) => {
+        setFiles(mediaRes.data?.files ?? [])
+        if (configRes.data) setStorageConfig(configRes.data)
+      })
+      .catch(() => {
+        setFiles([])
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [open])
+
+  if (!open) return null
+
+  /** 構造圖片公共 URL */
+  const getImageUrl = (key: string): string => {
+    if (!storageConfig) return ''
+    const { s3_public_url, s3_endpoint, s3_bucket } = storageConfig
+    return s3_public_url
+      ? `${s3_public_url.replace(/\/$/, '')}/${key}`
+      : `${s3_endpoint}/${s3_bucket}/${key}`
+  }
+
+  /** 過濾：僅圖片 + 搜索關鍵字 */
+  const imageFiles = files.filter((f) => {
+    const ext = f.key.split('.').pop()?.toLowerCase() || ''
+    if (!IMAGE_EXTS.includes(ext)) return false
+    if (search && !f.key.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 頭部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <h2 className="text-lg font-semibold">🖼️ 媒體庫選擇</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 rounded"
+            title="關閉"
+          >
+            <span className="text-base">❌</span>
+          </button>
+        </div>
+
+        {/* 搜索框 */}
+        <div className="px-6 py-3 border-b">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="🔍 搜索圖片..."
+            className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+
+        {/* 圖片網格 */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <span className="inline-block animate-spin mr-2">🔄</span>
+              載入中...
+            </div>
+          ) : imageFiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <span className="text-4xl mb-2">🖼️</span>
+              <p>暫無圖片</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {imageFiles.map((file) => {
+                const url = getImageUrl(file.key)
+                const fileName = file.key.split('/').pop() || file.key
+                return (
+                  <button
+                    key={file.key}
+                    type="button"
+                    onClick={() => {
+                      if (url) {
+                        onSelect(url)
+                        onClose()
+                      }
+                    }}
+                    className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden hover:border-primary hover:shadow-md transition-all text-left group"
+                    title={fileName}
+                  >
+                    <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
+                      {url ? (
+                        <img
+                          src={url}
+                          alt={fileName}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          loading="lazy"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none'
+                          }}
+                        />
+                      ) : (
+                        <span className="text-3xl">🖼️</span>
+                      )}
+                    </div>
+                    <div className="p-2">
+                      <p className="text-xs font-medium truncate">{fileName}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** 將欄目樹渲染為帶縮進的 select 選項 */
 function renderCategoryOptions(
   categories: Category[],
@@ -231,6 +410,7 @@ function ExtFieldInput({
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState('') // 外鏈 URL 輸入框值
+  const [mediaPickerOpen, setMediaPickerOpen] = useState(false) // 媒體庫選擇器開關
 
   // 解析選項值（單選/多選/下拉）
   const options = field.value
@@ -373,7 +553,7 @@ function ExtFieldInput({
                 className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
                 title="移除"
               >
-                <X className="w-3 h-3" />
+                <span className="text-xs leading-none">❌</span>
               </button>
             </div>
           )}
@@ -384,13 +564,13 @@ function ExtFieldInput({
             className="hidden"
             onChange={handleSingleUpload}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <input
               type="text"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="輸入圖片外鏈 URL"
-              className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               type="button"
@@ -402,8 +582,8 @@ function ExtFieldInput({
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
             >
-              <Link className="w-4 h-4" />
-              確認
+              <span className="text-base">🔗</span>
+              <span>確認</span>
             </button>
             <button
               type="button"
@@ -412,13 +592,26 @@ function ExtFieldInput({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
             >
               {uploading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="inline-block animate-spin">🔄</span>
               ) : (
-                <ImageIcon className="w-4 h-4" />
+                <span className="text-base">🖼️</span>
               )}
-              {uploading ? '上傳中...' : value ? '更換圖片' : '上傳圖片'}
+              <span>{uploading ? '上傳中...' : value ? '更換圖片' : '上傳圖片'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMediaPickerOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <span className="text-base">🖼️</span>
+              <span>媒體庫</span>
             </button>
           </div>
+          <MediaPickerModal
+            open={mediaPickerOpen}
+            onClose={() => setMediaPickerOpen(false)}
+            onSelect={(url) => onChange(url)}
+          />
         </div>
       )
     case '6': // 附件
@@ -440,7 +633,7 @@ function ExtFieldInput({
                 className="p-0.5 text-red-600 hover:bg-red-50 rounded"
                 title="移除"
               >
-                <X className="w-3.5 h-3.5" />
+                <span className="text-sm leading-none">❌</span>
               </button>
             </div>
           )}
@@ -452,11 +645,11 @@ function ExtFieldInput({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
           >
             {uploading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="inline-block animate-spin">🔄</span>
             ) : (
-              <Upload className="w-4 h-4" />
+              <span className="text-base">📤</span>
             )}
-            {uploading ? '上傳中...' : '上傳附件'}
+            <span>{uploading ? '上傳中...' : '上傳附件'}</span>
           </button>
         </div>
       )
@@ -505,7 +698,7 @@ function ExtFieldInput({
                       className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
                       title="移除"
                     >
-                      <X className="w-3 h-3" />
+                      <span className="text-xs leading-none">❌</span>
                     </button>
                   </div>
                 ))}
@@ -519,13 +712,13 @@ function ExtFieldInput({
             className="hidden"
             onChange={handleMultiUpload}
           />
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <input
               type="text"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="輸入圖片外鏈 URL"
-              className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
             />
             <button
               type="button"
@@ -538,8 +731,8 @@ function ExtFieldInput({
               }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
             >
-              <Plus className="w-4 h-4" />
-              添加
+              <span className="text-base">➕</span>
+              <span>添加</span>
             </button>
             <button
               type="button"
@@ -548,13 +741,29 @@ function ExtFieldInput({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
             >
               {uploading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="inline-block animate-spin">🔄</span>
               ) : (
-                <ImageIcon className="w-4 h-4" />
+                <span className="text-base">🖼️</span>
               )}
-              {uploading ? '上傳中...' : '上傳圖片'}
+              <span>{uploading ? '上傳中...' : '上傳圖片'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMediaPickerOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <span className="text-base">🖼️</span>
+              <span>媒體庫</span>
             </button>
           </div>
+          <MediaPickerModal
+            open={mediaPickerOpen}
+            onClose={() => setMediaPickerOpen(false)}
+            onSelect={(url) => {
+              const existing = value ? value.split(',').filter(Boolean) : []
+              onChange([...existing, url].join(','))
+            }}
+          />
         </div>
       )
     default:
@@ -586,6 +795,8 @@ export default function ContentEdit() {
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic')
   const [icoUploading, setIcoUploading] = useState(false)
   const [icoUrlInput, setIcoUrlInput] = useState('') // 縮略圖外鏈 URL 輸入框值
+  const [icoMediaPickerOpen, setIcoMediaPickerOpen] = useState(false) // 縮略圖媒體庫選擇器
+  const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
 
   // 自定義擴展欄位
   const [extFields, setExtFields] = useState<ExtField[]>([])
@@ -805,8 +1016,15 @@ export default function ContentEdit() {
               ],
               handlers: {
                 image: function () {
-                  // 先讓用戶輸入外鏈 URL，留空或取消則觸發文件選擇器
-                  const url = window.prompt('輸入圖片外鏈 URL（留空則選擇文件上傳）')
+                  // 提示用戶選擇插入方式：
+                  // - 輸入外鏈 URL 直接插入
+                  // - 輸入 "media" 從媒體庫選擇
+                  // - 留空或取消則觸發文件上傳
+                  const url = window.prompt('輸入圖片外鏈 URL（留空=上傳文件，輸入 "media"=從媒體庫選擇）')
+                  if (url && url.trim().toLowerCase() === 'media') {
+                    setQuillImagePicker(true)
+                    return
+                  }
                   if (url && url.trim()) {
                     if (quillRef.current) {
                       const range = quillRef.current.getSelection()
@@ -846,7 +1064,7 @@ export default function ContentEdit() {
           quill.clipboard.dangerouslyPasteHTML(form.content)
         }
 
-        // 監聽內容變化
+        // 監聯內容變化
         quill.on('text-change', () => {
           if (quillRef.current) {
             const html = quillRef.current.root.innerHTML
@@ -954,8 +1172,8 @@ export default function ContentEdit() {
           onClick={() => navigate('/contents')}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" />
-          返回
+          <span className="text-base">⬅️</span>
+          <span>返回</span>
         </button>
         <h1 className="text-2xl font-bold">{isEdit ? '編輯內容' : '新建內容'}</h1>
       </div>
@@ -1012,6 +1230,19 @@ export default function ContentEdit() {
                 className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="請輸入內容標題"
                 required
+              />
+            </div>
+
+            {/* Slug (URL別名) - 與高級內容共享 filename 狀態 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
+              <input
+                type="text"
+                value={form.filename}
+                onChange={(e) => updateField('filename', e.target.value)}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="用於生成友好的 URL，留空則自動使用 ID"
+                pattern="[a-zA-Z0-9\-_/]+"
               />
             </div>
 
@@ -1104,7 +1335,7 @@ export default function ContentEdit() {
                       className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
                       title="移除"
                     >
-                      <X className="w-3 h-3" />
+                      <span className="text-xs leading-none">❌</span>
                     </button>
                   </div>
                 )}
@@ -1115,13 +1346,13 @@ export default function ContentEdit() {
                   className="hidden"
                   onChange={handleIcoUpload}
                 />
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <input
                     type="text"
                     value={icoUrlInput}
                     onChange={(e) => setIcoUrlInput(e.target.value)}
                     placeholder="輸入圖片外鏈 URL"
-                    className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                   <button
                     type="button"
@@ -1133,8 +1364,8 @@ export default function ContentEdit() {
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
                   >
-                    <Link className="w-4 h-4" />
-                    確認
+                    <span className="text-base">🔗</span>
+                    <span>確認</span>
                   </button>
                   <button
                     type="button"
@@ -1143,11 +1374,19 @@ export default function ContentEdit() {
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
                   >
                     {icoUploading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="inline-block animate-spin">🔄</span>
                     ) : (
-                      <ImageIcon className="w-4 h-4" />
+                      <span className="text-base">🖼️</span>
                     )}
-                    {icoUploading ? '上傳中...' : form.ico ? '更換縮略圖' : '上傳縮略圖'}
+                    <span>{icoUploading ? '上傳中...' : form.ico ? '更換縮略圖' : '上傳縮略圖'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIcoMediaPickerOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+                  >
+                    <span className="text-base">🖼️</span>
+                    <span>媒體庫</span>
                   </button>
                 </div>
               </div>
@@ -1189,7 +1428,7 @@ export default function ContentEdit() {
               <h3 className="text-sm font-semibold mb-3 pt-3">自定義字段</h3>
               {extLoading ? (
                 <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="inline-block animate-spin">🔄</span>
                   載入自定義字段中...
                 </div>
               ) : extFields.length === 0 ? (
@@ -1236,10 +1475,10 @@ export default function ContentEdit() {
               />
             </div>
 
-            {/* URL別名 + 外鏈 */}
+            {/* Slug (URL別名) + 外鏈 - filename 與基本內容 Tab 共享同一狀態 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1.5">URL別名</label>
+                <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
                 <input
                   type="text"
                   value={form.filename}
@@ -1308,8 +1547,8 @@ export default function ContentEdit() {
               'inline-flex items-center gap-1.5 px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm disabled:opacity-50',
             )}
           >
-            <Save className="w-4 h-4" />
-            {saving ? '保存中...' : '保存'}
+            <span className="text-base">💾</span>
+            <span>{saving ? '保存中...' : '保存'}</span>
           </button>
           <button
             type="button"
@@ -1320,6 +1559,26 @@ export default function ContentEdit() {
           </button>
         </div>
       </form>
+
+      {/* 媒體庫選擇器 - 縮略圖 */}
+      <MediaPickerModal
+        open={icoMediaPickerOpen}
+        onClose={() => setIcoMediaPickerOpen(false)}
+        onSelect={(url) => updateField('ico', url)}
+      />
+
+      {/* 媒體庫選擇器 - Quill 編輯器圖片插入 */}
+      <MediaPickerModal
+        open={quillImagePicker}
+        onClose={() => setQuillImagePicker(false)}
+        onSelect={(url) => {
+          if (quillRef.current) {
+            const range = quillRef.current.getSelection()
+            const index = range ? range.index : 0
+            quillRef.current.insertEmbed(index, 'image', url)
+          }
+        }}
+      />
     </div>
   )
 }

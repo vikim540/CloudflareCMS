@@ -17,6 +17,10 @@
     }
   ],
 
+  "send_email": [
+    { "name": "EMAIL" }
+  ],
+
   "kv_namespaces": [
     {
       "binding": "CONFIG_CACHE",

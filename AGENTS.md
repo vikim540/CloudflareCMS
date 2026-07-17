@@ -25,7 +25,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | Worker | `rust-cms`，域名 `cms.vikim.eu.org` |
 | D1 | `rust-cms-db`（ID: `28a95ec3-7228-4c47-b9f6-e9cfcfcaf319`） |
 | KV | `CONFIG_CACHE`（`69737778474044ada68b6f34db79f8cb`）、`TOKEN_BLACKLIST`（`31e1d191d5664d2fa39a72dd9cae6906`） |
-| Pages | `cms-admin`（管理後台 SPA） |
+| Pages | `cms-admin`（管理後台 SPA），域名 `rbootcms.cmer.eu.org` |
 | GitHub | `https://github.com/vikim540/RustCMS.git` |
 | 賬號 | `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
 
@@ -215,6 +215,10 @@ git commit -m '✨ feat: 描述'
 git push origin main
 git log --oneline -10
 ```
+# 提交（建議使用 Conventional Commits 格式，其次支持在 commit 信息中携带大量Emoji內容）
+git commit -m "fix: 簡述修復內容"
+git commit -m "feat: 簡述新增功能"
+git commit -m "refactor: 簡述重構內容"
 
 ### 依賴更新
 

@@ -1,15 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import {
-  Plus,
-  Edit,
-  Trash2,
-  X,
-  Loader2,
-  AlertCircle,
-  Menu as MenuIcon,
-  ChevronRight,
-  ChevronDown,
-} from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -91,7 +80,7 @@ function TreeNode({
                 className="mr-1.5 p-0.5 rounded hover:bg-accent transition-colors shrink-0"
                 aria-label={isOpen ? '收起' : '展開'}
               >
-                {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                {isOpen ? <span>⬇️</span> : <span>➡️</span>}
               </button>
             ) : (
               <span className="inline-block w-5 mr-1.5 shrink-0" />
@@ -127,14 +116,14 @@ function TreeNode({
               className="p-1.5 rounded hover:bg-accent transition-colors"
               title="編輯"
             >
-              <Edit className="w-4 h-4" />
+              <span>✏️</span>
             </button>
             <button
               onClick={() => onDelete(node)}
               className="p-1.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors"
               title="刪除"
             >
-              <Trash2 className="w-4 h-4" />
+              <span>🗑️</span>
             </button>
           </div>
         </td>
@@ -300,7 +289,7 @@ export default function Menus() {
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <span className="mr-1">➕</span>
             新增選單
           </button>
         </div>
@@ -309,7 +298,7 @@ export default function Menus() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -317,7 +306,7 @@ export default function Menus() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -325,13 +314,13 @@ export default function Menus() {
       {/* 空狀態 */}
       {!loading && tree.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <MenuIcon className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">📋</span>
           <p className="mb-3">尚未創建任何選單</p>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <span className="mr-1">➕</span>
             新增選單
           </button>
         </div>
@@ -392,7 +381,7 @@ export default function Menus() {
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
               >
-                <X className="w-5 h-5" />
+                ❌
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
@@ -475,7 +464,7 @@ export default function Menus() {
               </div>
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />
+                  <span className="mr-1">⚠️</span>
                   {actionError}
                 </p>
               )}
@@ -492,7 +481,7 @@ export default function Menus() {
                 disabled={saving}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                {saving && <span className="animate-spin inline-block">🔄</span>}
                 {saving ? '保存中...' : '保存'}
               </button>
             </div>

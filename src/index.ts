@@ -14,7 +14,7 @@
  *   /api/v1/admin/*          - 管理接口 (需 JWT)
  */
 import { Hono } from 'hono';
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, SendEmail } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission } from './services/auth';
@@ -37,6 +37,7 @@ export interface Env {
   JWT_SECRET: string;
   API_PREFIX: string;
   JWT_EXPIRE_DAYS: string;
+  EMAIL: SendEmail; // Cloudflare Email Service binding
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -197,7 +198,7 @@ app.post('/api/v1/messages', async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, c.executionCtx, userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理接口 - 內容管理 =====
@@ -636,7 +637,7 @@ app.post('/api/v1/admin/notify/test-mail', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, body);
+  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, body);
 });
 
 // Webhook 推送測試

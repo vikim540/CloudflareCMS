@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Loader2, AlertCircle, ScrollText, Trash2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 
@@ -15,12 +14,15 @@ interface LogItem {
   browser: string
 }
 
-/** 日誌類型標籤頁定義 */
+/**
+ * 日誌類型標籤頁定義
+ * 後端 level 參數: admin=系統日誌, notify=通知日誌, all=全部
+ * 不再展示蜘蛛日誌 (用戶要求移除)
+ */
 const LOG_TABS = [
-  { key: 'all', label: '全部' },
-  { key: '1', label: '系統日誌' },
-  { key: '2', label: '蜘蛛日誌' },
-  { key: '3', label: '通知日誌' },
+  { key: 'all', label: '📋 全部' },
+  { key: 'admin', label: '🛡️ 系統日誌' },
+  { key: 'notify', label: '🔔 通知日誌' },
 ] as const
 
 /** 每頁條數 */
@@ -29,12 +31,18 @@ const PAGE_SIZE = 20
 /** 根據等級取得徽章樣式 */
 function getLevelBadge(level: string): { label: string; className: string } {
   switch (level) {
-    case '1':
+    case 'admin':
       return { label: '系統', className: 'bg-blue-100 text-blue-700' }
-    case '2':
+    case 'spider':
       return { label: '蜘蛛', className: 'bg-purple-100 text-purple-700' }
-    case '3':
-      return { label: '通知', className: 'bg-amber-100 text-amber-700' }
+    case 'mail_success':
+      return { label: '郵件成功', className: 'bg-green-100 text-green-700' }
+    case 'mail_error':
+      return { label: '郵件失敗', className: 'bg-red-100 text-red-700' }
+    case 'webhook_success':
+      return { label: 'Webhook成功', className: 'bg-green-100 text-green-700' }
+    case 'webhook_error':
+      return { label: 'Webhook失敗', className: 'bg-red-100 text-red-700' }
     default:
       return { label: level || '未知', className: 'bg-gray-100 text-gray-600' }
   }
@@ -122,17 +130,17 @@ export default function Logs() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ScrollText className="w-6 h-6" />
+            <span className="text-2xl">📜</span>
             系統日誌
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">查看系統操作、蜘蛛訪問及通知日誌</p>
+          <p className="text-sm text-muted-foreground mt-1">查看系統操作記錄及通知日誌</p>
         </div>
         <button
           onClick={handleClear}
           disabled={clearing || logs.length === 0}
           className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-300 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {clearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          {clearing ? <span className="animate-spin inline-block">🔄</span> : <span>🗑️</span>}
           {clearing ? '清除中...' : '清除日誌'}
         </button>
       </div>
@@ -140,7 +148,7 @@ export default function Logs() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>⚠️</span>
           {error}
         </div>
       )}
@@ -166,7 +174,7 @@ export default function Logs() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -174,7 +182,7 @@ export default function Logs() {
       {/* 空狀態 */}
       {!loading && logs.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <ScrollText className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-4xl mb-3 opacity-50">📜</span>
           <p>暫無日誌記錄</p>
         </div>
       )}

@@ -1,14 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import {
-  Loader2,
-  AlertCircle,
-  Database as DatabaseIcon,
-  Download,
-  Trash2,
-  Plus,
-  HardDrive,
-  FileArchive,
-} from 'lucide-react'
 import { api } from '../lib/api'
 import { formatDate } from '../lib/utils'
 
@@ -129,7 +119,7 @@ export default function DatabasePage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <DatabaseIcon className="w-6 h-6" />
+            <span className="text-xl">🗄️</span>
             資料庫管理
           </h1>
           <p className="text-sm text-muted-foreground mt-1">管理資料庫備份文件，可建立、下載或刪除備份</p>
@@ -139,7 +129,7 @@ export default function DatabasePage() {
           disabled={creating}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
         >
-          {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
           {creating ? '備份中...' : '建立備份'}
         </button>
       </div>
@@ -147,7 +137,7 @@ export default function DatabasePage() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -155,7 +145,7 @@ export default function DatabasePage() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -163,14 +153,14 @@ export default function DatabasePage() {
       {/* 空狀態 */}
       {!loading && backups.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <HardDrive className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">💾</span>
           <p className="mb-3">尚未有任何備份文件</p>
           <button
             onClick={handleCreateBackup}
             disabled={creating}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
           >
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
             建立第一個備份
           </button>
         </div>
@@ -197,7 +187,7 @@ export default function DatabasePage() {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <FileArchive className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground shrink-0">📄</span>
                         <span className="font-mono text-xs">{file.filename}</span>
                       </div>
                     </td>
@@ -213,7 +203,7 @@ export default function DatabasePage() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
                           title="下載"
                         >
-                          <Download className="w-3.5 h-3.5" />
+                          <span className="text-sm">📥</span>
                           下載
                         </button>
                         <button
@@ -222,7 +212,7 @@ export default function DatabasePage() {
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                           title="刪除"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="text-sm">🗑️</span>
                           刪除
                         </button>
                       </div>

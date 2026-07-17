@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Trash2, X, Loader2, AlertCircle, Bookmark, Save, CheckCircle2 } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -182,7 +181,7 @@ export default function Labels() {
           onClick={openCreate}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
-          <Plus className="w-4 h-4" />
+          <span className="mr-1">➕</span>
           新增標籤
         </button>
       </div>
@@ -190,7 +189,7 @@ export default function Labels() {
       {/* 錯誤提示 */}
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">⚠️</span>
           {error}
         </div>
       )}
@@ -198,7 +197,7 @@ export default function Labels() {
       {/* 成功提示 */}
       {saveSuccess && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span className="shrink-0">✅</span>
           標籤已成功保存
         </div>
       )}
@@ -206,7 +205,7 @@ export default function Labels() {
       {/* 加載中 */}
       {loading && (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          <span className="animate-spin inline-block mr-2">🔄</span>
           載入中...
         </div>
       )}
@@ -214,13 +213,13 @@ export default function Labels() {
       {/* 空狀態 */}
       {!loading && labels.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-          <Bookmark className="w-10 h-10 mb-3 opacity-50" />
+          <span className="text-3xl mb-3 opacity-50">📑</span>
           <p className="mb-3">尚未創建任何自定義標籤</p>
           <button
             onClick={openCreate}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <span className="mr-1">➕</span>
             新增標籤
           </button>
         </div>
@@ -293,7 +292,7 @@ export default function Labels() {
                             className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                             title="刪除"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="text-sm">🗑️</span>
                             刪除
                           </button>
                         </div>
@@ -338,9 +337,9 @@ export default function Labels() {
               className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {saving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="animate-spin inline-block">🔄</span>
               ) : (
-                <Save className="w-4 h-4" />
+                <span>💾</span>
               )}
               {saving ? '保存中...' : `批量保存${changedCount > 0 ? ` (${changedCount})` : ''}`}
             </button>
@@ -358,7 +357,7 @@ export default function Labels() {
                 onClick={() => setModalOpen(false)}
                 className="p-1 rounded hover:bg-accent transition-colors"
               >
-                <X className="w-5 h-5" />
+                ❌
               </button>
             </div>
             <div className="px-5 py-4 space-y-4">
@@ -415,7 +414,7 @@ export default function Labels() {
               </div>
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4" />
+                  <span className="mr-1">⚠️</span>
                   {actionError}
                 </p>
               )}
@@ -432,7 +431,7 @@ export default function Labels() {
                 disabled={creating}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {creating && <Loader2 className="w-4 h-4 animate-spin" />}
+                {creating && <span className="animate-spin inline-block">🔄</span>}
                 {creating ? '創建中...' : '確認新增'}
               </button>
             </div>
