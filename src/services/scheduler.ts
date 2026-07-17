@@ -27,6 +27,7 @@
  */
 import type { D1Database, Queue } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
+import { nowStr } from '../utils/datetime';
 
 /** Queue 消息載荷: 定時發布任務 */
 export interface PublishMessage {
@@ -40,11 +41,6 @@ export interface PublishMessage {
 
 /** Queue 最大延遲秒數 (24 小時, Cloudflare Queues 限制) */
 const MAX_QUEUE_DELAY_SECONDS = 86400;
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
 
 /**
  * 驗證日期時間格式是否為 YYYY-MM-DD HH:mm:ss。
@@ -121,8 +117,8 @@ export async function handleScheduledPublish(
     const result = await db.prepare(
       `SELECT id, date FROM ay_content
        WHERE status = '0' AND acode = 'cn'
-       AND date > datetime('now')
-       AND date <= datetime('now', '+24 hours')`,
+       AND date > datetime('now', '+8 hours')
+       AND date <= datetime('now', '+8 hours', '+24 hours')`,
     ).all<{ id: number; date: string }>();
     upcoming = result.results || [];
   } catch (e) {
@@ -132,7 +128,7 @@ export async function handleScheduledPublish(
   // 2. 為每篇文章計算延遲並投遞到 Queue
   for (const article of upcoming) {
     if (!article.date) continue;
-    const targetTime = new Date(article.date.replace(' ', 'T') + 'Z').getTime();
+    const targetTime = new Date(article.date.replace(' ', 'T') + '+08:00').getTime();
     const delaySeconds = Math.floor((targetTime - Date.now()) / 1000);
 
     // 延遲必須在 0 ~ 86400 秒之間 (Cloudflare Queues delaySeconds 限制)
@@ -157,7 +153,7 @@ export async function handleScheduledPublish(
     const result = await db.prepare(
       `UPDATE ay_content SET status = '1'
        WHERE status = '0' AND acode = 'cn'
-       AND date <= datetime('now') AND date != ''`,
+       AND date <= datetime('now', '+8 hours') AND date != ''`,
     ).run();
 
     const changes = result.meta?.changes ?? 0;
@@ -313,7 +309,7 @@ export async function handleListScheduled(
     const result = await db.prepare(
       `SELECT id, title, date, scode FROM ay_content
        WHERE status = '0' AND acode = 'cn'
-       AND date > datetime('now')
+       AND date > datetime('now', '+8 hours')
        ORDER BY date ASC`,
     ).all<{ id: number; title: string; date: string; scode: string }>();
 

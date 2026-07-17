@@ -16,11 +16,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
+import { nowStr } from '../utils/datetime';
 
 /** 擴展字段列名合法性校驗 (僅允許 ext_ 前綴 + 字母數字下劃線) */
 const EXT_FIELD_PATTERN = /^ext_[a-zA-Z0-9_]+$/;

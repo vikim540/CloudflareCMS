@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import { useFeatureFlags } from '../hooks/useFeatureFlags'
+import { TagInput } from '../components/TagInput'
 
 /** 配置項 */
 interface Config {
@@ -51,6 +52,14 @@ const WEBHOOK_CONFIGS = new Set([
 const MAIL_IN_NOTIFY_CONFIGS = new Set([
   'message_send_mail', 'form_send_mail', 'comment_send_mail', 'message_send_to',
 ])
+
+/** 多值配置項定義：使用 TagInput 標籤式輸入（回車添加、可刪除） */
+const MULTI_VALUE_CONFIGS: Record<string, { stripProtocol?: boolean; placeholder?: string }> = {
+  api_cors_origins: { stripProtocol: true, placeholder: '輸入域名後按 Enter，如 www.example.com' },
+  ip_deny: { placeholder: '輸入 IP 或 IP 段後按 Enter，如 192.168.1.0/24' },
+  ip_allow: { placeholder: '輸入 IP 或 IP 段後按 Enter，如 10.0.0.1' },
+  message_send_to: { placeholder: '輸入郵箱後按 Enter，如 admin@example.com' },
+}
 
 /** 依 sorting 取得所屬分組 */
 function getGroup(sorting: number): ConfigGroup | null {
@@ -262,6 +271,42 @@ export default function Settings() {
     const val = currentValue(config)
     const isOn = val === '1'
     const hasChange = config.name in changes
+    const multiValueOpts = MULTI_VALUE_CONFIGS[config.name]
+
+    // 多值配置：全寬度佈局，標籤在上方，TagInput 在下方
+    if (multiValueOpts) {
+      const tags = val ? val.split(/[,，]/).map((v) => v.trim()).filter(Boolean) : []
+      return (
+        <div
+          key={config.id}
+          className={cn(
+            'py-3 border-b last:border-b-0',
+            hasChange && 'bg-amber-50/50 -mx-4 px-4',
+            disabled && 'opacity-50 pointer-events-none',
+          )}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-sm font-medium">{config.description || config.name}</span>
+            {hasChange && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">
+                已修改
+              </span>
+            )}
+            {tags.length > 0 && (
+              <span className="text-xs text-muted-foreground">({tags.length} 項)</span>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground font-mono block mb-2">{config.name}</span>
+          <TagInput
+            values={tags}
+            onChange={(newTags) => updateValue(config.name, newTags.join(','))}
+            placeholder={multiValueOpts.placeholder}
+            stripProtocol={multiValueOpts.stripProtocol}
+            disabled={disabled}
+          />
+        </div>
+      )
+    }
 
     return (
       <div

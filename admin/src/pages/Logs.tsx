@@ -16,11 +16,13 @@ interface LogItem {
 
 /**
  * 日誌類型標籤頁定義
- * 後端 level 參數: admin=系統日誌, notify=通知日誌, all=全部
- * 不再展示蜘蛛日誌 (用戶要求移除)
+ * 後端 level 參數: admin=系統日誌, content=內容日誌, security=安全日誌, error=錯誤日誌, notify=通知日誌, all=全部
  */
 const LOG_TABS = [
   { key: 'all', label: '📋 全部' },
+  { key: 'content', label: '📝 內容日誌' },
+  { key: 'security', label: '🔐 安全日誌' },
+  { key: 'error', label: '❌ 錯誤日誌' },
   { key: 'admin', label: '🛡️ 系統日誌' },
   { key: 'notify', label: '🔔 通知日誌' },
 ] as const
@@ -33,6 +35,12 @@ function getLevelBadge(level: string): { label: string; className: string } {
   switch (level) {
     case 'admin':
       return { label: '系統', className: 'bg-blue-100 text-blue-700' }
+    case 'content':
+      return { label: '內容', className: 'bg-cyan-100 text-cyan-700' }
+    case 'security':
+      return { label: '安全', className: 'bg-orange-100 text-orange-700' }
+    case 'error':
+      return { label: '錯誤', className: 'bg-red-100 text-red-700' }
     case 'spider':
       return { label: '蜘蛛', className: 'bg-purple-100 text-purple-700' }
     case 'mail_success':

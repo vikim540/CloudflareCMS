@@ -17,11 +17,7 @@ import { fromQuery, offset } from '../utils/pagination';
 import { hashPassword } from '../utils/password';
 import { getS3Config } from './storage';
 import { s3PutObject, s3GetObject, s3DeleteObject, s3ListObjects } from '../utils/s3sig';
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
+import { nowStr } from '../utils/datetime';
 
 /** 超級管理員 ucode, 禁止刪除/禁用 */
 const SUPER_ADMIN_UCODE = '10001';
@@ -775,7 +771,17 @@ export async function handleDeleteMenuAction(db: D1Database, id: number): Promis
  */
 function buildLogWhereClause(level: string): string {
   if (level === 'admin') {
-    return "level NOT LIKE 'spider' AND level NOT LIKE 'mail_%' AND level NOT LIKE 'webhook_%'";
+    // 系統操作：排除 spider、通知日誌、以及細分類別（content/security/error 各有獨立 Tab）
+    return "level NOT LIKE 'spider' AND level NOT LIKE 'mail_%' AND level NOT LIKE 'webhook_%' AND level NOT IN ('content', 'security', 'error')";
+  }
+  if (level === 'content') {
+    return "level = 'content'";
+  }
+  if (level === 'security') {
+    return "level = 'security'";
+  }
+  if (level === 'error') {
+    return "level = 'error'";
   }
   if (level === 'spider') {
     return "level = 'spider'";
@@ -834,7 +840,7 @@ export async function handleClearLogs(
 
   const whereClause = buildLogWhereClause(type);
   if (!whereClause) {
-    return err('無效的日誌類型, 支持: admin / spider / notify / all', 1001);
+    return err('無效的日誌類型, 支持: admin / content / security / error / notify / all', 1001);
   }
 
   await db.prepare(`DELETE FROM ay_syslog WHERE ${whereClause}`).run();

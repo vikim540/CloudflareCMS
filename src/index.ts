@@ -33,6 +33,7 @@ import { apiCache, clearContentCache, clearConfigCache } from './services/cache'
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
 import { getAllFlags, setFlagEnabled, autoRouteProtection } from './services/flags';
+import { nowStr, todayStr } from './utils/datetime';
 
 /** Worker 環境綁定 */
 export interface Env {
@@ -196,14 +197,15 @@ app.get('/api/health', (c) => {
   return okData({
     status: 'ok',
     version: '0.1.0',
-    time: new Date().toISOString(),
+    time: nowStr(),
   }, '健康');
 });
 
 // ===== 認證接口 =====
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
-  return authService.handleLogin(c.env.DB, c.env.JWT_SECRET, body);
+  const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  return authService.handleLogin(c.env.DB, c.env.JWT_SECRET, body, loginIp);
 });
 
 app.get('/api/v1/auth/profile', async (c) => {
@@ -283,6 +285,63 @@ app.use('/api/v1/admin/*', async (c, next) => {
     c.set('claims', claims);
   }
   await next();
+});
+
+// ===== 後台管理 - 操作日誌中間件 =====
+// 自動記錄所有 admin POST/PUT/DELETE 操作到 ay_syslog
+// 記錄內容操作、敏感數據變更、操作錯誤，使用 waitUntil 異步寫入
+app.use('/api/v1/admin/*', async (c, next) => {
+  await next();
+
+  const method = c.req.method;
+  if (method !== 'POST' && method !== 'PUT' && method !== 'DELETE') return;
+
+  const claims = c.get('claims');
+  if (!claims) return;
+
+  const url = new URL(c.req.url);
+  const path = url.pathname;
+  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
+
+  // 根據 URL 推斷操作類型和日誌級別
+  let level = 'admin';
+  let action = '';
+  if (path.includes('/contents')) { level = 'content'; action = '內容管理'; }
+  else if (path.includes('/sorts')) { level = 'content'; action = '欄目管理'; }
+  else if (path.includes('/models')) { level = 'content'; action = '模型管理'; }
+  else if (path.includes('/upload') || path.includes('/storage') || path.includes('/media')) { level = 'content'; action = '媒體存儲'; }
+  else if (path.includes('/users')) { level = 'security'; action = '用戶管理'; }
+  else if (path.includes('/roles')) { level = 'security'; action = '角色管理'; }
+  else if (path.includes('/menus')) { level = 'security'; action = '菜單管理'; }
+  else if (path.includes('/configs')) { level = 'security'; action = '系統配置'; }
+  else if (path.includes('/flags')) { level = 'security'; action = '功能開關'; }
+  else if (path.includes('/database')) { level = 'security'; action = '數據庫備份'; }
+
+  // 檢查響應是否為錯誤
+  let isError = false;
+  let errorMsg = '';
+  try {
+    const res = c.res;
+    if (res.ok) {
+      const cloned = res.clone();
+      const body = await cloned.json() as { code?: number; msg?: string };
+      if (body.code && body.code !== 0) {
+        isError = true;
+        errorMsg = body.msg || `code=${body.code}`;
+      }
+    } else {
+      isError = true;
+      errorMsg = `HTTP ${res.status}`;
+    }
+  } catch { /* 響應非 JSON，忽略 */ }
+
+  const finalLevel = isError ? 'error' : level;
+  const event = `${method} ${path} - ${action}${isError ? ` 失敗: ${errorMsg}` : ''}`;
+
+  c.executionCtx.waitUntil(
+    systemService.logAction(c.env.DB, claims.username, userIp, userAgent, event, finalLevel, path),
+  );
 });
 
 // ===== 後台管理 - 菜單權限攔截中間件 =====
@@ -430,7 +489,7 @@ app.get('/api/v1/admin/stats', async (c) => {
   if (!claims) return err('未授權', 2002);
 
   const db = c.env.DB;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
 
   const [contentTotal, sortTotal, visitsTotal, todayNew] = await Promise.all([
     db.prepare("SELECT COUNT(*) as n FROM ay_content WHERE acode = 'cn' AND status >= '0'").first<{ n: number }>(),
@@ -1111,6 +1170,15 @@ app.notFound((c) => err('接口不存在', 1004));
 app.onError((e, c) => {
   console.error('路由錯誤:', e);
   const msg = e instanceof Error ? e.message : '內部伺服器錯誤';
+  // 異步記錄錯誤日誌
+  const claims = c.get('claims');
+  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
+  const url = new URL(c.req.url);
+  const errorEvent = `路由錯誤: ${c.req.method} ${url.pathname} - ${msg}`;
+  c.executionCtx.waitUntil(
+    systemService.logAction(c.env.DB, claims?.username || '', userIp, userAgent, errorEvent, 'error', url.pathname),
+  );
   return err(msg, 500);
 });
 

@@ -352,14 +352,8 @@ export async function handleUpload(
   try {
     const url = await s3PutObject(s3Config, key, data, contentType);
 
-    // 記錄到數據庫
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    await db.prepare(
-      'INSERT INTO ay_content (acode, scode, title, content, date, status, gtype, gid, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    ).bind(
-      'cn', '', file.name, url, now, '1', '4', '', now, now,
-    ).run().catch(() => {});
-
+    // 媒體庫文件不寫入 ay_content 表，避免污染內容管理列表
+    // 媒體庫通過 S3 ListObjects 直接列出，無需在內容表中記錄
     return okData({ url, key, filename: file.name, size: file.size, contentType }, '上傳成功');
   } catch (e) {
     const msg = e instanceof Error ? e.message : '未知錯誤';

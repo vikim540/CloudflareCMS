@@ -15,11 +15,7 @@ import type { D1Database, KVNamespace, ExecutionContext, Flagship } from '@cloud
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { triggerNotify, type NotifyField } from './notify';
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
+import { nowStr } from '../utils/datetime';
 
 /** 簡易 User-Agent 解析 (用於留言記錄客戶端信息) */
 function parseUserAgent(ua: string): { os: string; bs: string } {

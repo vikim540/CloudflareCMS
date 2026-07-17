@@ -13,6 +13,7 @@
 import type { D1Database, KVNamespace, Flagship } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
 import { getFlagEnabled } from './flags';
+import { nowStr } from '../utils/datetime';
 
 /** 通知字段 (label + value 鍵值對) */
 export interface NotifyField {
@@ -44,10 +45,6 @@ function parseUserAgent(ua: string): { os: string; bs: string } {
   else if (/Firefox\//.test(ua)) bs = 'Firefox';
   else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) bs = 'Safari';
   return { os, bs };
-}
-
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
 }
 
 function cfg(configs: Record<string, string>, key: string, defaultValue = ''): string {

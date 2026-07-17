@@ -7,11 +7,7 @@ import { okData, okList, ok, err, notFound, createMeta } from '../utils/response
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
 import { getDescendantScodes } from './sort';
 import { handleSaveContentExt } from './model';
-
-/** 當前時間字符串 */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
+import { nowStr } from '../utils/datetime';
 
 /** 公開內容列表 API */
 export async function handleListContents(
@@ -25,7 +21,7 @@ export async function handleListContents(
   const isrecommend = params.get('isrecommend');
   const order = params.get('order') || 'date';
 
-  const conditions: string[] = ["c.acode = ?", "c.status = '1'"];
+  const conditions: string[] = ["c.acode = ?", "c.status = '1'", "c.scode != ''"];
   const binds: (string | number)[] = ['cn'];
 
   // 欄目篩選 (含子孫欄目)
@@ -123,7 +119,7 @@ export async function handleAdminListContents(
   const keyword = params.get('keyword') || '';
   const status = params.get('status') || '1';
 
-  const conditions: string[] = ['acode = ?'];
+  const conditions: string[] = ['acode = ?', "scode != ''"];
   const binds: (string | number)[] = ['cn'];
 
   // 狀態篩選

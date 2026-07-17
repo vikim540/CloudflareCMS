@@ -100,7 +100,7 @@ function TreeNode({
             ) : (
               <span className="inline-block w-5 mr-1.5 shrink-0" />
             )}
-            {node.ico && <span className="mr-1.5 text-sm">{node.ico}</span>}
+            {node.ico && !node.ico.startsWith('fa-') && <span className="mr-1.5 text-sm">{node.ico}</span>}
             <span className={cn('truncate', depth === 0 ? 'font-semibold' : 'font-medium')}>
               {node.name}
             </span>

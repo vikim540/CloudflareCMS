@@ -4,6 +4,7 @@
  */
 import type { D1Database } from '@cloudflare/workers-types';
 import { okData, ok, err, notFound, createMeta } from '../utils/response';
+import { nowStr } from '../utils/datetime';
 
 /** 欄目記錄 */
 interface ContentSort {
@@ -111,7 +112,7 @@ export async function handleCreateSort(
 
   const pcode = body.pcode || '0';
   const mcode = body.mcode || '2';
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const now = nowStr();
 
   // 先插入,取得自增 ID 後再回填 scode
   const result = await db.prepare(
@@ -150,7 +151,7 @@ export async function handleUpdateSort(
   id: number,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const now = nowStr();
 
   const allowedFields = [
     'name', 'subname', 'mcode', 'pcode', 'scode', 'listtpl', 'contenttpl',

@@ -7,14 +7,10 @@ import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { verifyPassword } from '../utils/password';
 import { signJwt, genUuid, type JwtClaims } from '../utils/jwt';
 import { okData, ok, err, notFound } from '../utils/response';
+import { nowStr } from '../utils/datetime';
 
 /** 超級管理員 ucode */
 const SUPER_ADMIN_UCODE = '10001';
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
-}
 
 /**
  * 加載用戶權限列表
@@ -44,6 +40,7 @@ export async function handleLogin(
   db: D1Database,
   jwtSecret: string,
   body: { username?: string; password?: string },
+  loginIp: string = '',
 ): Promise<Response> {
   const username = body.username;
   const passwordInput = body.password;
@@ -97,10 +94,10 @@ export async function handleLogin(
   };
   const token = await signJwt(claims, jwtSecret);
 
-  // 更新登錄信息
+  // 更新登錄信息（含登錄 IP）
   await db
-    .prepare('UPDATE ay_user SET login_count = login_count + 1, lastlogintime = ? WHERE id = ?')
-    .bind(nowStr(), user.id)
+    .prepare('UPDATE ay_user SET login_count = login_count + 1, last_login_ip = ?, lastlogintime = ? WHERE id = ?')
+    .bind(loginIp, nowStr(), user.id)
     .run();
 
   return okData(

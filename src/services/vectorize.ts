@@ -20,6 +20,7 @@
  */
 import type { D1Database, VectorizeIndex, Ai } from '@cloudflare/workers-types';
 import { okData, err } from '../utils/response';
+import { nowStr } from '../utils/datetime';
 
 /** 嵌入模型名稱 (768 維, 中文優化) */
 const EMBEDDING_MODEL = '@cf/baai/bge-base-zh-v1.5';
@@ -67,11 +68,6 @@ interface VectorizeMatch {
 interface VectorizeQueryResult {
   matches?: VectorizeMatch[];
   count?: number;
-}
-
-/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
-function nowStr(): string {
-  return new Date().toISOString().replace('T', ' ').slice(0, 19);
 }
 
 /**

@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.1.0',
+    date: '2026-07-17 16:40:37',
+    icon: '🔧',
+    latest: true,
+    changes: '時區修復：創建 src/utils/datetime.ts 統一 UTC+8 香港時區，替換全部 8 個 service 文件的 nowStr 本地定義；登錄 IP 記錄修復（CF-Connecting-IP 提取 + SQL 更新 last_login_ip）；菜單 FontAwesome 圖標清理（migration 0003 將 fa-* 轉為 emoji + 前端過濾）；系統日誌大幅增強：操作日誌中間件自動記錄所有 admin 寫操作（content/security/error 分類）+ 全局錯誤處理器記錄錯誤日誌 + 前端新增內容/安全/錯誤三個日誌 Tab；多值配置改為 TagInput 標籤式輸入（CORS 域名自動剝離 http/https + IP 黑白名單批量導入 + 郵件收件人標籤管理）；媒體庫污染內容管理修復（移除 handleUpload 中的 ay_content 插入 + scode != 過濾 + migration 0004 清理已有記錄）；AGENTS.md 精簡重構（刪除文件修改記錄/日誌命令/性能預算/免費額度等運維內容）',
+  },
+  {
     version: 'v1.0.0',
     date: '2026-07-17 15:59:10',
     icon: '🎉',
-    latest: true,
+    latest: false,
     changes: '登錄頁無限刷新根因修復（FeatureFlagProvider 移至 Layout 僅認證頁加載 + 全局重定向鎖防並發 401 + data-cfasync=false 繞過 Rocket Loader）；功能開關改為始終 D1 模式（後台直接管理無需 Flagship 面板）；移除 isFlagshipManaged 只讀判斷，開關始終可互動；S3 存儲配置獨立分塊 + 默認鎖定防誤觸（解鎖按鈕）+ 默認折疊；搜索引擎推送默認折疊；幻燈片增加移動端圖片預覽列；AGENTS.md 移除數據庫零改動約束 + 更新 Flagship 為始終 D1 + 精簡重複內容',
   },
   {
@@ -149,7 +156,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/roles', desc: '角色列表 (含 userCount/levelCount)', auth: true },
   { method: 'GET', path: '/api/v1/admin/roles/all', desc: '全部啟用角色 (含 levelCount)', auth: true },
   { method: 'GET', path: '/api/v1/admin/menus', desc: '菜單樹', auth: true },
-  { method: 'GET', path: '/api/v1/admin/logs', desc: '系統日誌 (?level=)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/logs', desc: '系統日誌 (?level=admin|content|security|error|notify)', auth: true },
   { method: 'GET', path: '/api/v1/admin/flags', desc: '查詢功能開關狀態', auth: true },
   { method: 'PUT', path: '/api/v1/admin/flags', desc: '切換功能開關 (D1回退模式)', auth: true },
   { method: 'GET', path: '/api/v1/admin/scheduler/list', desc: '定時發布列表', auth: true },
@@ -866,16 +873,14 @@ console.log(articles) // 相似文章列表`}</code>
               </div>
             </section>
 
-            {/* 數據庫零改動提示 */}
+            {/* 數據庫管理說明 */}
             <section>
-              <div className="flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 p-4">
-                <span className="text-xl">🚫</span>
+              <div className="flex items-start gap-3 rounded-lg bg-blue-50 border border-blue-200 p-4">
+                <span className="text-xl">🗄️</span>
                 <div>
-                  <div className="font-semibold text-red-900">硬約束：數據庫零改動</div>
-                  <p className="text-sm text-red-700 mt-1">
-                    禁止修改、刪除、重命名 PbootCMS 原版任何表結構或字段，表前綴{' '}
-                    <code className="px-1 py-0.5 bg-red-100 rounded text-xs font-mono">ay_</code>{' '}
-                    不變。僅允許冪等操作（CREATE INDEX IF NOT EXISTS、INSERT ... WHERE NOT EXISTS）。
+                  <div className="font-semibold text-blue-900">數據庫管理</div>
+                  <p className="text-sm text-blue-700 mt-1">
+                    表前綴 <code className="px-1 py-0.5 bg-blue-100 rounded text-xs font-mono">ay_</code> 保持不變，可按需修改/新增表結構和字段。SQL 始終使用參數化查詢。
                   </p>
                 </div>
               </div>
