@@ -2,8 +2,8 @@
  * 通知服務 - Webhook 推送 + 郵件通知
  * 參考 pbootcms-go 的 webhook.go 和 mailer.go 實現
  *
- * 郵件發送: 優先使用 Cloudflare Email Service (send_email binding)
- *           回退到 MailChannels / Resend HTTP API
+ * 郵件發送: MailChannels / Resend HTTP API (免費第三方接入)
+ *           Email Service 僅 Workers Paid 可用，本項目使用免費方案
  * Webhook:  釘釘 ActionCard / 企業微信 Markdown / 通用 JSON
  *
  * Flagship 功能開關:
@@ -11,7 +11,7 @@
  *   notify_webhook_enabled  - Webhook 通知總開關
  *   關閉後，對應通知邏輯完全不執行，後台也不顯示相關按鈕
  */
-import type { D1Database, KVNamespace, SendEmail, Flagship } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, Flagship } from '@cloudflare/workers-types';
 import { okData, ok, err } from '../utils/response';
 
 /** 通知字段 (label + value 鍵值對) */
@@ -163,11 +163,10 @@ ${meta.sourceUrl ? `<tr><td style="padding:4px 0;font-size:13px;color:#6b7280;">
 
 /**
  * 發送郵件通知
- * 優先使用 Cloudflare Email Service (send_email binding), 回退到 HTTP API
+ * 使用 MailChannels / Resend HTTP API (免費第三方接入)
  */
 export async function sendNotifyMail(
   configs: Record<string, string>,
-  emailBinding: SendEmail | null,
   to: string,
   subject: string,
   htmlBody: string,
@@ -178,25 +177,7 @@ export async function sendNotifyMail(
   const recipients = to.split(',').map((e) => e.trim()).filter(Boolean);
   if (recipients.length === 0) return { success: false, error: '收件人為空' };
 
-  // 生成純文本版本 (防止部分郵件客戶端只顯示純文本)
-  const textBody = htmlBody.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 500);
-
   try {
-    // 優先使用 Cloudflare Email Service binding
-    if (emailBinding) {
-      for (const recipient of recipients) {
-        await emailBinding.send({
-          to: recipient,
-          from: { email: fromEmail, name: fromName },
-          subject,
-          html: htmlBody,
-          text: textBody,
-        });
-      }
-      return { success: true };
-    }
-
-    // 回退: HTTP API (MailChannels / Resend)
     const provider = cfg(configs, 'mail_provider', 'mailchannels');
     const apiKey = cfg(configs, 'mail_api_key');
 
@@ -210,7 +191,7 @@ export async function sendNotifyMail(
       return { success: true };
     }
 
-    // MailChannels
+    // MailChannels (默認，免費)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
     const resp = await fetch('https://api.mailchannels.net/tx/v1/send', {
@@ -258,7 +239,6 @@ async function loadConfigsFromDB(db: D1Database): Promise<Record<string, string>
 export async function triggerNotify(
   db: D1Database,
   kv: KVNamespace | null,
-  emailBinding: SendEmail | null,
   flags: Flagship | null,
   category: 'message' | 'form' | 'comment',
   formName: string,
@@ -289,7 +269,7 @@ export async function triggerNotify(
       const mailTo = cfg(configs, 'message_send_to');
       if (cfg(configs, mailSwitch) === '1' && mailTo) {
         const html = buildNotifyEmailHtml(site.name, site.logo, formName, fields, meta);
-        const result = await sendNotifyMail(configs, emailBinding, mailTo, `新通知：${formName}`, html);
+        const result = await sendNotifyMail(configs, mailTo, `新通知：${formName}`, html);
         await logNotify(db, 'mail', result.success, result.error || `${formName} -> ${mailTo}`);
       }
     }
@@ -317,7 +297,7 @@ async function logNotify(db: D1Database, type: 'mail' | 'webhook', success: bool
 // 測試接口
 // ============================================================================
 
-export async function handleTestMail(db: D1Database, kv: KVNamespace, emailBinding: SendEmail | null, body: { to?: string }): Promise<Response> {
+export async function handleTestMail(db: D1Database, kv: KVNamespace, body: { to?: string }): Promise<Response> {
   const to = body.to;
   if (!to) return err('缺少收件人 to 參數', 1001);
   const configs = await loadConfigsFromDB(db);
@@ -330,7 +310,7 @@ export async function handleTestMail(db: D1Database, kv: KVNamespace, emailBindi
   ];
   const meta: NotifyMeta = { ip: '127.0.0.1', os: 'Server', browser: 'Test', timestamp: ts };
   const html = buildNotifyEmailHtml(site.name, site.logo, '郵件測試通知', fields, meta);
-  const result = await sendNotifyMail(configs, emailBinding, to, '測試郵件 - CMS 系統通知', html);
+  const result = await sendNotifyMail(configs, to, '測試郵件 - CMS 系統通知', html);
   await logNotify(db, 'mail', result.success, result.error || `測試郵件 -> ${to}`);
   return result.success ? ok('測試郵件發送成功') : err(`郵件發送失敗: ${result.error}`, 1005);
 }

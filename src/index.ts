@@ -14,7 +14,7 @@
  *   /api/v1/admin/*          - 管理接口 (需 JWT)
  */
 import { Hono } from 'hono';
-import type { D1Database, KVNamespace, SendEmail, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission } from './services/auth';
@@ -42,7 +42,6 @@ export interface Env {
   JWT_SECRET: string;
   API_PREFIX: string;
   JWT_EXPIRE_DAYS: string;
-  EMAIL: SendEmail;
   PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string }>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
@@ -50,7 +49,7 @@ export interface Env {
   ADMIN_API_LIMIT: RateLimit;
   LOGIN_LIMIT: RateLimit;
   FORM_LIMIT: RateLimit;
-  FLAGS: Flagship;
+  FLAGS?: Flagship;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -211,7 +210,7 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, c.executionCtx, c.env.FLAGS, userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.executionCtx, c.env.FLAGS, userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理接口 - 內容管理 =====
@@ -662,7 +661,7 @@ app.post('/api/v1/admin/notify/test-mail', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, c.env.EMAIL, body);
+  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, body);
 });
 
 // Webhook 推送測試

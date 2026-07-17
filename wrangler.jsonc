@@ -17,10 +17,6 @@
     }
   ],
 
-  "send_email": [
-    { "name": "EMAIL" }
-  ],
-
   "kv_namespaces": [
     {
       "binding": "CONFIG_CACHE",
@@ -54,14 +50,12 @@
     ]
   },
 
-  // Vectorize: 需先運行 wrangler vectorize create article-semantic-search --dimensions=768 --metric=cosine
-  // 創建索引後取消下面的註釋
-  // "vectorize": [
-  //   {
-  //     "binding": "ARTICLE_INDEX",
-  //     "index_name": "article-semantic-search"
-  //   }
-  // ],
+  "vectorize": [
+    {
+      "binding": "ARTICLE_INDEX",
+      "index_name": "article-semantic-search"
+    }
+  ],
 
   "ai": {
     "binding": "AI"
@@ -90,12 +84,13 @@
     }
   ],
 
-  // Flagship: 需先在 Dashboard > Compute > Flagship 創建 app 'cms-service'
-  // 創建後取消下面的註釋
+  // Flagship: 需在 Dashboard > Compute > Flagship 中找到 app 的 UUID
+  // 用戶創建了名為 cms-service 的 app，但 app_id 需填入 UUID（非名稱）
+  // 找到正確 UUID 後取消下面的註釋
   // "flagship": [
   //   {
   //     "binding": "FLAGS",
-  //     "app_id": "cms-service"
+  //     "app_id": "<FLAGSHIP_APP_UUID>"
   //   }
   // ],
 
