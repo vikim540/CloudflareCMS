@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useMemo } from 'react'
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   FileText,
@@ -27,15 +27,29 @@ import {
   ScrollText,
   Puzzle,
   SlidersHorizontal,
+  Newspaper,
 } from 'lucide-react'
-import { clearToken } from '../lib/api'
+import { api, clearToken } from '../lib/api'
 import { cn } from '../lib/utils'
+
+/** 模型數據結構 */
+interface Model {
+  id: number
+  name: string
+  mcode: string
+  type: string // "1"=單頁, "2"=列表
+  urlname: string
+  status: string // "1"=啟用, "0"=禁用
+  issystem: string
+}
 
 /** 導航項目 */
 interface NavItem {
   to: string
   label: string
   icon: typeof FileText
+  /** 內容模型項目的 mcode，用於帶 query 參數時的 active 判斷 */
+  mcode?: string
 }
 
 /** 導航分組 */
@@ -69,7 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: '文章內容',
     icon: FileText,
     items: [
-      { to: '/contents', label: '內容列表', icon: FileText },
+      // 列表型模型子菜單在組件中動態注入（見 navGroups）
       { to: '/trash', label: '回收站', icon: Trash2 },
     ],
   },
@@ -102,8 +116,45 @@ const NAV_GROUPS: NavGroup[] = [
 
 export default function Layout() {
   const navigate = useNavigate()
+  const location = useLocation()
   // 預設所有分組展開
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  // 模型列表（掛載時載入一次）
+  const [models, setModels] = useState<Model[]>([])
+
+  // 載入模型列表
+  useEffect(() => {
+    api
+      .get<Model[]>('/admin/models/all')
+      .then((res) => setModels(res.data ?? []))
+      .catch(() => {
+        /* 載入失敗時靜默處理，側邊欄僅顯示回收站 */
+      })
+  }, [])
+
+  // 構建導航分組（將動態模型注入「文章內容」分組前端，回收站保留末尾）
+  const navGroups = useMemo<NavGroup[]>(() => {
+    const contentModelItems: NavItem[] = models
+      .filter((m) => m.type === '2' && m.status === '1')
+      .map((m) => ({
+        to: `/contents?mcode=${encodeURIComponent(m.mcode)}`,
+        label: `${m.name}列表`,
+        icon: Newspaper,
+        mcode: m.mcode,
+      }))
+    return NAV_GROUPS.map((group) =>
+      group.title === '文章內容'
+        ? { ...group, items: [...contentModelItems, ...group.items] }
+        : group,
+    )
+  }, [models])
+
+  /** 判斷帶 mcode 的內容項目是否當前活躍（基於 query 參數比對） */
+  const isContentItemActive = (itemMcode: string): boolean => {
+    if (location.pathname !== '/contents') return false
+    const params = new URLSearchParams(location.search)
+    return (params.get('mcode') || '') === itemMcode
+  }
 
   const handleLogout = async () => {
     try {
@@ -154,7 +205,7 @@ export default function Layout() {
           </NavLink>
 
           {/* 分組導航 */}
-          {NAV_GROUPS.map((group) => {
+          {navGroups.map((group) => {
             const isCollapsed = collapsedGroups.has(group.title)
             return (
               <div key={group.title} className="mt-1">
@@ -175,24 +226,31 @@ export default function Layout() {
                 {/* 子項目 */}
                 {!isCollapsed && (
                   <div className="space-y-0.5">
-                    {group.items.map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.to === '/'}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors',
-                            isActive
-                              ? 'bg-secondary text-foreground font-medium'
-                              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                          )
-                        }
-                      >
-                        <item.icon className="w-4 h-4" />
-                        {item.label}
-                      </NavLink>
-                    ))}
+                    {group.items.map((item) => {
+                      const isContentItem = item.mcode !== undefined
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end={item.to === '/'}
+                          className={({ isActive }) => {
+                            // 帶 mcode 的內容項目使用自定義 active 判斷（基於 query 參數）
+                            const active = isContentItem
+                              ? isContentItemActive(item.mcode!)
+                              : isActive
+                            return cn(
+                              'flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors',
+                              active
+                                ? 'bg-secondary text-foreground font-medium'
+                                : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                            )
+                          }}
+                        >
+                          <item.icon className="w-4 h-4" />
+                          {item.label}
+                        </NavLink>
+                      )
+                    })}
                   </div>
                 )}
               </div>

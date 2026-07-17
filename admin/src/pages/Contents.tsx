@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Plus,
   Search,
@@ -64,6 +64,17 @@ interface CategoryOption {
   scode: string
   name: string
   depth: number
+}
+
+/** 模型數據結構 */
+interface Model {
+  id: number
+  name: string
+  mcode: string
+  type: string // "1"=單頁, "2"=列表
+  urlname: string
+  status: string // "1"=啟用, "0"=禁用
+  issystem: string
 }
 
 /** 每頁條數可選項 */
@@ -161,14 +172,36 @@ export default function Contents() {
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [batchLoading, setBatchLoading] = useState(false)
+  const [models, setModels] = useState<Model[]>([])
 
-  // 載入欄目樹（僅一次）
+  // 從 URL query 讀取 mcode（模型分類）
+  const [searchParams, setSearchParams] = useSearchParams()
+  const mcode = searchParams.get('mcode') || ''
+
+  // 載入模型列表（僅一次），用於構建 mcode -> name 映射與模型標籤頁
   useEffect(() => {
     api
-      .get<Category[]>('/admin/sorts')
-      .then((res) => setCategories(res.data ?? []))
+      .get<Model[]>('/admin/models/all')
+      .then((res) => setModels(res.data ?? []))
       .catch(() => {})
   }, [])
+
+  // 載入欄目樹（依當前 mcode 過濾，只顯示該模型下的欄目）
+  useEffect(() => {
+    const path = mcode
+      ? `/admin/sorts?mcode=${encodeURIComponent(mcode)}`
+      : '/admin/sorts'
+    api
+      .get<Category[]>(path)
+      .then((res) => setCategories(res.data ?? []))
+      .catch(() => {})
+  }, [mcode])
+
+  // 當 mcode 變化時重置欄目篩選與頁碼，避免跨模型誤用舊條件
+  useEffect(() => {
+    setScodeFilter('')
+    setPage(1)
+  }, [mcode])
 
   // 載入內容列表
   const fetchContents = useCallback(async () => {
@@ -187,6 +220,9 @@ export default function Contents() {
       if (scodeFilter) {
         params.set('scode', scodeFilter)
       }
+      if (mcode) {
+        params.set('mcode', mcode)
+      }
       const res = await api.get<Content[]>(`/admin/contents?${params.toString()}`)
       setContents(res.data ?? [])
       setTotal(res.meta?.total ?? 0)
@@ -195,7 +231,7 @@ export default function Contents() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, activeTab, searchKeyword, scodeFilter])
+  }, [page, pageSize, activeTab, searchKeyword, scodeFilter, mcode])
 
   useEffect(() => {
     fetchContents()
@@ -204,7 +240,7 @@ export default function Contents() {
   // 切換頁碼、篩選或每頁條數時清空選擇，避免跨頁誤操作
   useEffect(() => {
     setSelectedIds(new Set())
-  }, [page, pageSize, activeTab, searchKeyword, scodeFilter])
+  }, [page, pageSize, activeTab, searchKeyword, scodeFilter, mcode])
 
   // 欄目映射（scode -> name）
   const categoryMap = useMemo(() => flattenCategories(categories), [categories])
@@ -213,6 +249,22 @@ export default function Contents() {
     () => flattenCategoriesForSelect(categories),
     [categories],
   )
+  // 模型映射（mcode -> name）
+  const modelMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const m of models) {
+      map[m.mcode] = m.name
+    }
+    return map
+  }, [models])
+  // 列表型且啟用的模型（用於模型標籤頁）
+  const listModels = useMemo(
+    () => models.filter((m) => m.type === '2' && m.status === '1'),
+    [models],
+  )
+  // 當前模型名稱（用於頁面標題：如「文章管理」）
+  const currentModelName = mcode ? (modelMap[mcode] ?? '') : ''
+  const pageTitle = currentModelName ? `${currentModelName}管理` : '內容管理'
 
   // 搜尋
   const handleSearch = (e: FormEvent) => {
@@ -224,6 +276,20 @@ export default function Contents() {
   // 切換狀態標籤
   const handleTabChange = (tab: string) => {
     setActiveTab(tab)
+    setPage(1)
+  }
+
+  // 切換模型分類（寫入 URL query 參數 mcode）
+  const handleModelTabChange = (code: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (code) {
+        next.set('mcode', code)
+      } else {
+        next.delete('mcode')
+      }
+      return next
+    })
     setPage(1)
   }
 
@@ -379,9 +445,13 @@ export default function Contents() {
     <div className="p-6">
       {/* 頁首 */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">內容管理</h1>
+        <h1 className="text-2xl font-bold">{pageTitle}</h1>
         <Link
-          to="/contents/new"
+          to={
+            mcode
+              ? `/contents/new?mcode=${encodeURIComponent(mcode)}`
+              : '/contents/new'
+          }
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
           <Plus className="w-4 h-4" />
@@ -395,6 +465,35 @@ export default function Contents() {
           {error}
         </div>
       )}
+
+      {/* 模型分類標籤 */}
+      <div className="flex gap-1 mb-4 border-b overflow-x-auto">
+        <button
+          onClick={() => handleModelTabChange('')}
+          className={cn(
+            'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+            mcode === ''
+              ? 'border-primary text-foreground'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          全部
+        </button>
+        {listModels.map((m) => (
+          <button
+            key={m.mcode}
+            onClick={() => handleModelTabChange(m.mcode)}
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+              mcode === m.mcode
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m.name}列表
+          </button>
+        ))}
+      </div>
 
       {/* 狀態標籤 */}
       <div className="flex gap-1 mb-4 border-b">

@@ -41,13 +41,24 @@ interface ContentSortNode extends ContentSort {
   children: ContentSortNode[];
 }
 
-/** 獲取欄目列表 (平鋪) */
-async function listSorts(db: D1Database, status?: string): Promise<ContentSort[]> {
-  const sql = status
-    ? 'SELECT * FROM ay_content_sort WHERE acode = ? AND status = ? ORDER BY sorting ASC, id ASC'
-    : 'SELECT * FROM ay_content_sort WHERE acode = ? ORDER BY sorting ASC, id ASC';
-  const stmt = status ? db.prepare(sql).bind('cn', status) : db.prepare(sql).bind('cn');
-  const result = await stmt.all<ContentSort>();
+/** 獲取欄目列表 (平鋪, 可選按 mcode 過濾) */
+async function listSorts(db: D1Database, status?: string, mcode?: string): Promise<ContentSort[]> {
+  let sql: string;
+  let binds: (string | undefined)[];
+  if (status && mcode) {
+    sql = 'SELECT * FROM ay_content_sort WHERE acode = ? AND status = ? AND mcode = ? ORDER BY sorting ASC, id ASC';
+    binds = ['cn', status, mcode];
+  } else if (status) {
+    sql = 'SELECT * FROM ay_content_sort WHERE acode = ? AND status = ? ORDER BY sorting ASC, id ASC';
+    binds = ['cn', status];
+  } else if (mcode) {
+    sql = 'SELECT * FROM ay_content_sort WHERE acode = ? AND mcode = ? ORDER BY sorting ASC, id ASC';
+    binds = ['cn', mcode];
+  } else {
+    sql = 'SELECT * FROM ay_content_sort WHERE acode = ? ORDER BY sorting ASC, id ASC';
+    binds = ['cn'];
+  }
+  const result = await db.prepare(sql).bind(...binds).all<ContentSort>();
   return result.results;
 }
 
@@ -68,9 +79,9 @@ export async function handleSortTree(db: D1Database): Promise<Response> {
   return okData(tree, '成功');
 }
 
-/** 獲取欄目樹 API (管理後台,含禁用) */
-export async function handleSortTreeAll(db: D1Database): Promise<Response> {
-  const sorts = await listSorts(db);
+/** 獲取欄目樹 API (管理後台,含禁用, 可選按 mcode 過濾) */
+export async function handleSortTreeAll(db: D1Database, mcode?: string): Promise<Response> {
+  const sorts = await listSorts(db, undefined, mcode);
   const tree = buildSortTree(sorts, '0');
   return okData(tree, '成功');
 }

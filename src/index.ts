@@ -27,6 +27,7 @@ import * as storageService from './services/storage';
 import * as extraService from './services/extra';
 import * as modelService from './services/model';
 import * as systemService from './services/system';
+import * as notifyService from './services/notify';
 
 /** Worker 環境綁定 */
 export interface Env {
@@ -40,13 +41,58 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ===== CORS 中間件 =====
+// ===== CORS 中間件 (動態域名校驗, 根據 api_cors_origins 配置) =====
 app.use('*', async (c, next) => {
-  // 設置 CORS 頭 (在 next 之前設置,確保 OPTIONS 也帶上)
-  c.header('Access-Control-Allow-Origin', '*');
+  const origin = c.req.header('Origin');
+
+  // 從 KV 緩存讀取 CORS 配置
+  let allowedOrigin = '*';
+  let credentials = false;
+
+  if (origin) {
+    try {
+      const cached = await c.env.CONFIG_CACHE.get('config:all');
+      if (cached) {
+        const configs = JSON.parse(cached) as Record<string, string>;
+        const corsOrigins = configs.api_cors_origins || '';
+        if (corsOrigins) {
+          // 配置了 CORS 域名白名單, 檢查 Origin 是否允許
+          const origins = corsOrigins
+            .split(/[,，\n]/)
+            .map((o) => o.trim())
+            .filter(Boolean);
+          if (origins.includes('*')) {
+            allowedOrigin = '*';
+          } else if (origins.includes(origin)) {
+            allowedOrigin = origin;
+            credentials = true;
+          } else {
+            // Origin 不在白名單中, 不設置 CORS 頭 (瀏覽器將拒絕跨域)
+            if (c.req.method === 'OPTIONS') {
+              return c.body(null, 204);
+            }
+            await next();
+            return;
+          }
+        } else {
+          // 未配置 CORS 域名, 允許所有
+          allowedOrigin = '*';
+        }
+      }
+    } catch {
+      // 配置讀取失敗, 回退到允許所有
+      allowedOrigin = '*';
+    }
+  }
+
+  c.header('Access-Control-Allow-Origin', allowedOrigin);
   c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
   c.header('Access-Control-Max-Age', '86400');
+  if (credentials) {
+    c.header('Access-Control-Allow-Credentials', 'true');
+    c.header('Vary', 'Origin');
+  }
 
   if (c.req.method === 'OPTIONS') {
     return c.body(null, 204);
@@ -150,7 +196,8 @@ app.post('/api/v1/messages', async (c) => {
   const body = await c.req.json();
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, userIp, userAgent, body);
+  const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
+  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理接口 - 內容管理 =====
@@ -227,7 +274,8 @@ app.delete('/api/v1/admin/contents/:id/permanent', async (c) => {
 app.get('/api/v1/admin/sorts', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return sortService.handleSortTreeAll(c.env.DB);
+  const mcode = c.req.query('mcode') || undefined;
+  return sortService.handleSortTreeAll(c.env.DB, mcode);
 });
 
 app.post('/api/v1/admin/sorts', async (c) => {
@@ -580,6 +628,23 @@ app.delete('/api/v1/admin/messages/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return extraService.handleDeleteMessage(c.env.DB, id);
+});
+
+// ===== 後台管理接口 - 通知測試 =====
+// 郵件發送測試
+app.post('/api/v1/admin/notify/test-mail', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, body);
+});
+
+// Webhook 推送測試
+app.post('/api/v1/admin/notify/test-webhook', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return notifyService.handleTestWebhook(c.env.DB, c.env.CONFIG_CACHE, body);
 });
 
 // ===== 後台管理接口 - 站點信息 =====

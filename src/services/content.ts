@@ -109,13 +109,17 @@ export async function handleContentDetail(
   return okData({ content, prev, next }, '成功');
 }
 
-/** 後台內容列表 (含草稿和回收站) */
+/** 後台內容列表 (含草稿和回收站, 支持按模型 mcode 過濾)
+ *  參考 PbootCMS/Go 版邏輯: 通過 mcode 過濾欄目, 再按欄目查內容
+ *  Go版: query.Where("scode IN (SELECT scode FROM ay_content_sort WHERE mcode = ?)", mcode)
+ */
 export async function handleAdminListContents(
   db: D1Database,
   params: URLSearchParams,
 ): Promise<Response> {
   const pagination = fromQuery(params);
   const scode = params.get('scode') || '';
+  const mcode = params.get('mcode') || '';
   const keyword = params.get('keyword') || '';
   const status = params.get('status') || '1';
 
@@ -130,6 +134,12 @@ export async function handleAdminListContents(
   } else {
     conditions.push('status = ?');
     binds.push(status);
+  }
+
+  // 模型篩選 (按 mcode 過濾欄目, 參考 Go 版子查詢)
+  if (mcode) {
+    conditions.push('scode IN (SELECT scode FROM ay_content_sort WHERE mcode = ?)');
+    binds.push(mcode);
   }
 
   if (scode) {

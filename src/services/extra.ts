@@ -14,6 +14,7 @@
 import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
 import { fromQuery, offset, type Pagination } from '../utils/pagination';
+import { triggerNotify, type NotifyField } from './notify';
 
 /** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
 function nowStr(): string {
@@ -697,9 +698,11 @@ export async function handleDeleteMessage(db: D1Database, id: number): Promise<R
 /**
  * 公開留言提交
  * 實現基於 KV 的簡易速率限制: 同一 IP 60 秒內只能提交一次
+ * 參考 Go 版 front.go Message() 方法: 保存後觸發郵件 + Webhook 通知
  * @param kv KV 命名空間 (用於速率限制, 傳 null 則跳過速率限制)
  * @param userIp 訪問者 IP
  * @param userAgent 訪問者 User-Agent (用於解析 os/bs)
+ * @param sourceUrl 來源頁面 URL (Referer)
  * @param body { contacts, mobile, content }
  */
 export async function handleSubmitMessage(
@@ -707,6 +710,7 @@ export async function handleSubmitMessage(
   kv: KVNamespace | null,
   userIp: string,
   userAgent: string,
+  sourceUrl: string,
   body: { contacts?: string; mobile?: string; content?: string },
 ): Promise<Response> {
   const content = body.content;
@@ -750,6 +754,18 @@ export async function handleSubmitMessage(
     if (kv) {
       await kv.put(RATE_KEY, '1', { expirationTtl: RATE_TTL });
     }
+
+    // 觸發郵件 + Webhook 通知 (參考 Go 版 front.go Message() 通知邏輯)
+    const fields: NotifyField[] = [
+      { label: '聯繫人', value: body.contacts || '' },
+      { label: '手機', value: body.mobile || '' },
+      { label: '留言內容', value: content },
+    ];
+    // 異步觸發通知, 不阻塞用戶請求 (通知失敗不影響留言保存)
+    if (kv) {
+      triggerNotify(db, kv, 'message', '在線留言', fields, userIp, userAgent, sourceUrl).catch(() => {});
+    }
+
     return ok('留言提交成功');
   }
   return err('留言提交失敗', 1005);

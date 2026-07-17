@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { Save, ArrowLeft, Loader2, Upload, Image as ImageIcon, X } from 'lucide-react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { Save, ArrowLeft, Loader2, Upload, Image as ImageIcon, X, Link, Plus } from 'lucide-react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 
@@ -230,6 +230,7 @@ function ExtFieldInput({
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [urlInput, setUrlInput] = useState('') // 外鏈 URL 輸入框值
 
   // 解析選項值（單選/多選/下拉）
   const options = field.value
@@ -383,19 +384,41 @@ function ExtFieldInput({
             className="hidden"
             onChange={handleSingleUpload}
           />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ImageIcon className="w-4 h-4" />
-            )}
-            {uploading ? '上傳中...' : value ? '更換圖片' : '上傳圖片'}
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="輸入圖片外鏈 URL"
+              className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (urlInput.trim()) {
+                  onChange(urlInput.trim())
+                  setUrlInput('')
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <Link className="w-4 h-4" />
+              確認
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {uploading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ImageIcon className="w-4 h-4" />
+              )}
+              {uploading ? '上傳中...' : value ? '更換圖片' : '上傳圖片'}
+            </button>
+          </div>
         </div>
       )
     case '6': // 附件
@@ -496,19 +519,42 @@ function ExtFieldInput({
             className="hidden"
             onChange={handleMultiUpload}
           />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
-          >
-            {uploading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ImageIcon className="w-4 h-4" />
-            )}
-            {uploading ? '上傳中...' : '添加圖片'}
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="輸入圖片外鏈 URL"
+              className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (urlInput.trim()) {
+                  const existing = value ? value.split(',').filter(Boolean) : []
+                  onChange([...existing, urlInput.trim()].join(','))
+                  setUrlInput('')
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              添加
+            </button>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+            >
+              {uploading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <ImageIcon className="w-4 h-4" />
+              )}
+              {uploading ? '上傳中...' : '上傳圖片'}
+            </button>
+          </div>
         </div>
       )
     default:
@@ -527,6 +573,8 @@ function ExtFieldInput({
 export default function ContentEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const mcode = searchParams.get('mcode') || ''
   const isEdit = !!id
 
   const [form, setForm] = useState<FormData>(EMPTY_FORM)
@@ -537,6 +585,7 @@ export default function ContentEdit() {
   const [editorReady, setEditorReady] = useState(false)
   const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic')
   const [icoUploading, setIcoUploading] = useState(false)
+  const [icoUrlInput, setIcoUrlInput] = useState('') // 縮略圖外鏈 URL 輸入框值
 
   // 自定義擴展欄位
   const [extFields, setExtFields] = useState<ExtField[]>([])
@@ -548,15 +597,21 @@ export default function ContentEdit() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const icoFileRef = useRef<HTMLInputElement>(null)
 
-  /** 載入欄目樹 */
+  /** 載入欄目樹 (支持按 mcode 過濾) */
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await api.get<Category[]>('/admin/sorts')
-      setCategories(res.data ?? [])
+      const url = mcode ? `/admin/sorts?mcode=${encodeURIComponent(mcode)}` : '/admin/sorts'
+      const res = await api.get<Category[]>(url)
+      const cats = res.data ?? []
+      setCategories(cats)
+      // 新建模式下, 如果有 mcode 參數且未選擇欄目, 自動預選第一個欄目
+      if (!isEdit && !form.scode && cats.length > 0) {
+        setForm((prev) => ({ ...prev, scode: cats[0].scode }))
+      }
     } catch {
       /* 忽略欄目載入錯誤 */
     }
-  }, [])
+  }, [mcode, isEdit, form.scode])
 
   /** 載入內容詳情（編輯模式） */
   const fetchContent = useCallback(async () => {
@@ -750,17 +805,28 @@ export default function ContentEdit() {
               ],
               handlers: {
                 image: function () {
+                  // 先讓用戶輸入外鏈 URL，留空或取消則觸發文件選擇器
+                  const url = window.prompt('輸入圖片外鏈 URL（留空則選擇文件上傳）')
+                  if (url && url.trim()) {
+                    if (quillRef.current) {
+                      const range = quillRef.current.getSelection()
+                      const index = range ? range.index : 0
+                      quillRef.current.insertEmbed(index, 'image', url.trim())
+                    }
+                    return
+                  }
+                  // 未輸入 URL，走文件上傳流程
                   const input = document.createElement('input')
                   input.setAttribute('type', 'file')
                   input.setAttribute('accept', 'image/*')
                   input.onchange = async () => {
                     const file = input.files?.[0]
                     if (!file) return
-                    const url = await uploadImage(file)
-                    if (url && quillRef.current) {
+                    const uploadedUrl = await uploadImage(file)
+                    if (uploadedUrl && quillRef.current) {
                       const range = quillRef.current.getSelection()
                       const index = range ? range.index : 0
-                      quillRef.current.insertEmbed(index, 'image', url)
+                      quillRef.current.insertEmbed(index, 'image', uploadedUrl)
                     }
                   }
                   input.click()
@@ -1049,19 +1115,41 @@ export default function ContentEdit() {
                   className="hidden"
                   onChange={handleIcoUpload}
                 />
-                <button
-                  type="button"
-                  onClick={() => icoFileRef.current?.click()}
-                  disabled={icoUploading}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
-                >
-                  {icoUploading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <ImageIcon className="w-4 h-4" />
-                  )}
-                  {icoUploading ? '上傳中...' : form.ico ? '更換縮略圖' : '上傳縮略圖'}
-                </button>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={icoUrlInput}
+                    onChange={(e) => setIcoUrlInput(e.target.value)}
+                    placeholder="輸入圖片外鏈 URL"
+                    className="flex-1 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (icoUrlInput.trim()) {
+                        updateField('ico', icoUrlInput.trim())
+                        setIcoUrlInput('')
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+                  >
+                    <Link className="w-4 h-4" />
+                    確認
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => icoFileRef.current?.click()}
+                    disabled={icoUploading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    {icoUploading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-4 h-4" />
+                    )}
+                    {icoUploading ? '上傳中...' : form.ico ? '更換縮略圖' : '上傳縮略圖'}
+                  </button>
+                </div>
               </div>
             </div>
 

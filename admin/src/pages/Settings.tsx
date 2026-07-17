@@ -8,6 +8,9 @@ import {
   Shield,
   Code,
   Mail,
+  Bell,
+  Send,
+  Webhook,
   Search,
   CheckCircle2,
 } from 'lucide-react'
@@ -36,8 +39,9 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 20, max: 29, title: '留言表單', icon: MessageSquare },
   { min: 30, max: 39, title: '安全配置', icon: Shield },
   { min: 40, max: 49, title: 'WebAPI', icon: Code },
-  { min: 50, max: 59, title: '郵件通知', icon: Mail },
+  { min: 50, max: 59, title: '通知配置', icon: Bell },
   { min: 60, max: 69, title: '搜索引擎推送', icon: Search },
+  { min: 90, max: 99, title: '郵件服務', icon: Mail },
 ]
 
 /** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
@@ -64,7 +68,10 @@ export default function Settings() {
   // 本地變更記錄: name -> newValue
   const [changes, setChanges] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
+  // 通知測試按鈕 loading 狀態
+  const [testMailLoading, setTestMailLoading] = useState(false)
+  const [testWebhookLoading, setTestWebhookLoading] = useState(false)
 
   /** 拉取全部配置 */
   const fetchConfigs = useCallback(async () => {
@@ -106,7 +113,7 @@ export default function Settings() {
       }
       return next
     })
-    setSaveSuccess(false)
+    setSuccessMsg('')
   }
 
   /** 切換開關配置 */
@@ -121,7 +128,7 @@ export default function Settings() {
     if (changedEntries.length === 0) return
 
     setSaving(true)
-    setSaveSuccess(false)
+    setSuccessMsg('')
     setError('')
     try {
       await api.put('/admin/configs', {
@@ -129,9 +136,9 @@ export default function Settings() {
       })
       // 保存成功後重新拉取以同步本地狀態
       await fetchConfigs()
-      setSaveSuccess(true)
+      setSuccessMsg('配置已成功保存')
       // 3 秒後隱藏成功提示
-      setTimeout(() => setSaveSuccess(false), 3000)
+      setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失敗')
     } finally {
@@ -139,10 +146,44 @@ export default function Settings() {
     }
   }
 
+  /** 測試郵件發送（彈出輸入框收集收件郵箱） */
+  const handleTestMail = async () => {
+    const email = window.prompt('請輸入收件郵箱地址', '')
+    if (!email) return
+    setTestMailLoading(true)
+    setError('')
+    setSuccessMsg('')
+    try {
+      await api.post('/admin/notify/test-mail', { to: email })
+      setSuccessMsg(`測試郵件已發送至 ${email}`)
+      setTimeout(() => setSuccessMsg(''), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '測試郵件發送失敗')
+    } finally {
+      setTestMailLoading(false)
+    }
+  }
+
+  /** 測試 Webhook 推送（以 message 分類觸發） */
+  const handleTestWebhook = async () => {
+    setTestWebhookLoading(true)
+    setError('')
+    setSuccessMsg('')
+    try {
+      await api.post('/admin/notify/test-webhook', { category: 'message' })
+      setSuccessMsg('Webhook 測試推送已發送')
+      setTimeout(() => setSuccessMsg(''), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Webhook 測試發送失敗')
+    } finally {
+      setTestWebhookLoading(false)
+    }
+  }
+
   /** 放棄所有變更 */
   const handleReset = () => {
     setChanges({})
-    setSaveSuccess(false)
+    setSuccessMsg('')
   }
 
   const changedCount = Object.keys(changes).length
@@ -261,10 +302,10 @@ export default function Settings() {
       )}
 
       {/* 成功提示 */}
-      {saveSuccess && (
+      {successMsg && (
         <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
-          配置已成功保存
+          {successMsg}
         </div>
       )}
 
@@ -305,6 +346,38 @@ export default function Settings() {
               <div className="px-4">
                 {items.map(renderConfigRow)}
               </div>
+              {/* 通知配置分組：測試按鈕 */}
+              {group.min === 50 && (
+                <div className="px-4 py-3 border-t flex flex-wrap items-center gap-2 bg-secondary/10">
+                  <span className="text-xs text-muted-foreground mr-1">通知測試：</span>
+                  <button
+                    type="button"
+                    onClick={handleTestMail}
+                    disabled={testMailLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {testMailLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5" />
+                    )}
+                    測試郵件
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTestWebhook}
+                    disabled={testWebhookLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {testWebhookLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Webhook className="w-3.5 h-3.5" />
+                    )}
+                    測試 Webhook
+                  </button>
+                </div>
+              )}
             </div>
           ))}
 
