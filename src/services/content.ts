@@ -1,0 +1,256 @@
+/**
+ * 內容管理服務
+ * CRUD + 軟刪除 + 定時發布 + 子孫欄目篩選
+ */
+import type { D1Database } from '@cloudflare/workers-types';
+import { okData, okList, ok, err, notFound, createMeta } from '../utils/response';
+import { fromQuery, offset, type Pagination } from '../utils/pagination';
+import { getDescendantScodes } from './sort';
+import { handleSaveContentExt } from './model';
+
+/** 當前時間字符串 */
+function nowStr(): string {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+/** 公開內容列表 API */
+export async function handleListContents(
+  db: D1Database,
+  params: URLSearchParams,
+): Promise<Response> {
+  const pagination = fromQuery(params);
+  const scode = params.get('scode') || '';
+  const keyword = params.get('keyword') || '';
+  const istop = params.get('istop');
+  const isrecommend = params.get('isrecommend');
+  const order = params.get('order') || 'date';
+
+  const conditions: string[] = ["c.acode = ?", "c.status = '1'"];
+  const binds: (string | number)[] = ['cn'];
+
+  // 欄目篩選 (含子孫欄目)
+  if (scode) {
+    const scodes = await getDescendantScodes(db, scode);
+    if (scodes.length === 0) {
+      return okList([], createMeta(pagination.page, pagination.pagesize, 0), '成功');
+    }
+    const placeholders = scodes.map(() => '?').join(',');
+    conditions.push(`c.scode IN (${placeholders})`);
+    binds.push(...scodes);
+  }
+
+  // 關鍵詞搜索
+  if (keyword) {
+    conditions.push('(c.title LIKE ? OR c.tags LIKE ?)');
+    const kw = `%${keyword}%`;
+    binds.push(kw, kw);
+  }
+
+  // 置頂篩選
+  if (istop) {
+    conditions.push('c.istop = ?');
+    binds.push(istop);
+  }
+
+  // 推薦篩選
+  if (isrecommend) {
+    conditions.push('c.isrecommend = ?');
+    binds.push(isrecommend);
+  }
+
+  // 排序
+  const orderClause = order === 'visits' ? 'c.visits DESC, c.id DESC'
+    : order === 'sorting' ? 'c.sorting ASC, c.id DESC'
+    : 'c.date DESC, c.id DESC';
+
+  const whereClause = conditions.join(' AND ');
+  const off = offset(pagination);
+
+  // 查詢列表
+  const listSql = `SELECT c.* FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
+  const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
+
+  // 查詢總數
+  const countSql = `SELECT COUNT(*) as total FROM ay_content c WHERE ${whereClause}`;
+  const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+
+  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
+}
+
+/** 內容詳情 (公開接口) */
+export async function handleContentDetail(
+  db: D1Database,
+  id: number,
+  track: boolean,
+): Promise<Response> {
+  const stmt = db.prepare(
+    "SELECT * FROM ay_content WHERE id = ? AND acode = 'cn' AND status = '1'",
+  ).bind(id);
+  const content = await stmt.first<Record<string, unknown> & { visits?: number }>();
+
+  if (!content) return notFound('內容不存在');
+
+  // 累加訪問量
+  if (track) {
+    await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(id).run();
+    content.visits = (content.visits || 0) + 1;
+  }
+
+  // 查詢上一篇/下一篇
+  const prev = await db.prepare(
+    "SELECT id, title, filename, date FROM ay_content WHERE id < ? AND acode = 'cn' AND status = '1' ORDER BY id DESC LIMIT 1",
+  ).bind(id).first();
+
+  const next = await db.prepare(
+    "SELECT id, title, filename, date FROM ay_content WHERE id > ? AND acode = 'cn' AND status = '1' ORDER BY id ASC LIMIT 1",
+  ).bind(id).first();
+
+  return okData({ content, prev, next }, '成功');
+}
+
+/** 後台內容列表 (含草稿和回收站) */
+export async function handleAdminListContents(
+  db: D1Database,
+  params: URLSearchParams,
+): Promise<Response> {
+  const pagination = fromQuery(params);
+  const scode = params.get('scode') || '';
+  const keyword = params.get('keyword') || '';
+  const status = params.get('status') || '1';
+
+  const conditions: string[] = ['acode = ?'];
+  const binds: (string | number)[] = ['cn'];
+
+  // 狀態篩選
+  if (status === 'all') {
+    conditions.push("status >= '0'");
+  } else if (status === 'trash') {
+    conditions.push("status = '-1'");
+  } else {
+    conditions.push('status = ?');
+    binds.push(status);
+  }
+
+  if (scode) {
+    conditions.push('scode = ?');
+    binds.push(scode);
+  }
+
+  if (keyword) {
+    conditions.push('(title LIKE ? OR tags LIKE ?)');
+    const kw = `%${keyword}%`;
+    binds.push(kw, kw);
+  }
+
+  const whereClause = conditions.join(' AND ');
+  const off = offset(pagination);
+
+  const listSql = `SELECT * FROM ay_content WHERE ${whereClause} ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`;
+  const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
+
+  const countSql = `SELECT COUNT(*) as total FROM ay_content WHERE ${whereClause}`;
+  const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+
+  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
+}
+
+/** 新增內容 (含擴展字段保存) */
+export async function handleCreateContent(
+  db: D1Database,
+  body: { title?: string; scode?: string; content?: string; date?: string; status?: string; istop?: string; isrecommend?: string; isheadline?: string; sorting?: string; ext_fields?: Record<string, unknown>; [key: string]: unknown },
+): Promise<Response> {
+  const title = body.title;
+  if (!title) return err('缺少 title 參數', 1001);
+
+  const scode = body.scode || '';
+  const now = nowStr();
+  const date = body.date || now;
+
+  const result = await db.prepare(
+    "INSERT INTO ay_content (acode, scode, title, content, date, status, istop, isrecommend, isheadline, sorting, visits, likes, oppose, gtype, gid, create_time, update_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, '4', '', ?, ?)",
+  ).bind(
+    'cn', scode, title,
+    body.content || '',
+    date,
+    body.status || '1',
+    body.istop || '0',
+    body.isrecommend || '0',
+    body.isheadline || '0',
+    body.sorting || '255',
+    now, now,
+  ).run();
+
+  if (result.meta.changes > 0) {
+    // 保存擴展字段 (如果存在且為對象)
+    const extFields = body.ext_fields;
+    if (extFields && typeof extFields === 'object' && Object.keys(extFields).length > 0) {
+      const contentId = result.meta.last_row_id;
+      if (contentId) {
+        await handleSaveContentExt(db, contentId, extFields);
+      }
+    }
+    return ok('內容創建成功');
+  }
+  return err('內容創建失敗', 1005);
+}
+
+/** 修改內容 (白名單字段動態 UPDATE, 含擴展字段保存) */
+export async function handleUpdateContent(
+  db: D1Database,
+  id: number,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const now = nowStr();
+
+  const allowedFields = [
+    'title', 'titlecolor', 'subtitle', 'filename', 'scode', 'subscode',
+    'author', 'source', 'outlink', 'date', 'ico', 'pics', 'picstitle',
+    'content', 'tags', 'enclosure', 'keywords', 'description',
+    'sorting', 'status', 'istop', 'isrecommend', 'isheadline',
+    'gtype', 'gid', 'gnote', 'urlname',
+  ];
+
+  const sets: string[] = [];
+  const binds: (string | number)[] = [];
+
+  for (const field of allowedFields) {
+    if (body[field] !== undefined && typeof body[field] === 'string') {
+      sets.push(`${field} = ?`);
+      binds.push(body[field] as string);
+    }
+  }
+
+  if (sets.length > 0) {
+    sets.push('update_time = ?');
+    binds.push(now);
+    binds.push(id);
+    const sql = `UPDATE ay_content SET ${sets.join(', ')} WHERE id = ?`;
+    await db.prepare(sql).bind(...binds).run();
+  }
+
+  // 保存擴展字段 (如果存在且為對象)
+  const extFields = body.ext_fields;
+  if (extFields && typeof extFields === 'object' && Object.keys(extFields).length > 0) {
+    await handleSaveContentExt(db, id, extFields as Record<string, unknown>);
+  }
+
+  return ok('內容更新成功');
+}
+
+/** 刪除內容 (軟刪除到回收站: status='-1') */
+export async function handleDeleteContent(db: D1Database, id: number): Promise<Response> {
+  const now = nowStr();
+  const result = await db.prepare(
+    "UPDATE ay_content SET status = '-1', update_time = ? WHERE id = ? AND CAST(status AS INTEGER) >= 0",
+  ).bind(now, id).run();
+
+  if (result.meta.changes > 0) {
+    return ok('已移入回收站');
+  }
+  return err('內容不存在或已在回收站中', 1004);
+}
+
+// 注意: handleRestoreContent 和 handlePermanentDeleteContent 已移至 ./model.ts
+// model.ts 版本包含更嚴格的 status 守衛條件, 確保回收站操作安全

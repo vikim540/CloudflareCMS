@@ -1,0 +1,371 @@
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import {
+  Save,
+  Settings as SettingsIcon,
+  Loader2,
+  AlertCircle,
+  MessageSquare,
+  Shield,
+  Code,
+  Mail,
+  Search,
+  CheckCircle2,
+} from 'lucide-react'
+import { api } from '../lib/api'
+import { cn } from '../lib/utils'
+
+/** 配置項 */
+interface Config {
+  id: number
+  name: string
+  value: string
+  type: string // "1" = 開關, "2" = 文字輸入
+  sorting: number
+  description: string
+}
+
+/** 配置分組定義（依 sorting 範圍劃分） */
+interface ConfigGroup {
+  min: number
+  max: number
+  title: string
+  icon: typeof SettingsIcon
+}
+
+const CONFIG_GROUPS: ConfigGroup[] = [
+  { min: 20, max: 29, title: '留言表單', icon: MessageSquare },
+  { min: 30, max: 39, title: '安全配置', icon: Shield },
+  { min: 40, max: 49, title: 'WebAPI', icon: Code },
+  { min: 50, max: 59, title: '郵件通知', icon: Mail },
+  { min: 60, max: 69, title: '搜索引擎推送', icon: Search },
+]
+
+/** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
+const HIDDEN_CONFIGS = new Set([
+  'open_wap', 'wap_domain', 'wap_site_dir',
+  'watermark_open', 'watermark_text', 'watermark_text_font',
+  'watermark_text_size', 'watermark_text_color', 'watermark_pic',
+  'watermark_position',
+  'url_rule_type', 'url_rule_content_path', 'url_index_404',
+  'tpl_html_dir',
+])
+
+/** 依 sorting 取得所屬分組 */
+function getGroup(sorting: number): ConfigGroup | null {
+  return (
+    CONFIG_GROUPS.find((g) => sorting >= g.min && sorting <= g.max) ?? null
+  )
+}
+
+export default function Settings() {
+  const [configs, setConfigs] = useState<Config[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  // 本地變更記錄: name -> newValue
+  const [changes, setChanges] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  /** 拉取全部配置 */
+  const fetchConfigs = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.get<Config[]>('/admin/configs')
+      const data = Array.isArray(res.data) ? res.data : []
+      // 依 sorting 排序
+      data.sort((a, b) => a.sorting - b.sorting)
+      setConfigs(data)
+      setChanges({})
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '加載失敗')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchConfigs()
+  }, [fetchConfigs])
+
+  /** 取得某配置的當前顯示值（優先取本地變更） */
+  const currentValue = (config: Config): string => {
+    return config.name in changes ? changes[config.name] : config.value
+  }
+
+  /** 更新本地變更 */
+  const updateValue = (name: string, value: string) => {
+    setChanges((prev) => {
+      const next = { ...prev }
+      // 若與原始值相同則移除變更記錄
+      const original = configs.find((c) => c.name === name)?.value ?? ''
+      if (value === original) {
+        delete next[name]
+      } else {
+        next[name] = value
+      }
+      return next
+    })
+    setSaveSuccess(false)
+  }
+
+  /** 切換開關配置 */
+  const toggleSwitch = (config: Config) => {
+    const current = currentValue(config)
+    updateValue(config.name, current === '1' ? '0' : '1')
+  }
+
+  /** 提交保存（僅發送變更項） */
+  const handleSave = async () => {
+    const changedEntries = Object.entries(changes)
+    if (changedEntries.length === 0) return
+
+    setSaving(true)
+    setSaveSuccess(false)
+    setError('')
+    try {
+      await api.put('/admin/configs', {
+        configs: changedEntries.map(([name, value]) => ({ name, value })),
+      })
+      // 保存成功後重新拉取以同步本地狀態
+      await fetchConfigs()
+      setSaveSuccess(true)
+      // 3 秒後隱藏成功提示
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** 放棄所有變更 */
+  const handleReset = () => {
+    setChanges({})
+    setSaveSuccess(false)
+  }
+
+  const changedCount = Object.keys(changes).length
+
+  /** 依分組切割配置（過濾掉手機版/水印/URL 等不需要的配置項） */
+  const groupedConfigs = useMemo(() => {
+    const groups: { group: ConfigGroup; items: Config[] }[] = []
+    const others: Config[] = []
+
+    for (const config of configs) {
+      // 隱藏不需要的配置項
+      if (HIDDEN_CONFIGS.has(config.name)) continue
+      // 隱藏 sorting 10-19 (手機版) 和 70-79 (水印) 範圍的所有配置
+      if ((config.sorting >= 10 && config.sorting <= 19) || (config.sorting >= 70 && config.sorting <= 79)) continue
+
+      const group = getGroup(config.sorting)
+      if (group) {
+        let bucket = groups.find((g) => g.group.min === group.min)
+        if (!bucket) {
+          bucket = { group, items: [] }
+          groups.push(bucket)
+        }
+        bucket.items.push(config)
+      } else {
+        others.push(config)
+      }
+    }
+
+    // 依分組定義順序排列
+    groups.sort((a, b) => a.group.min - b.group.min)
+    return { groups, others }
+  }, [configs])
+
+  /** 渲染單個配置行 */
+  const renderConfigRow = (config: Config) => {
+    const isSwitch = config.type === '1'
+    const val = currentValue(config)
+    const isOn = val === '1'
+    const hasChange = config.name in changes
+
+    return (
+      <div
+        key={config.id}
+        className={cn(
+          'flex items-center justify-between gap-4 py-3 border-b last:border-b-0',
+          hasChange && 'bg-amber-50/50 -mx-4 px-4',
+        )}
+      >
+        {/* 標籤 */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">{config.description || config.name}</span>
+            {hasChange && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">
+                已修改
+              </span>
+            )}
+          </div>
+          <span className="text-xs text-muted-foreground font-mono">{config.name}</span>
+        </div>
+
+        {/* 控件 */}
+        <div className="shrink-0">
+          {isSwitch ? (
+            // 開關
+            <button
+              type="button"
+              onClick={() => toggleSwitch(config)}
+              className={cn(
+                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                isOn ? 'bg-primary' : 'bg-muted',
+              )}
+              aria-label={isOn ? '關閉' : '開啟'}
+            >
+              <span
+                className={cn(
+                  'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                  isOn ? 'translate-x-6' : 'translate-x-1',
+                )}
+              />
+            </button>
+          ) : (
+            // 文字輸入
+            <input
+              type="text"
+              value={val}
+              onChange={(e) => updateValue(config.name, e.target.value)}
+              className="w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="請輸入配置值"
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 pb-24">
+      {/* 頁頭 */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <SettingsIcon className="w-6 h-6" />
+            系統設置
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">管理網站各項系統配置參數</p>
+        </div>
+      </div>
+
+      {/* 錯誤提示 */}
+      {error && (
+        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* 成功提示 */}
+      {saveSuccess && (
+        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-md text-sm">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          配置已成功保存
+        </div>
+      )}
+
+      {/* 加載中 */}
+      {loading && (
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin mr-2" />
+          加載中...
+        </div>
+      )}
+
+      {/* 加載錯誤 */}
+      {!loading && !configs.length && error && (
+        <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+          <AlertCircle className="w-8 h-8 mb-3 text-destructive" />
+          <p className="mb-3">{error}</p>
+          <button
+            onClick={fetchConfigs}
+            className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors"
+          >
+            重新加載
+          </button>
+        </div>
+      )}
+
+      {/* 配置分組卡片 */}
+      {!loading && configs.length > 0 && (
+        <div className="space-y-6">
+          {groupedConfigs.groups.map(({ group, items }) => (
+            <div key={group.min} className="bg-white rounded-lg border overflow-hidden">
+              {/* 分組標題 */}
+              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
+                <group.icon className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-semibold">{group.title}</h2>
+                <span className="text-xs text-muted-foreground">（{items.length} 項）</span>
+              </div>
+              {/* 配置項 */}
+              <div className="px-4">
+                {items.map(renderConfigRow)}
+              </div>
+            </div>
+          ))}
+
+          {/* 未分組配置 */}
+          {groupedConfigs.others.length > 0 && (
+            <div className="bg-white rounded-lg border overflow-hidden">
+              <div className="flex items-center gap-2.5 px-5 py-3.5 border-b bg-secondary/30">
+                <SettingsIcon className="w-4 h-4 text-muted-foreground" />
+                <h2 className="font-semibold">其他配置</h2>
+                <span className="text-xs text-muted-foreground">
+                  （{groupedConfigs.others.length} 項）
+                </span>
+              </div>
+              <div className="px-4">
+                {groupedConfigs.others.map(renderConfigRow)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 底部固定操作列 */}
+      {!loading && configs.length > 0 && (
+        <div className="fixed bottom-0 left-56 right-0 bg-white border-t px-6 py-3 flex items-center justify-between z-30">
+          <div className="text-sm text-muted-foreground">
+            {changedCount > 0 ? (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-200 text-amber-800 text-xs font-bold">
+                  {changedCount}
+                </span>
+                項配置已修改，待保存
+              </span>
+            ) : (
+              <span>無未保存的變更</span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {changedCount > 0 && (
+              <button
+                onClick={handleReset}
+                disabled={saving}
+                className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                放棄變更
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || changedCount === 0}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+            >
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {saving ? '保存中...' : `保存配置${changedCount > 0 ? ` (${changedCount})` : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

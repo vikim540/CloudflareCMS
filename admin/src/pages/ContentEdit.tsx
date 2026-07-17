@@ -1,0 +1,1237 @@
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Save, ArrowLeft, Loader2, Upload, Image as ImageIcon, X } from 'lucide-react'
+import { api } from '../lib/api'
+import { cn } from '../lib/utils'
+
+/** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
+declare global {
+  interface Window {
+    Quill?: {
+      new (container: HTMLElement | string, options?: Record<string, unknown>): QuillInstance
+    }
+  }
+}
+
+/** Quill CDN 常量（cdnjs - Cloudflare CDN） */
+const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'
+const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
+
+interface QuillInstance {
+  root: { innerHTML: string }
+  getText: () => string
+  getContents: () => unknown
+  setContents: (delta: unknown) => void
+  getSelection: () => { index: number } | null
+  insertEmbed: (index: number, type: string, value: string) => void
+  on: (event: string, callback: () => void) => void
+  clipboard: { dangerouslyPasteHTML: (html: string) => void }
+}
+
+/** Quill 本地載入狀態 */
+let quillLoaded = false
+let quillLoading: Promise<void> | null = null
+
+/** 載入 Quill 編輯器（cdnjs CDN，防重複載入 + 輪詢兜底） */
+function loadQuill(): Promise<void> {
+  // 已載入完成，直接返回
+  if (window.Quill) { quillLoaded = true; return Promise.resolve() }
+  // 正在載入中，返回同一個 Promise（避免重複創建 script）
+  if (quillLoading) return quillLoading
+
+  quillLoading = new Promise<void>((resolve, reject) => {
+    // 載入 CSS（僅一次）
+    if (!document.querySelector(`link[href="${QUILL_CSS_URL}"]`)) {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = QUILL_CSS_URL
+      document.head.appendChild(link)
+    }
+
+    // 載入 JS（僅一次）
+    let script = document.getElementById('quill-script') as HTMLScriptElement | null
+    if (!script) {
+      script = document.createElement('script')
+      script.id = 'quill-script'
+      script.src = QUILL_JS_URL
+      script.async = true
+      document.head.appendChild(script)
+    }
+
+    // 事件監聽
+    script.addEventListener('load', () => { quillLoaded = true; quillLoading = null; resolve() })
+    script.addEventListener('error', () => { quillLoading = null; reject(new Error('Quill 腳本載入失敗')) })
+
+    // 輪詢兜底：每 100ms 檢查 window.Quill 是否已就緒（解決事件遺漏問題）
+    let attempts = 0
+    const maxAttempts = 50 // 5 秒超時
+    const poll = setInterval(() => {
+      attempts++
+      if (window.Quill) {
+        clearInterval(poll)
+        quillLoaded = true
+        quillLoading = null
+        resolve()
+      } else if (attempts >= maxAttempts) {
+        clearInterval(poll)
+        quillLoading = null
+        reject(new Error('Quill 載入超時（5秒）'))
+      }
+    }, 100)
+  })
+
+  return quillLoading
+}
+
+/** 內容狀態: '1'=已發布, '0'=草稿 */
+type ContentStatus = '1' | '0'
+
+/** 內容數據結構 */
+interface Content {
+  id: number
+  title: string
+  scode: string
+  content: string
+  date: string
+  status: string
+  istop: string
+  isrecommend: string
+  isheadline: string
+  visits: number
+  keywords: string
+  description: string
+  sorting: number
+  author: string
+  source: string
+  tags: string
+  ico: string
+  filename: string
+  outlink: string
+  subtitle: string
+}
+
+/** 欄目（分類）樹節點 */
+interface Category {
+  id: number
+  name: string
+  scode: string
+  pcode: string
+  status: string
+  children?: Category[]
+}
+
+/** 內容詳情響應 */
+interface ContentDetail {
+  content: Content
+}
+
+/** 擴展欄位定義 */
+interface ExtField {
+  id: number
+  name: string
+  field: string
+  type: string // 1=單行文本 ... 10=多圖
+  mcode: string // 所屬模型代碼
+  value: string // 選項預設值（單選/多選/下拉的選項列表）
+  scode: string // 適用欄目（逗號分隔，空=全展示）
+  required: string // "1"=必填, "0"=可選
+  sorting: number
+  status: string
+}
+
+/** 擴展欄位類型標籤 */
+const EXT_TYPE_LABELS: Record<string, string> = {
+  '1': '單行文本',
+  '2': '多行文本',
+  '3': '單選',
+  '4': '多選',
+  '5': '單圖',
+  '6': '附件',
+  '7': '日期',
+  '8': '編輯器',
+  '9': '下拉',
+  '10': '多圖',
+}
+
+/** 表單數據 */
+interface FormData {
+  title: string
+  scode: string
+  content: string
+  keywords: string
+  description: string
+  status: ContentStatus
+  istop: boolean
+  isrecommend: boolean
+  isheadline: boolean
+  tags: string
+  author: string
+  source: string
+  ico: string
+  filename: string
+  outlink: string
+  subtitle: string
+  date: string
+}
+
+/** 空表單初始值 */
+const EMPTY_FORM: FormData = {
+  title: '',
+  scode: '',
+  content: '',
+  keywords: '',
+  description: '',
+  status: '1',
+  istop: false,
+  isrecommend: false,
+  isheadline: false,
+  tags: '',
+  author: '',
+  source: '',
+  ico: '',
+  filename: '',
+  outlink: '',
+  subtitle: '',
+  date: '',
+}
+
+/** 將欄目樹渲染為帶縮進的 select 選項 */
+function renderCategoryOptions(
+  categories: Category[],
+  depth = 0,
+): React.ReactNode[] {
+  const options: React.ReactNode[] = []
+  for (const cat of categories) {
+    const prefix = depth > 0 ? '└' + '─'.repeat(depth - 1) + ' ' : ''
+    options.push(
+      <option key={cat.scode} value={cat.scode}>
+        {prefix}
+        {cat.name}
+      </option>,
+    )
+    if (cat.children && cat.children.length > 0) {
+      options.push(...renderCategoryOptions(cat.children, depth + 1))
+    }
+  }
+  return options
+}
+
+/** 擴展字段輸入元件：根據欄位類型渲染對應的輸入控件 */
+function ExtFieldInput({
+  field,
+  value,
+  onChange,
+  uploadFile,
+}: {
+  field: ExtField
+  value: string
+  onChange: (val: string) => void
+  uploadFile: (file: File) => Promise<string | null>
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  // 解析選項值（單選/多選/下拉）
+  const options = field.value
+    ? field.value.split(',').map((s) => s.trim()).filter(Boolean)
+    : []
+
+  // 處理單文件上傳（單圖/附件）
+  const handleSingleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadFile(file)
+      if (url) onChange(url)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  // 處理多圖上傳
+  const handleMultiUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    setUploading(true)
+    try {
+      const urls: string[] = []
+      for (const file of files) {
+        const url = await uploadFile(file)
+        if (url) urls.push(url)
+      }
+      if (urls.length > 0) {
+        const existing = value ? value.split(',').filter(Boolean) : []
+        onChange([...existing, ...urls].join(','))
+      }
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  // 多選：切換某個選項
+  const toggleMultiOption = (opt: string) => {
+    const selected = value ? value.split(',').map((s) => s.trim()).filter(Boolean) : []
+    const next = selected.includes(opt)
+      ? selected.filter((s) => s !== opt)
+      : [...selected, opt]
+    onChange(next.join(','))
+  }
+
+  // 多圖：移除指定圖片
+  const removeImage = (idx: number) => {
+    const images = value ? value.split(',').filter(Boolean) : []
+    images.splice(idx, 1)
+    onChange(images.join(','))
+  }
+
+  const inputClass =
+    'w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring'
+
+  switch (field.type) {
+    case '1': // 單行文本
+      return (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+          placeholder={`請輸入${field.name}`}
+        />
+      )
+    case '2': // 多行文本
+    case '8': // 編輯器（簡化為 textarea）
+      return (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={field.type === '8' ? 8 : 4}
+          className={`${inputClass} resize-y`}
+          placeholder={`請輸入${field.name}`}
+        />
+      )
+    case '3': // 單選
+      return (
+        <div className="flex flex-wrap gap-4 pt-1">
+          {options.length === 0 && (
+            <span className="text-sm text-muted-foreground">未設置選項</span>
+          )}
+          {options.map((opt) => (
+            <label key={opt} className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name={`ext-${field.field}`}
+                checked={value === opt}
+                onChange={() => onChange(opt)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">{opt}</span>
+            </label>
+          ))}
+        </div>
+      )
+    case '4': // 多選
+      return (
+        <div className="flex flex-wrap gap-4 pt-1">
+          {options.length === 0 && (
+            <span className="text-sm text-muted-foreground">未設置選項</span>
+          )}
+          {options.map((opt) => {
+            const selected = value
+              ? value.split(',').map((s) => s.trim()).filter(Boolean)
+              : []
+            return (
+              <label key={opt} className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(opt)}
+                  onChange={() => toggleMultiOption(opt)}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">{opt}</span>
+              </label>
+            )
+          })}
+        </div>
+      )
+    case '5': // 單圖
+      return (
+        <div className="space-y-2">
+          {value && (
+            <div className="relative inline-block">
+              <img
+                src={value}
+                alt={field.name}
+                className="w-32 h-32 object-cover rounded border"
+              />
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                title="移除"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleSingleUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <ImageIcon className="w-4 h-4" />
+            )}
+            {uploading ? '上傳中...' : value ? '更換圖片' : '上傳圖片'}
+          </button>
+        </div>
+      )
+    case '6': // 附件
+      return (
+        <div className="space-y-2">
+          {value && (
+            <div className="flex items-center gap-2">
+              <a
+                href={value}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 hover:underline truncate max-w-xs"
+              >
+                {value.split('/').pop() || '查看附件'}
+              </a>
+              <button
+                type="button"
+                onClick={() => onChange('')}
+                className="p-0.5 text-red-600 hover:bg-red-50 rounded"
+                title="移除"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+          <input ref={fileRef} type="file" className="hidden" onChange={handleSingleUpload} />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4" />
+            )}
+            {uploading ? '上傳中...' : '上傳附件'}
+          </button>
+        </div>
+      )
+    case '7': // 日期
+      return (
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+        />
+      )
+    case '9': // 下拉
+      return (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`${inputClass} bg-white`}
+        >
+          <option value="">請選擇</option>
+          {options.map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      )
+    case '10': // 多圖
+      return (
+        <div className="space-y-2">
+          {value && (
+            <div className="flex flex-wrap gap-2">
+              {value
+                .split(',')
+                .filter(Boolean)
+                .map((url, idx) => (
+                  <div key={idx} className="relative">
+                    <img
+                      src={url}
+                      alt={`${field.name}-${idx}`}
+                      className="w-24 h-24 object-cover rounded border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(idx)}
+                      className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                      title="移除"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={handleMultiUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {uploading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <ImageIcon className="w-4 h-4" />
+            )}
+            {uploading ? '上傳中...' : '添加圖片'}
+          </button>
+        </div>
+      )
+    default:
+      return (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+          placeholder={`請輸入${field.name}`}
+        />
+      )
+  }
+}
+
+export default function ContentEdit() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const isEdit = !!id
+
+  const [form, setForm] = useState<FormData>(EMPTY_FORM)
+  const [categories, setCategories] = useState<Category[]>([])
+  const [loading, setLoading] = useState(isEdit)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [editorReady, setEditorReady] = useState(false)
+  const [activeTab, setActiveTab] = useState<'basic' | 'advanced'>('basic')
+  const [icoUploading, setIcoUploading] = useState(false)
+
+  // 自定義擴展欄位
+  const [extFields, setExtFields] = useState<ExtField[]>([])
+  const [extValues, setExtValues] = useState<Record<string, string>>({})
+  const [extLoading, setExtLoading] = useState(false)
+
+  const editorRef = useRef<HTMLDivElement>(null)
+  const quillRef = useRef<QuillInstance | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const icoFileRef = useRef<HTMLInputElement>(null)
+
+  /** 載入欄目樹 */
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await api.get<Category[]>('/admin/sorts')
+      setCategories(res.data ?? [])
+    } catch {
+      /* 忽略欄目載入錯誤 */
+    }
+  }, [])
+
+  /** 載入內容詳情（編輯模式） */
+  const fetchContent = useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await api.get<ContentDetail>(`/contents/${id}`)
+      const content = res.data?.content
+      if (content) {
+        // 將 'YYYY-MM-DD HH:MM:SS' 轉為 datetime-local 所需的 'YYYY-MM-DDTHH:MM'
+        const rawDate = content.date ?? ''
+        const localDate = rawDate ? rawDate.replace(' ', 'T').slice(0, 16) : ''
+        setForm({
+          title: content.title ?? '',
+          scode: content.scode ?? '',
+          content: content.content ?? '',
+          keywords: content.keywords ?? '',
+          description: content.description ?? '',
+          status: content.status === '1' ? '1' : '0',
+          istop: content.istop === '1',
+          isrecommend: content.isrecommend === '1',
+          isheadline: content.isheadline === '1',
+          tags: content.tags ?? '',
+          author: content.author ?? '',
+          source: content.source ?? '',
+          ico: content.ico ?? '',
+          filename: content.filename ?? '',
+          outlink: content.outlink ?? '',
+          subtitle: content.subtitle ?? '',
+          date: localDate,
+        })
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '載入內容失敗')
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
+
+  useEffect(() => {
+    if (isEdit) {
+      fetchContent()
+    }
+  }, [isEdit, fetchContent])
+
+  /** 載入欄目對應的擴展欄位，編輯模式下同時載入現有擴展值 */
+  const fetchExtFields = useCallback(
+    async (scode: string, contentId?: string) => {
+      if (!scode) {
+        setExtFields([])
+        setExtValues({})
+        return
+      }
+      setExtLoading(true)
+      try {
+        const res = await api.get<ExtField[]>(
+          `/admin/contents/extfields?scode=${encodeURIComponent(scode)}`,
+        )
+        const fields = res.data ?? []
+        setExtFields(fields)
+        // 初始化空值
+        const initial: Record<string, string> = {}
+        for (const f of fields) {
+          initial[f.field] = ''
+        }
+        // 編輯模式：載入現有擴展值，僅合併當前欄位存在的值
+        if (contentId) {
+          try {
+            const vRes = await api.get<Record<string, string>>(
+              `/admin/contents/${contentId}/ext`,
+            )
+            if (vRes.data) {
+              for (const f of fields) {
+                const v = vRes.data[f.field]
+                if (v !== undefined && v !== null) {
+                  initial[f.field] = v
+                }
+              }
+            }
+          } catch {
+            /* 忽略擴展值載入錯誤 */
+          }
+        }
+        setExtValues(initial)
+      } catch {
+        setExtFields([])
+        setExtValues({})
+      } finally {
+        setExtLoading(false)
+      }
+    },
+    [],
+  )
+
+  // 當欄目變化時，載入對應擴展欄位（編輯模式下附帶現有值）
+  useEffect(() => {
+    if (form.scode) {
+      fetchExtFields(form.scode, isEdit && id ? id : undefined)
+    } else {
+      setExtFields([])
+      setExtValues({})
+    }
+  }, [form.scode, fetchExtFields, isEdit, id])
+
+  /** 更新擴展字段值 */
+  const updateExtValue = (field: string, value: string) => {
+    setExtValues((prev) => ({ ...prev, [field]: value }))
+  }
+
+  /** 圖片上傳到 R2 */
+  const uploadImage = useCallback(async (file: File): Promise<string | null> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const token = localStorage.getItem('cms_token')
+    try {
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        },
+      )
+      const json = await resp.json()
+      if (json.code === 0 && json.data?.url) {
+        return json.data.url as string
+      }
+      setError(json.msg || '圖片上傳失敗')
+      return null
+    } catch {
+      setError('圖片上傳失敗')
+      return null
+    }
+  }, [])
+
+  /** 縮略圖（ico）上傳處理 */
+  const handleIcoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIcoUploading(true)
+    try {
+      const url = await uploadImage(file)
+      if (url) updateField('ico', url)
+    } finally {
+      setIcoUploading(false)
+      if (icoFileRef.current) icoFileRef.current.value = ''
+    }
+  }
+
+  /** 初始化 Quill 編輯器（依賴 loading，確保編輯器 DOM 已渲染） */
+  useEffect(() => {
+    // 載入中時編輯器 div 不在 DOM 中，跳過初始化
+    if (loading) return
+
+    let cancelled = false
+
+    const initEditor = async () => {
+      try {
+        await loadQuill()
+        if (cancelled || !window.Quill || !editorRef.current) return
+
+        // 如果已有實例，先清理
+        if (quillRef.current) {
+          editorRef.current.innerHTML = ''
+        }
+
+        // 創建編輯器容器
+        const editorContainer = document.createElement('div')
+        editorRef.current.appendChild(editorContainer)
+
+        const quill = new window.Quill(editorContainer, {
+          theme: 'snow',
+          readOnly: false,
+          placeholder: '在此輸入內容...',
+          modules: {
+            toolbar: {
+              container: [
+                [{ header: [1, 2, 3, 4, 5, 6, false] }],
+                ['bold', 'italic', 'underline', 'strike'],
+                [{ color: [] }, { background: [] }],
+                [{ align: [] }],
+                ['blockquote', 'code-block'],
+                [{ list: 'ordered' }, { list: 'bullet' }],
+                ['link', 'image'],
+                ['clean'],
+              ],
+              handlers: {
+                image: function () {
+                  const input = document.createElement('input')
+                  input.setAttribute('type', 'file')
+                  input.setAttribute('accept', 'image/*')
+                  input.onchange = async () => {
+                    const file = input.files?.[0]
+                    if (!file) return
+                    const url = await uploadImage(file)
+                    if (url && quillRef.current) {
+                      const range = quillRef.current.getSelection()
+                      const index = range ? range.index : 0
+                      quillRef.current.insertEmbed(index, 'image', url)
+                    }
+                  }
+                  input.click()
+                },
+              },
+            },
+            clipboard: {
+              matchVisual: false,
+            },
+          },
+        })
+
+        quillRef.current = quill
+
+        // 設置已有內容
+        if (form.content) {
+          quill.clipboard.dangerouslyPasteHTML(form.content)
+        }
+
+        // 監聽內容變化
+        quill.on('text-change', () => {
+          if (quillRef.current) {
+            const html = quillRef.current.root.innerHTML
+            setForm((prev) => ({ ...prev, content: html }))
+          }
+        })
+
+        if (!cancelled) {
+          setEditorReady(true)
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '編輯器初始化失敗')
+      }
+    }
+
+    // 延遲初始化，確保 DOM 就緒
+    const timer = setTimeout(initEditor, 100)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+      if (editorRef.current) {
+        editorRef.current.innerHTML = ''
+      }
+      quillRef.current = null
+      setEditorReady(false)
+    }
+  }, [loading])
+
+  /** 表單欄位更新 */
+  const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  /** 提交表單 */
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.title.trim()) {
+      setError('請輸入標題')
+      return
+    }
+    if (!form.scode) {
+      setError('請選擇欄目')
+      return
+    }
+    // 從編輯器獲取最新內容
+    let content = form.content
+    if (quillRef.current) {
+      content = quillRef.current.root.innerHTML
+    }
+
+    setSaving(true)
+    setError('')
+    try {
+      // 將 datetime-local 的 'YYYY-MM-DDTHH:MM' 轉回 'YYYY-MM-DD HH:MM:SS'
+      const submitDate = form.date ? form.date.replace('T', ' ') + ':00' : ''
+      const payload = {
+        title: form.title.trim(),
+        scode: form.scode,
+        content,
+        keywords: form.keywords,
+        description: form.description,
+        status: form.status,
+        istop: form.istop ? '1' : '0',
+        isrecommend: form.isrecommend ? '1' : '0',
+        isheadline: form.isheadline ? '1' : '0',
+        tags: form.tags,
+        author: form.author,
+        source: form.source,
+        ico: form.ico,
+        filename: form.filename,
+        outlink: form.outlink,
+        subtitle: form.subtitle,
+        date: submitDate,
+        ext_fields: extValues,
+      }
+      if (isEdit) {
+        await api.put(`/admin/contents/${id}`, payload)
+      } else {
+        await api.post('/admin/contents', payload)
+      }
+      navigate('/contents')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存失敗')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-center py-20 text-muted-foreground">
+          載入中...
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 max-w-4xl">
+      {/* 頁首 */}
+      <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => navigate('/contents')}
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          返回
+        </button>
+        <h1 className="text-2xl font-bold">{isEdit ? '編輯內容' : '新建內容'}</h1>
+      </div>
+
+      {/* 錯誤提示 */}
+      {error && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* 表單 */}
+      <form onSubmit={handleSubmit} className="space-y-5 bg-white rounded-lg border p-6">
+        {/* Tab 切換 */}
+        <div className="flex gap-1 border-b">
+          <button
+            type="button"
+            onClick={() => setActiveTab('basic')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              activeTab === 'basic'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            基本內容
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('advanced')}
+            className={cn(
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              activeTab === 'advanced'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            高級內容
+          </button>
+        </div>
+
+        {/* 基本內容 Tab */}
+        {activeTab === 'basic' && (
+          <>
+            {/* 標題 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                標題 <span className="text-destructive">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => updateField('title', e.target.value)}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="請輸入內容標題"
+                required
+              />
+            </div>
+
+            {/* 欄目 + 狀態 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  欄目 <span className="text-destructive">*</span>
+                </label>
+                <select
+                  value={form.scode}
+                  onChange={(e) => updateField('scode', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                  required
+                >
+                  <option value="">請選擇欄目</option>
+                  {renderCategoryOptions(categories)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">狀態</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => updateField('status', e.target.value as ContentStatus)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                >
+                  <option value="1">已發布</option>
+                  <option value="0">草稿</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 內容 - Quill 編輯器 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">
+                內容 {!editorReady && <span className="text-xs text-muted-foreground">（編輯器載入中...）</span>}
+              </label>
+              <div ref={editorRef} className="border rounded-md overflow-hidden" />
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
+            </div>
+
+            {/* 標籤、作者、來源 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">標籤</label>
+                <input
+                  type="text"
+                  value={form.tags}
+                  onChange={(e) => updateField('tags', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="多個標籤以英文逗號隔開"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">作者</label>
+                <input
+                  type="text"
+                  value={form.author}
+                  onChange={(e) => updateField('author', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="請輸入作者"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">來源</label>
+                <input
+                  type="text"
+                  value={form.source}
+                  onChange={(e) => updateField('source', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="請輸入來源"
+                />
+              </div>
+            </div>
+
+            {/* 縮略圖 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">縮略圖</label>
+              <div className="space-y-2">
+                {form.ico && (
+                  <div className="relative inline-block">
+                    <img
+                      src={form.ico}
+                      alt="縮略圖"
+                      className="w-32 h-32 object-cover rounded border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => updateField('ico', '')}
+                      className="absolute -top-2 -right-2 p-0.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                      title="移除"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={icoFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleIcoUpload}
+                />
+                <button
+                  type="button"
+                  onClick={() => icoFileRef.current?.click()}
+                  disabled={icoUploading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                >
+                  {icoUploading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-4 h-4" />
+                  )}
+                  {icoUploading ? '上傳中...' : form.ico ? '更換縮略圖' : '上傳縮略圖'}
+                </button>
+              </div>
+            </div>
+
+            {/* 選項 */}
+            <div className="flex flex-wrap gap-6">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.istop}
+                  onChange={(e) => updateField('istop', e.target.checked)}
+                  className="w-4 h-4 rounded border-input"
+                />
+                <span className="text-sm">置頂</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isrecommend}
+                  onChange={(e) => updateField('isrecommend', e.target.checked)}
+                  className="w-4 h-4 rounded border-input"
+                />
+                <span className="text-sm">推薦</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.isheadline}
+                  onChange={(e) => updateField('isheadline', e.target.checked)}
+                  className="w-4 h-4 rounded border-input"
+                />
+                <span className="text-sm">頭條</span>
+              </label>
+            </div>
+
+            {/* 自定義字段（擴展欄位） */}
+            <div className="pt-2 border-t">
+              <h3 className="text-sm font-semibold mb-3 pt-3">自定義字段</h3>
+              {extLoading ? (
+                <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  載入自定義字段中...
+                </div>
+              ) : extFields.length === 0 ? (
+                <p className="py-2 text-sm text-muted-foreground">
+                  {form.scode ? '此欄目沒有自定義字段' : '請先選擇欄目'}
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {extFields.map((field) => (
+                    <div key={field.id}>
+                      <label className="block text-sm font-medium mb-1.5">
+                        {field.name}
+                        {field.required === '1' && <span className="text-destructive"> *</span>}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          ({EXT_TYPE_LABELS[field.type] ?? '自定義'})
+                        </span>
+                      </label>
+                      <ExtFieldInput
+                        field={field}
+                        value={extValues[field.field] ?? ''}
+                        onChange={(val) => updateExtValue(field.field, val)}
+                        uploadFile={uploadImage}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* 高級內容 Tab */}
+        {activeTab === 'advanced' && (
+          <>
+            {/* 副標題 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">副標題</label>
+              <input
+                type="text"
+                value={form.subtitle}
+                onChange={(e) => updateField('subtitle', e.target.value)}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="請輸入副標題"
+              />
+            </div>
+
+            {/* URL別名 + 外鏈 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5">URL別名</label>
+                <input
+                  type="text"
+                  value={form.filename}
+                  onChange={(e) => updateField('filename', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="URL別名，留空則用ID"
+                  pattern="[a-zA-Z0-9\-_/]+"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">外鏈</label>
+                <input
+                  type="text"
+                  value={form.outlink}
+                  onChange={(e) => updateField('outlink', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="跳轉外鏈接，設置後內容變為外鏈類型"
+                />
+              </div>
+            </div>
+
+            {/* 發佈時間 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">發佈時間</label>
+              <input
+                type="datetime-local"
+                value={form.date}
+                onChange={(e) => updateField('date', e.target.value)}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
+            </div>
+
+            {/* 關鍵字 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">關鍵字</label>
+              <input
+                type="text"
+                value={form.keywords}
+                onChange={(e) => updateField('keywords', e.target.value)}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="多個關鍵字以逗號分隔"
+              />
+            </div>
+
+            {/* 描述 */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">描述</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+                placeholder="SEO 描述..."
+              />
+            </div>
+          </>
+        )}
+
+        {/* 操作按鈕 */}
+        <div className="flex items-center gap-3 pt-4 border-t">
+          <button
+            type="submit"
+            disabled={saving}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm disabled:opacity-50',
+            )}
+          >
+            <Save className="w-4 h-4" />
+            {saving ? '保存中...' : '保存'}
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/contents')}
+            className="px-5 py-2 border rounded-md hover:bg-accent transition-colors text-sm"
+          >
+            取消
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}

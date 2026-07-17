@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "rust-cms",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-07-01",
+
+  "routes": [
+    { "pattern": "cms.vikim.eu.org", "custom_domain": true }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rust-cms-db",
+      "database_id": "28a95ec3-7228-4c47-b9f6-e9cfcfcaf319",
+      "migrations_dir": "./migrations"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG_CACHE",
+      "id": "69737778474044ada68b6f34db79f8cb"
+    },
+    {
+      "binding": "TOKEN_BLACKLIST",
+      "id": "31e1d191d5664d2fa39a72dd9cae6906"
+    }
+  ],
+
+  "vars": {
+    "API_PREFIX": "/api/v1",
+    "JWT_EXPIRE_DAYS": "7"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

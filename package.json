@@ -1,0 +1,23 @@
+{
+  "name": "cloudflare-cms",
+  "version": "0.1.0",
+  "description": "PbootCMS-compatible CMS API backend on Cloudflare Workers",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 execute rust-cms-db --local --file ./migrations/0001_init.sql",
+    "db:migrate:remote": "wrangler d1 execute rust-cms-db --remote --file ./migrations/0001_init.sql",
+    "db:reset:local": "wrangler d1 execute rust-cms-db --local --command \"DELETE FROM _cf_KV\""
+  },
+  "dependencies": {
+    "hono": "^4.7.0",
+    "js-md5": "^0.8.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20250710.0",
+    "typescript": "^5.7.0",
+    "wrangler": "^4.111.0"
+  },
+  "packageManager": "pnpm@11.5.1+sha512.93f7b57422ea7068257235b4c16eb60762eb68e1dc23723199cc739043ea9be2c4143274a399d8c6defa2b1176226d9ca1c4b63482d6200c1a8fbaa78c1d1485"
+}

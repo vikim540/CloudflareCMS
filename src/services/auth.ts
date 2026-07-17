@@ -1,0 +1,175 @@
+/**
+ * 認證服務 - 登錄/登出/個人信息/權限校驗
+ * 雙 MD5 密碼驗證 + JWT HS256 簽發
+ * 權限系統: 超級管理員 (ucode="10001") 跳過所有檢查, 普通用戶按 ay_role_level 中的 level 鍵校驗
+ */
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import { verifyPassword } from '../utils/password';
+import { signJwt, genUuid, type JwtClaims } from '../utils/jwt';
+import { okData, ok, err, notFound } from '../utils/response';
+
+/** 超級管理員 ucode */
+const SUPER_ADMIN_UCODE = '10001';
+
+/** 當前時間字符串 (YYYY-MM-DD HH:mm:ss) */
+function nowStr(): string {
+  return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+/**
+ * 加載用戶權限列表
+ * 根據 rcodes (逗號分隔的角色代碼) 查詢 ay_role_level, 收集所有不重複的 level 權限鍵
+ * 超級管理員返回空數組 (調用方應通過 isSuper 判斷跳過)
+ */
+async function loadUserPermissions(db: D1Database, rcodes: string): Promise<string[]> {
+  if (!rcodes) return [];
+  const rcodeList = rcodes.split(',').map((r) => r.trim()).filter(Boolean);
+  if (rcodeList.length === 0) return [];
+
+  const permissions = new Set<string>();
+  for (const rcode of rcodeList) {
+    const result = await db
+      .prepare('SELECT level FROM ay_role_level WHERE rcode = ?')
+      .bind(rcode)
+      .all<{ level: string }>();
+    for (const row of result.results) {
+      if (row.level) permissions.add(row.level);
+    }
+  }
+  return Array.from(permissions);
+}
+
+/** 管理員登錄 */
+export async function handleLogin(
+  db: D1Database,
+  jwtSecret: string,
+  body: { username?: string; password?: string },
+): Promise<Response> {
+  const username = body.username;
+  const passwordInput = body.password;
+  if (!username || !passwordInput) {
+    return err('缺少用戶名或密碼參數', 1001);
+  }
+
+  // 查詢用戶 (含 ucode, realname, rcodes 用於權限)
+  const stmt = db
+    .prepare('SELECT * FROM ay_user WHERE username = ? AND status = ? LIMIT 1')
+    .bind(username, '1');
+  const user = await stmt.first<{
+    id: number;
+    ucode: string;
+    username: string;
+    password: string;
+    realname: string | null;
+    rcodes: string | null;
+    status: string;
+  }>();
+
+  if (!user) {
+    return err('用戶名或密碼錯誤', 2001);
+  }
+
+  // 驗證密碼 (雙 MD5 + 常量時間比較)
+  if (!verifyPassword(passwordInput, user.password)) {
+    return err('用戶名或密碼錯誤', 2001);
+  }
+
+  // 判斷是否超級管理員
+  const isSuper = user.ucode === SUPER_ADMIN_UCODE;
+
+  // 加載權限 (超級管理員不需要加載, 享有所有權限)
+  const permissions = isSuper ? [] : await loadUserPermissions(db, user.rcodes || '');
+
+  // 簽發 JWT (7天過期)
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + 7 * 24 * 3600;
+  const claims: JwtClaims = {
+    sub: String(user.id),
+    username: user.username,
+    ucode: user.ucode,
+    realname: user.realname || '',
+    rcodes: user.rcodes || '',
+    isSuper,
+    permissions,
+    iat: now,
+    exp,
+    jti: genUuid(),
+  };
+  const token = await signJwt(claims, jwtSecret);
+
+  // 更新登錄信息
+  await db
+    .prepare('UPDATE ay_user SET login_count = login_count + 1, lastlogintime = ? WHERE id = ?')
+    .bind(nowStr(), user.id)
+    .run();
+
+  return okData(
+    {
+      token,
+      user: {
+        id: user.id,
+        ucode: user.ucode,
+        username: user.username,
+        realname: user.realname,
+        rcodes: user.rcodes,
+        isSuper,
+        permissions,
+      },
+      expires: exp,
+    },
+    '登錄成功',
+  );
+}
+
+/** 獲取當前用戶信息 (含權限信息) */
+export async function handleProfile(db: D1Database, claims: JwtClaims): Promise<Response> {
+  const stmt = db
+    .prepare(
+      'SELECT id, ucode, username, realname, rcodes, acodes, status, login_count, lastlogintime FROM ay_user WHERE id = ?',
+    )
+    .bind(Number(claims.sub));
+  const user = await stmt.first();
+  if (!user) return notFound('用戶不存在');
+
+  return okData(
+    {
+      ...user,
+      isSuper: claims.isSuper,
+      permissions: claims.permissions,
+    },
+    '成功',
+  );
+}
+
+/** 登出 (將 token jti 加入 KV 黑名單) */
+export async function handleLogout(
+  blacklist: KVNamespace,
+  claims: JwtClaims,
+): Promise<Response> {
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = claims.exp - now;
+  if (ttl > 0) {
+    await blacklist.put(`token:black:${claims.jti}`, '1', { expirationTtl: ttl });
+  }
+  return ok('登出成功');
+}
+
+/** 檢查 token 是否在黑名單中 */
+export async function isTokenBlacklisted(
+  blacklist: KVNamespace,
+  jti: string,
+): Promise<boolean> {
+  const val = await blacklist.get(`token:black:${jti}`);
+  return val !== null;
+}
+
+/**
+ * 權限校驗輔助函數
+ * 超級管理員 (isSuper=true) 跳過所有檢查
+ * 普通用戶檢查 permissions 數組中是否包含 `${resource}:${action}` 鍵
+ */
+export function hasPermission(claims: JwtClaims, resource: string, action: string): boolean {
+  if (claims.isSuper) return true;
+  const key = `${resource}:${action}`;
+  return claims.permissions.includes(key);
+}
