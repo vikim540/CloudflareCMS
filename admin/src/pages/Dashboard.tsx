@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.3.0',
+    date: '2026-07-17 17:17:50',
+    icon: '🎨',
+    latest: true,
+    changes: '幻燈片管理優化：圖片預覽改為原比例展示（object-contain）+ 新增前端 WebP 壓縮上傳功能（Canvas API 自動縮放+質量壓縮，類似 Squoosh 效果）；域名安全重構：移除 Worker 後端公網域名暴露（wrangler.jsonc 取消自定義域名 + Pages Functions 回退改為錯誤響應 + Dashboard 系統信息不再顯示後端域名），Pages 域名更新為 cms.cmermedical.com.hk',
+  },
+  {
     version: 'v1.2.0',
     date: '2026-07-17 16:53:59',
     icon: '🚀',
-    latest: true,
+    latest: false,
     changes: '資料庫備份建立時間修復（從文件名解析精確時間 + 記錄備份日誌）；側邊導航菜單默認收起僅文章內容展開；版本更新自動通知機制（Pages 部署後 Dashboard 自動觸發釘釘 webhook，KV 記錄已通知版本避免重複推送）',
   },
   {
@@ -731,15 +738,7 @@ console.log(articles) // 相似文章列表`}</code>
                       <td className="px-4 py-3">
                         <code className="font-mono text-foreground">rust-cms</code>
                         <span className="text-muted-foreground mx-2">·</span>
-                        <a
-                          href="https://cms.vikim.eu.org"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline inline-flex items-center gap-1"
-                        >
-                          <span>cms.vikim.eu.org</span>
-                          <span>🔗</span>
-                        </a>
+                        <span className="text-muted-foreground text-xs">內部綁定（Service Binding）</span>
                       </td>
                     </tr>
                     <tr className="hover:bg-secondary/50 transition-colors">
@@ -764,12 +763,12 @@ console.log(articles) // 相似文章列表`}</code>
                         <code className="font-mono text-foreground">cms-admin</code>
                         <span className="text-muted-foreground mx-2">·</span>
                         <a
-                          href="https://rbootcms.cmer.eu.org"
+                          href="https://cms.cmermedical.com.hk"
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline inline-flex items-center gap-1"
                         >
-                          <span>rbootcms.cmer.eu.org</span>
+                          <span>cms.cmermedical.com.hk</span>
                           <span>🔗</span>
                         </a>
                       </td>

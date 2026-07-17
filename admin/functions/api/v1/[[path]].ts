@@ -16,25 +16,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
   const targetUrl = new URL(url.pathname + url.search, 'https://rust-cms.internal');
 
-  // 如果 Service Binding 未配置，回退到公網 fetch
+  // 如果 Service Binding 未配置，返回錯誤（不暴露 Worker 公網域名）
   if (!context.env.API) {
-    const fallbackUrl = `https://cms.vikim.eu.org${url.pathname}${url.search}`;
-    const fallbackRequest = new Request(fallbackUrl, {
-      method: context.request.method,
-      headers: context.request.headers,
-      body: context.request.body,
-      redirect: 'manual',
-    });
-    const response = await fetch(fallbackRequest);
-    const newResponse = new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-    newResponse.headers.set('Access-Control-Allow-Origin', '*');
-    newResponse.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    newResponse.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
-    return newResponse;
+    return new Response(
+      JSON.stringify({ code: 500, msg: 'Service Binding 未配置，請聯繫管理員' }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      },
+    );
   }
 
   // 通過 Service Binding 轉發請求 (零延遲，不走公網)

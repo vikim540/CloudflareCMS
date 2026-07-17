@@ -368,7 +368,7 @@ export async function handleVersionNotify(
   const platform = detectPlatform(webhookUrl);
 
   // 構建釘釘 ActionCard 消息
-  const text = `## RustCMS ${version} 版本更新\n\n**部署時間**: ${date || ts}\n\n### 更新內容\n\n${changes || '無詳細說明'}\n\n> 域名: cms.vikim.eu.org\n> 後台: rbootcms.cmer.eu.org`;
+  const text = `## RustCMS ${version} 版本更新\n\n**部署時間**: ${date || ts}\n\n### 更新內容\n\n${changes || '無詳細說明'}`;
 
   const payload: Record<string, unknown> = {
     msgtype: 'actionCard',

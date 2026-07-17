@@ -20,7 +20,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 | 資源 | 標識 |
 |------|------|
-| Worker | `rust-cms`，域名 `cms.vikim.eu.org` |
+| Worker | `rust-cms`（內部 Service Binding，不暴露公網域名） |
 | D1 | `rust-cms-db`（ID: `28a95ec3-7228-4c47-b9f6-e9cfcfcaf319`） |
 | KV | `CONFIG_CACHE`、`TOKEN_BLACKLIST`、`API_CACHE`（邏輯分離） |
 | Queues | `publish-queue`（定時發布）、`publish-dlq`（死信隊列） |

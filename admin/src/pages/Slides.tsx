@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import { compressImageToWebP } from '../lib/imageCompress'
 
 /** 幻燈片數據結構 */
 interface Slide {
@@ -87,6 +88,70 @@ export default function Slides() {
   const [newGroupMode, setNewGroupMode] = useState(false)
   const [newGroupId, setNewGroupId] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
+
+  // 圖片上傳狀態
+  const [uploadingPic, setUploadingPic] = useState(false)
+  const [uploadingPicMobile, setUploadingPicMobile] = useState(false)
+  const desktopFileRef = useRef<HTMLInputElement>(null)
+  const mobileFileRef = useRef<HTMLInputElement>(null)
+
+  /** 壓縮並上傳圖片到 R2，返回 URL */
+  const uploadImage = useCallback(async (
+    file: File,
+    onProgress: (loading: boolean) => void,
+  ): Promise<string | null> => {
+    onProgress(true)
+    try {
+      // 前端 WebP 壓縮（幻燈片桌面版最大 1920x1080，移動端最大 800x1200）
+      const isMobile = file.size < 2 * 1024 * 1024 // 小於 2MB 的可能是移動端圖片
+      const compressed = await compressImageToWebP(file, {
+        maxWidth: isMobile ? 800 : 1920,
+        maxHeight: isMobile ? 1200 : 1080,
+        quality: 0.82,
+      })
+
+      const formData = new FormData()
+      formData.append('file', compressed)
+      const token = localStorage.getItem('cms_token')
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        },
+      )
+      const json = await resp.json()
+      if (json.code === 0 && json.data?.url) {
+        return json.data.url as string
+      }
+      setActionError(json.msg || '圖片上傳失敗')
+      return null
+    } catch {
+      setActionError('圖片上傳失敗')
+      return null
+    } finally {
+      onProgress(false)
+    }
+  }, [])
+
+  /** 桌面版圖片上傳 */
+  const handleDesktopUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const url = await uploadImage(file, setUploadingPic)
+    if (url) setForm((f) => ({ ...f, pic: url }))
+    if (desktopFileRef.current) desktopFileRef.current.value = ''
+  }
+
+  /** 移動端圖片上傳 */
+  const handleMobileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const url = await uploadImage(file, setUploadingPicMobile)
+    if (url) setForm((f) => ({ ...f, pic_mobile: url }))
+    if (mobileFileRef.current) mobileFileRef.current.value = ''
+  }
 
   /** 載入幻燈片列表 */
   const fetchSlides = useCallback(async () => {
@@ -444,7 +509,8 @@ export default function Slides() {
                         <img
                           src={item.pic}
                           alt={item.title || '幻燈片'}
-                          className="w-24 h-14 rounded object-cover border"
+                          className="w-32 h-18 rounded border bg-gray-50 object-contain"
+                          style={{ maxHeight: '72px' }}
                         />
                       ) : (
                         <span className="text-muted-foreground text-xs">無圖片</span>
@@ -455,7 +521,8 @@ export default function Slides() {
                         <img
                           src={item.pic_mobile}
                           alt={item.title || '移動端幻燈片'}
-                          className="w-14 h-24 rounded object-cover border"
+                          className="w-18 h-32 rounded border bg-gray-50 object-contain"
+                          style={{ maxWidth: '72px' }}
                         />
                       ) : (
                         <span className="text-muted-foreground text-xs">無</span>
@@ -525,34 +592,86 @@ export default function Slides() {
               {/* 桌面版圖片 */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">
-                  圖片網址 <span className="text-destructive">*</span>
+                  桌面版圖片 <span className="text-destructive">*</span>
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">（自動壓縮為 WebP）</span>
                 </label>
-                <input
-                  type="text"
-                  value={form.pic}
-                  onChange={(e) => setForm((f) => ({ ...f, pic: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="桌面版圖片網址"
-                  autoFocus
-                />
-                {form.pic && (
-                  <img
-                    src={form.pic}
-                    alt="預覽"
-                    className="mt-2 w-full h-32 rounded object-cover border"
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.pic}
+                    onChange={(e) => setForm((f) => ({ ...f, pic: e.target.value }))}
+                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                    placeholder="圖片網址或點擊上傳"
                   />
+                  <input
+                    ref={desktopFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleDesktopUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => desktopFileRef.current?.click()}
+                    disabled={uploadingPic}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    {uploadingPic ? <span className="animate-spin">🔄</span> : <span>📷</span>}
+                    {uploadingPic ? '壓縮上傳中...' : '上傳'}
+                  </button>
+                </div>
+                {form.pic && (
+                  <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
+                    <img
+                      src={form.pic}
+                      alt="預覽"
+                      className="rounded object-contain"
+                      style={{ maxHeight: '150px', maxWidth: '100%' }}
+                    />
+                  </div>
                 )}
               </div>
               {/* 手機版圖片 */}
               <div>
-                <label className="block text-sm font-medium mb-1.5">手機版圖片網址</label>
-                <input
-                  type="text"
-                  value={form.pic_mobile}
-                  onChange={(e) => setForm((f) => ({ ...f, pic_mobile: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="手機版圖片網址（可選）"
-                />
+                <label className="block text-sm font-medium mb-1.5">
+                  手機版圖片
+                  <span className="ml-1 text-xs text-muted-foreground font-normal">（自動壓縮為 WebP）</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={form.pic_mobile}
+                    onChange={(e) => setForm((f) => ({ ...f, pic_mobile: e.target.value }))}
+                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                    placeholder="手機版圖片網址（可選）"
+                  />
+                  <input
+                    ref={mobileFileRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleMobileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => mobileFileRef.current?.click()}
+                    disabled={uploadingPicMobile}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                  >
+                    {uploadingPicMobile ? <span className="animate-spin">🔄</span> : <span>📱</span>}
+                    {uploadingPicMobile ? '壓縮上傳中...' : '上傳'}
+                  </button>
+                </div>
+                {form.pic_mobile && (
+                  <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
+                    <img
+                      src={form.pic_mobile}
+                      alt="移動端預覽"
+                      className="rounded object-contain"
+                      style={{ maxHeight: '150px', maxWidth: '100%' }}
+                    />
+                  </div>
+                )}
               </div>
               {/* 標題 */}
               <div>

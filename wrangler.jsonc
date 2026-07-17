@@ -4,9 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-07-01",
 
-  "routes": [
-    { "pattern": "cms.vikim.eu.org", "custom_domain": true }
-  ],
+  // Worker 不綁定公開自定義域名，通過 Service Binding 供 Pages 內部調用
+  // workers.dev 子域名仍可用於調試，但不在前端暴露
 
   "d1_databases": [
     {
