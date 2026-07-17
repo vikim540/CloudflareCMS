@@ -3,9 +3,9 @@
  *
  * 用法：
  *   const { flags, isEnabled, toggle, refresh } = useFeatureFlags()
- *   if (isEnabled('notify_mail_enabled')) { ... }
+ *   if (isEnabled('mail_enabled')) { ... }
  *
- *   <FeatureGate flagKey="notify_mail_enabled">
+ *   <FeatureGate flagKey="mail_enabled">
  *     <MailSettings />
  *   </FeatureGate>
  */

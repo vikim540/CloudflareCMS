@@ -50,7 +50,7 @@ export interface Env {
   ADMIN_API_LIMIT: RateLimit;
   LOGIN_LIMIT: RateLimit;
   FORM_LIMIT: RateLimit;
-  FLAGS?: Flagship;
+  'Flagship-service'?: Flagship;
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -211,7 +211,7 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.executionCtx, c.env.FLAGS, userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理接口 - 內容管理 =====

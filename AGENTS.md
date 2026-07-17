@@ -29,7 +29,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | Vectorize | `article-semantic-search`（768維 cosine，中文語義搜索） |
 | Workers AI | 嵌入模型 `@cf/baai/bge-base-zh-v1.5` |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min)、`ADMIN_API_LIMIT`(300/min)、`LOGIN_LIMIT`(5/min)、`FORM_LIMIT`(1/10s) |
-| Flagship | app `cms-service`，flags: `notify_mail_enabled`、`notify_webhook_enabled`（未配置時 D1 回退） |
+| Flagship | app `Rustcms-service`，綁定變量 `Flagship-service`（app_id: `64eac514-0d8a-4cc2-8b1a-eeded13a532d`），flags: `mail_enabled`、`webhook_enabled`（未配置時 D1 回退） |
 | Email | MailChannels / Resend HTTP API（免費第三方，CF Email Service 需 Workers Paid） |
 | Pages | `cms-admin`（管理後台 SPA），域名 `rbootcms.cmer.eu.org` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms`（零延遲內部通信） |
@@ -139,9 +139,9 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 ### 通知服務（Webhook + 郵件 + Flagship 開關）
 
-- **Flagship 開關（標準化架構）**：`notify_mail_enabled` / `notify_webhook_enabled` 控制通知總開關
+- **Flagship 開關（標準化架構）**：`mail_enabled` / `webhook_enabled` 控制通知總開關
   - **註冊表驅動**：所有功能開關在 `src/services/flags.ts` 的 `FLAG_REGISTRY` 中註冊（key/label/description/icon/defaultValue/protectedRoutes）
-  - **混合模式**：Flagship 已配置（`wrangler.jsonc` 中 `FLAGS` 綁定）讀 Flagship，否則 D1 回退
+  - **混合模式**：Flagship 已配置（`wrangler.jsonc` 中 `Flagship-service` 綁定，app `Rustcms-service`）讀 Flagship，否則 D1 回退
   - **後端攔截**：`autoRouteProtection()` 中間件自動攔截 `protectedRoutes` 定義的 API 端點，關閉時返回 `code:1004`
   - **前端組件化**：`FeatureFlagProvider` + `useFeatureFlags` Hook + `<FeatureGate flagKey="...">` 組件，關閉時不渲染子組件
   - 關閉後：通知邏輯不執行 + API 端點被攔截 + 後台隱藏對應配置區域
@@ -339,7 +339,7 @@ git log --oneline -10
 ### 1. 版本更新 Tab
 
 - 新增版本條目到 `VERSIONS` 數組頂部，設 `latest: true`，舊版本移除 `latest`
-- 格式：`{ version: 'vX.Y.Z', date: 'YYYY-MM-DD', icon: 'emoji', latest: true, changes: '簡述本次修改' }`
+- 格式：`{ version: 'vX.Y.Z', date: 'YYYY-MM-DD  HH:mm:ss', icon: 'emoji', latest: true, changes: '簡述本次修改' }`
 - 版本號規則：主版本（架構變更）/ 次版本（功能新增）/ 修訂號（Bug 修復）
 - `changes` 用中文分號分隔多項修改
 

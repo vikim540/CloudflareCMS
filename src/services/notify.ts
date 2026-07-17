@@ -6,9 +6,8 @@
  *           Email Service 僅 Workers Paid 可用，本項目使用免費方案
  * Webhook:  釘釘 ActionCard / 企業微信 Markdown / 通用 JSON
  *
- * Flagship 功能開關:
- *   notify_mail_enabled     - 郵件通知總開關
- *   notify_webhook_enabled  - Webhook 通知總開關
+ * - Flagship 開關：mail_enabled / webhook_enabled（標準化架構）
+ *   - getFlagEnabled({ DB, 'Flagship-service' }, 'mail_enabled') 檢查開關
  *   關閉後，對應通知邏輯完全不執行，後台也不顯示相關按鈕
  */
 import type { D1Database, KVNamespace, Flagship } from '@cloudflare/workers-types';
@@ -257,9 +256,9 @@ export async function triggerNotify(
     const detailUrl = buildAdminUrl(site.domain, category);
 
     // 功能開關：統一使用 flags.ts 標準化服務
-    const flagEnv = { DB: db, FLAGS: flags ?? undefined };
-    const mailEnabled = await getFlagEnabled(flagEnv, 'notify_mail_enabled');
-    const webhookEnabled = await getFlagEnabled(flagEnv, 'notify_webhook_enabled');
+    const flagEnv = { DB: db, 'Flagship-service': flags ?? undefined };
+    const mailEnabled = await getFlagEnabled(flagEnv, 'mail_enabled');
+    const webhookEnabled = await getFlagEnabled(flagEnv, 'webhook_enabled');
 
     // 郵件通知
     if (mailEnabled) {

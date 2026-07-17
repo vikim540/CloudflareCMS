@@ -41,12 +41,12 @@ const HIDDEN_CONFIGS = new Set([
   'tpl_html_dir',
 ])
 
-/** Webhook 相關配置項（notify_webhook_enabled 關閉時隱藏） */
+/** Webhook 相關配置項（webhook_enabled 關閉時隱藏） */
 const WEBHOOK_CONFIGS = new Set([
   'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment',
 ])
 
-/** 通知配置分組中的郵件相關配置項（notify_mail_enabled 關閉時隱藏） */
+/** 通知配置分組中的郵件相關配置項（mail_enabled 關閉時隱藏） */
 const MAIL_IN_NOTIFY_CONFIGS = new Set([
   'message_send_mail', 'form_send_mail', 'comment_send_mail', 'message_send_to',
 ])
@@ -107,8 +107,8 @@ export default function Settings() {
     }
   }
 
-  const mailEnabled = isEnabled('notify_mail_enabled')
-  const webhookEnabled = isEnabled('notify_webhook_enabled')
+  const mailEnabled = isEnabled('mail_enabled')
+  const webhookEnabled = isEnabled('webhook_enabled')
 
   /** 取得某配置的當前顯示值（優先取本地變更） */
   const currentValue = (config: Config): string => {

@@ -4,7 +4,7 @@
  * 關閉時不渲染子組件，所有位置統一使用此組件控制功能可見性
  *
  * 用法：
- *   <FeatureGate flagKey="notify_mail_enabled">
+ *   <FeatureGate flagKey="mail_enabled">
  *     <MailSettingsSection />
  *   </FeatureGate>
  *

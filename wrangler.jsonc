@@ -84,15 +84,14 @@
     }
   ],
 
-  // Flagship: 需在 Dashboard > Compute > Flagship 中找到 app 的 UUID
-  // 用戶創建了名為 cms-service 的 app，但 app_id 需填入 UUID（非名稱）
-  // 找到正確 UUID 後取消下面的註釋
-  // "flagship": [
-  //   {
-  //     "binding": "FLAGS",
-  //     "app_id": "<FLAGSHIP_APP_UUID>"
-  //   }
-  // ],
+  // Flagship: app "Rustcms-service"，flags: mail_enabled / webhook_enabled
+  // 綁定變量名為 "Flagship-service"（在 Dashboard 中已配置）
+  "flagship": [
+    {
+      "binding": "Flagship-service",
+      "app_id": "64eac514-0d8a-4cc2-8b1a-eeded13a532d"
+    }
+  ],
 
   "triggers": {
     "crons": ["*/15 * * * *"]

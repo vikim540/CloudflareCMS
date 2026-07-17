@@ -18,7 +18,7 @@
  *   if (await getFlagEnabled(env, 'search_enabled')) { ... }
  *
  *   // 前端組件化
- *   <FeatureGate flagKey="notify_mail_enabled">...</FeatureGate>
+ *   <FeatureGate flagKey="mail_enabled">...</FeatureGate>
  */
 import type { D1Database, Flagship } from '@cloudflare/workers-types';
 import type { Context, MiddlewareHandler } from 'hono';
@@ -49,7 +49,7 @@ export interface FlagDef {
  */
 export const FLAG_REGISTRY: FlagDef[] = [
   {
-    key: 'notify_mail_enabled',
+    key: 'mail_enabled',
     label: '郵件通知',
     description: '關閉後隱藏所有郵件相關配置，攔截郵件測試 API',
     icon: '📧',
@@ -57,7 +57,7 @@ export const FLAG_REGISTRY: FlagDef[] = [
     protectedRoutes: ['/api/v1/admin/notify/test-mail'],
   },
   {
-    key: 'notify_webhook_enabled',
+    key: 'webhook_enabled',
     label: 'Webhook 通知',
     description: '關閉後隱藏所有 Webhook 相關配置，攔截 Webhook 測試 API',
     icon: '🪝',
@@ -86,7 +86,7 @@ export function findFlagDef(key: string): FlagDef | undefined {
 
 interface FlagReadEnv {
   DB: D1Database;
-  FLAGS?: Flagship;
+  'Flagship-service'?: Flagship;
 }
 
 /** D1 配置緩存（單次請求內） */
@@ -123,8 +123,8 @@ export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boo
   const def = findFlagDef(key);
   if (!def) return true; // 未註冊的開關默認開啟
 
-  if (env.FLAGS) {
-    return env.FLAGS.getBooleanValue(key, def.defaultValue, {});
+  if (env['Flagship-service']) {
+    return env['Flagship-service'].getBooleanValue(key, def.defaultValue, {});
   }
 
   // D1 回退
@@ -140,7 +140,7 @@ export async function getFlagEnabled(env: FlagReadEnv, key: string): Promise<boo
 export async function getAllFlags(env: FlagReadEnv): Promise<
   Array<{ key: string; label: string; description: string; icon: string; enabled: boolean; managedBy: 'flagship' | 'database' }>
 > {
-  const managedBy: 'flagship' | 'database' = env.FLAGS ? 'flagship' : 'database';
+  const managedBy: 'flagship' | 'database' = env['Flagship-service'] ? 'flagship' : 'database';
   const results = await Promise.all(
     FLAG_REGISTRY.map(async (def) => ({
       key: def.key,
@@ -211,7 +211,7 @@ export async function setFlagEnabled(
   const def = findFlagDef(key);
   if (!def) return { success: false, error: '無效的功能開關 key' };
 
-  if (env.FLAGS) {
+  if (env['Flagship-service']) {
     return { success: false, error: 'Flagship 已配置，請在 Cloudflare Dashboard 管理' };
   }
 

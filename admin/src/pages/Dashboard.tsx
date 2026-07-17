@@ -43,10 +43,16 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v0.7.0',
+    date: '2026-07-17',
+    icon: '🚩',
+    latest: true,
+    changes: 'Flagship 重命名：app 改為 Rustcms-service；flag 鍵改為 mail_enabled / webhook_enabled；Worker 綁定變量改為 Flagship-service（含連字符需用 env["Flagship-service"] 括號語法）；wrangler.jsonc 配置 app_id 綁定；D1 回退數據同步更新',
+  },
+  {
     version: 'v0.6.0',
     date: '2026-07-17',
     icon: '🎨',
-    latest: true,
     changes: '系統設置分區塊獨立保存（無需整頁刷新）；角色權限改為菜單樹驅動（與菜單管理聯動）；用戶管理增加權限預覽（所選角色合併權限）；菜單管理顯示 mcode 權限鍵並修正 scode→mcode 字段；三頁面增加三者關係說明卡片',
   },
   {
@@ -787,9 +793,9 @@ console.log(articles) // 相似文章列表`}</code>
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-foreground text-xs">notify_mail_enabled</code>
+                        <code className="font-mono text-foreground text-xs">mail_enabled</code>
                         <span className="text-muted-foreground mx-1">·</span>
-                        <code className="font-mono text-foreground text-xs">notify_webhook_enabled</code>
+                        <code className="font-mono text-foreground text-xs">webhook_enabled</code>
                         <span className="text-muted-foreground mx-2 text-xs">D1 回退模式</span>
                       </td>
                     </tr>
