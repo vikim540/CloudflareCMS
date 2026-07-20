@@ -55,6 +55,14 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewUrlsRef = useRef<string[]>([])
 
+  /** hover 放大預覽狀態 */
+  const [hoverPreview, setHoverPreview] = useState<{
+    originalUrl: string
+    compressedUrl: string
+    originalSize: number
+    compressedSize: number
+  } | null>(null)
+
   /** 初始化原始預覽 */
   useEffect(() => {
     const initialPreviews: FilePreview[] = files.map((file) => {
@@ -294,79 +302,128 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
             const savingsPercent = Math.round(savings * 100)
 
             return (
-              <div
-                key={index}
-                className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100"
-              >
-                {/* 壓縮後預覽 */}
-                <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200 border border-slate-200">
-                  {result?.previewUrl ? (
-                    <img
-                      src={result.previewUrl}
-                      alt={preview.original.name}
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-400">
-                      <span className="animate-pulse text-lg">⏳</span>
+              <div key={index} className="space-y-2">
+                {/* 文件信息行 */}
+                <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  {/* 壓縮後預覽 */}
+                  <div className="relative w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-slate-200 border border-slate-200">
+                    {result?.previewUrl ? (
+                      <img
+                        src={result.previewUrl}
+                        alt={preview.original.name}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400">
+                        <span className="animate-pulse text-lg">⏳</span>
+                      </div>
+                    )}
+                    {preview.compressing && (
+                      <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
+                        <span className="text-white text-xs animate-pulse">壓縮中</span>
+                        <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-400 transition-all duration-200"
+                            style={{ width: `${preview.compressProgress}%` }}
+                          />
+                        </div>
+                        <span className="text-white text-[10px] font-mono">{preview.compressProgress}%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 文件信息 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-slate-800 truncate">
+                        {preview.original.name}
+                      </span>
+                      {result && result.width > 0 && (
+                        <span className="text-[10px] text-slate-400 flex-shrink-0">
+                          {result.width}×{result.height}
+                        </span>
+                      )}
                     </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-500">
+                        原始: <span className="font-mono">{formatFileSize(preview.original.size)}</span>
+                      </span>
+                      <span className="text-slate-300">→</span>
+                      {result ? (
+                        <span className={cn('font-mono font-semibold', savings > 0 ? 'text-emerald-600' : 'text-slate-500')}>
+                          {formatFileSize(result.size)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300">計算中...</span>
+                      )}
+                      {result && savings > 0 && (
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-semibold">
+                          -{savingsPercent}%
+                        </span>
+                      )}
+                      {result && savings <= 0 && (
+                        <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px]">
+                          已是最佳
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 格式標籤 */}
+                  {result && (
+                    <span className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-500 flex-shrink-0">
+                      {result.type === 'image/webp' ? 'WebP' : result.type.split('/')[1]?.toUpperCase() || '?'}
+                    </span>
                   )}
-                  {preview.compressing && (
-                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
-                      <span className="text-white text-xs animate-pulse">壓縮中</span>
-                      <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-400 transition-all duration-200"
-                          style={{ width: `${preview.compressProgress}%` }}
+                </div>
+
+                {/* ─── 前後圖片對比區域 ─── */}
+                {result && !preview.compressing && (
+                  <div
+                    className="flex items-stretch gap-3 pb-2 cursor-zoom-in"
+                    onMouseEnter={() => setHoverPreview({
+                      originalUrl: preview.originalUrl,
+                      compressedUrl: result.previewUrl,
+                      originalSize: preview.original.size,
+                      compressedSize: result.size,
+                    })}
+                    onMouseLeave={() => setHoverPreview(null)}
+                  >
+                    {/* 原始圖片 */}
+                    <div className="flex-1 rounded-lg overflow-hidden border-2 border-slate-200 bg-slate-50 transition-shadow hover:shadow-md">
+                      <div className="px-2 py-1 bg-slate-100 text-[10px] font-semibold text-slate-500 flex items-center justify-between">
+                        <span>📷 原始圖片</span>
+                        <span className="font-mono">{formatFileSize(preview.original.size)}</span>
+                      </div>
+                      <div className="flex items-center justify-center h-32 bg-checkered">
+                        <img
+                          src={preview.originalUrl}
+                          alt="原始"
+                          className="max-w-full max-h-full object-contain"
                         />
                       </div>
-                      <span className="text-white text-[10px] font-mono">{preview.compressProgress}%</span>
                     </div>
-                  )}
-                </div>
 
-                {/* 文件信息 */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-medium text-slate-800 truncate">
-                      {preview.original.name}
-                    </span>
-                    {result && result.width > 0 && (
-                      <span className="text-[10px] text-slate-400 flex-shrink-0">
-                        {result.width}×{result.height}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-500">
-                      原始: <span className="font-mono">{formatFileSize(preview.original.size)}</span>
-                    </span>
-                    <span className="text-slate-300">→</span>
-                    {result ? (
-                      <span className={cn('font-mono font-semibold', savings > 0 ? 'text-emerald-600' : 'text-slate-500')}>
-                        {formatFileSize(result.size)}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">計算中...</span>
-                    )}
-                    {result && savings > 0 && (
-                      <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-semibold">
-                        -{savingsPercent}%
-                      </span>
-                    )}
-                    {result && savings <= 0 && (
-                      <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded text-[10px]">
-                        已是最佳
-                      </span>
-                    )}
-                  </div>
-                </div>
+                    {/* 箭頭 */}
+                    <div className="flex items-center justify-center text-slate-300 text-xl">
+                      →
+                    </div>
 
-                {/* 格式標籤 */}
-                {result && (
-                  <span className="text-[10px] px-2 py-1 rounded bg-slate-100 text-slate-500 flex-shrink-0">
-                    {result.type === 'image/webp' ? 'WebP' : result.type.split('/')[1]?.toUpperCase() || '?'}
-                  </span>
+                    {/* 壓縮後圖片 */}
+                    <div className="flex-1 rounded-lg overflow-hidden border-2 border-emerald-300 bg-slate-50 transition-shadow hover:shadow-md">
+                      <div className="px-2 py-1 bg-emerald-50 text-[10px] font-semibold text-emerald-600 flex items-center justify-between">
+                        <span>✨ 壓縮後</span>
+                        <span className="font-mono">{formatFileSize(result.size)}</span>
+                      </div>
+                      <div className="flex items-center justify-center h-32 bg-checkered">
+                        <img
+                          src={result.previewUrl}
+                          alt="壓縮後"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )
@@ -422,6 +479,53 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
           </div>
         </div>
       </div>
+
+      {/* ─── hover 放大預覽浮層 ─── */}
+      {hoverPreview && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm pointer-events-none"
+          style={{ maxWidth: '100vw', maxHeight: '100vh' }}
+        >
+          <div className="flex items-stretch gap-3 p-4" style={{ maxWidth: '100vw', maxHeight: '100vh' }}>
+            {/* 原始圖片放大 */}
+            <div className="flex flex-col rounded-xl overflow-hidden border-2 border-slate-400 bg-slate-900 shadow-2xl" style={{ maxWidth: '48vw' }}>
+              <div className="px-3 py-1.5 bg-slate-800 text-xs font-semibold text-slate-300 flex items-center justify-between shrink-0">
+                <span>📷 原始圖片</span>
+                <span className="font-mono">{formatFileSize(hoverPreview.originalSize)}</span>
+              </div>
+              <div className="flex items-center justify-center bg-checkered overflow-auto" style={{ maxHeight: 'calc(100vh - 60px)' }}>
+                <img
+                  src={hoverPreview.originalUrl}
+                  alt="原始放大"
+                  className="object-contain"
+                  style={{ maxWidth: '48vw', maxHeight: 'calc(100vh - 60px)' }}
+                />
+              </div>
+            </div>
+
+            {/* 箭頭 */}
+            <div className="flex items-center justify-center text-white/50 text-3xl shrink-0">
+              →
+            </div>
+
+            {/* 壓縮後圖片放大 */}
+            <div className="flex flex-col rounded-xl overflow-hidden border-2 border-emerald-400 bg-slate-900 shadow-2xl" style={{ maxWidth: '48vw' }}>
+              <div className="px-3 py-1.5 bg-emerald-900/50 text-xs font-semibold text-emerald-300 flex items-center justify-between shrink-0">
+                <span>✨ 壓縮後</span>
+                <span className="font-mono">{formatFileSize(hoverPreview.compressedSize)}</span>
+              </div>
+              <div className="flex items-center justify-center bg-checkered overflow-auto" style={{ maxHeight: 'calc(100vh - 60px)' }}>
+                <img
+                  src={hoverPreview.compressedUrl}
+                  alt="壓縮後放大"
+                  className="object-contain"
+                  style={{ maxWidth: '48vw', maxHeight: 'calc(100vh - 60px)' }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

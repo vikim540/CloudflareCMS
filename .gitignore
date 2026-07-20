@@ -4,7 +4,9 @@ node_modules/
 
 # Build output
 build/
+build_old/
 dist/
+deploy/
 .wrangler/
 
 # TypeScript build info

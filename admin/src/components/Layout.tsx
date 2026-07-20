@@ -104,7 +104,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/singles', label: '單頁管理', icon: '📄' },
       { to: '/messages', label: '留言管理', icon: '💬' },
       { to: '/links', label: '友情連結', icon: '🔗' },
-      { to: '/slides', label: '幻燈片', icon: '🖼️' },
       { to: '/tags', label: '標籤管理', icon: '🏷️' },
     ],
   },
@@ -113,6 +112,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: '🖼️',
     items: [
       { to: '/media', label: '媒體庫', icon: '🖼️' },
+      { to: '/slides', label: '幻燈片', icon: '🖼️' },
     ],
   },
   {

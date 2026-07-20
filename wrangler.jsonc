@@ -4,8 +4,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2025-07-01",
 
-  // Worker 不綁定公開自定義域名，通過 Service Binding 供 Pages 內部調用
-  // workers.dev 子域名仍可用於調試，但不在前端暴露
+  // Worker 僅作為 Pages cms-admin 的內部 Service Binding，不暴露任何公網 URL
+  "workers_dev": false,
+  "preview_urls": false,
 
   "d1_databases": [
     {

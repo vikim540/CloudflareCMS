@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.1',
+    date: '2026-07-20 22:30:00',
+    icon: '🎨',
+    latest: true,
+    changes: '上傳體驗統一 + 媒體庫瀑布流 + Worker URL 禁用：ImageCompressDialog 新增前後圖片對比區域（原始 vs 壓縮後並排展示，棋盤格背景，hover 彈出全屏放大預覽不超過 100vw/vh）；移除對比區域 px-3 加寬顯示空間；統一所有上傳位置使用 ImageCompressDialog（ContentEdit 從 autoCompress=true 改為 Promise-based 對話框模式，與媒體庫/幻燈片完全一致）；新增 UploadProgressOverlay 組件（屏幕居中進度覆蓋層，替代各頁面內聯進度條，漸變進度條+錯誤卡片可關閉）；媒體庫從固定网格改為 CSS columns 瀑布流佈局（columns-2~6 響應式，圖片按原始比例顯示高度，方便辨別 PC/Mobile 圖片尺寸）；修復 MediaLibrary 上傳 bug（FileList 清空順序：先 Array.from 複製再清空 input.value）；幻燈片菜單從擴展內容移至多媒體分組（DB M402 pcode M400→M300，Layout.tsx 分組調整）；Worker 禁用 workers.dev 和 preview_urls（僅作為 Pages cms-admin 內部 ServiceBinding，Cloudflare API 確認 subdomain enabled=false）；修復 Vite 構建 0 字節文件問題（fixEmptyChunksPlugin 插件，輸出目錄 build→deploy）',
+  },
+  {
     version: 'v1.5.0',
     date: '2026-07-20 18:00:00',
     icon: '🗜️',
-    latest: true,
+    latest: false,
     changes: '圖片壓縮引擎重構 + 自定義標籤移除：引入 browser-image-compression 開源庫（Web Worker 壓縮，不阻塞 UI），建立三層組件化架構（imageCompress.ts 引擎層 → useImageUpload.ts hook 層 → ImageCompressDialog.tsx UI 層），引擎可獨立替換不影響消費方；所有圖片上傳位置默認接入壓縮：媒體庫（壓縮對話框預覽+進度條）、幻燈片（桌面/移動端進度條）、文章內容（Quill 編輯器+縮略圖+擴展字段，autoCompress=true 自動壓縮為 WebP）；上傳過程實時進度展示（壓縮中/上傳中階段+百分比+文件名）；上傳失敗顯示具體錯誤（文件名+錯誤原因，可關閉）；ContentEdit 浮動進度提示（右下角 toast）；移除自定義標籤功能（headless CMS 無模板引擎，與 config API 重疊）— 刪除後端路由/services、前端頁面/路由/側邊欄、DB 菜單 M404 + 角色權限',
   },
   {

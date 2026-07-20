@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
+import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { useImageUpload } from '../hooks/useImageUpload'
 
 /** 幻燈片數據結構 */
@@ -627,31 +628,7 @@ export default function Slides() {
                     {uploading && uploadTarget === 'desktop' ? '上傳中...' : '上傳'}
                   </button>
                 </div>
-                {/* 上傳進度條 */}
-                {uploading && uploadTarget === 'desktop' && progress && (
-                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="animate-spin inline-block">🔄</span>
-                      <span className="font-semibold text-blue-700">
-                        {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
-                      </span>
-                      <span className="text-blue-500 truncate flex-1" title={progress.fileName}>{progress.fileName}</span>
-                      <span className="font-mono font-bold text-blue-600">
-                        {progress.phase === 'compressing' ? `${progress.compressProgress ?? 0}%` : `${progress.uploadProgress ?? 0}%`}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${progress.phase === 'compressing'
-                            ? (progress.compressProgress ?? 0)
-                            : (progress.uploadProgress ?? 0)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                {/* 上傳進度條（已改為屏幕居中覆蓋層，見頁面底部 UploadProgressOverlay） */}
                 {form.pic && (
                   <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
                     <img
@@ -694,31 +671,7 @@ export default function Slides() {
                     {uploading && uploadTarget === 'mobile' ? '上傳中...' : '上傳'}
                   </button>
                 </div>
-                {/* 上傳進度條 */}
-                {uploading && uploadTarget === 'mobile' && progress && (
-                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="animate-spin inline-block">🔄</span>
-                      <span className="font-semibold text-blue-700">
-                        {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
-                      </span>
-                      <span className="text-blue-500 truncate flex-1" title={progress.fileName}>{progress.fileName}</span>
-                      <span className="font-mono font-bold text-blue-600">
-                        {progress.phase === 'compressing' ? `${progress.compressProgress ?? 0}%` : `${progress.uploadProgress ?? 0}%`}
-                      </span>
-                    </div>
-                    <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${progress.phase === 'compressing'
-                            ? (progress.compressProgress ?? 0)
-                            : (progress.uploadProgress ?? 0)}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                {/* 上傳進度條（已改為屏幕居中覆蓋層，見頁面底部 UploadProgressOverlay） */}
                 {form.pic_mobile && (
                   <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
                     <img
@@ -828,21 +781,6 @@ export default function Slides() {
                   {actionError}
                 </p>
               )}
-              {uploadError && (
-                <div className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-md text-xs">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span>❌</span>
-                    <span className="font-semibold">上傳失敗</span>
-                    <button
-                      onClick={clearError}
-                      className="ml-auto text-red-400 hover:text-red-600"
-                    >
-                      關閉
-                    </button>
-                  </div>
-                  <pre className="whitespace-pre-wrap font-mono">{uploadError}</pre>
-                </div>
-              )}
             </div>
             <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
               <button
@@ -872,6 +810,14 @@ export default function Slides() {
           onCancel={() => setPendingSlideImage(null)}
         />
       )}
+
+      {/* 上傳進度 + 錯誤（屏幕居中覆蓋層，統一組件） */}
+      <UploadProgressOverlay
+        uploading={uploading}
+        progress={progress}
+        error={uploadError}
+        onClearError={clearError}
+      />
     </div>
   )
 }

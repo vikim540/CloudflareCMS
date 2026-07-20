@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
+import ImageCompressDialog from '../components/ImageCompressDialog'
+import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { useImageUpload } from '../hooks/useImageUpload'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
@@ -809,11 +811,19 @@ export default function ContentEdit() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const icoFileRef = useRef<HTMLInputElement>(null)
 
-  // ─── 上傳 hook（autoCompress=true：所有圖片自動壓縮為 WebP） ──────────
-  // 適用於：縮略圖、Quill 編輯器圖片、擴展字段圖片上傳
+  // ─── 上傳 hook（autoCompress=false：圖片通過 ImageCompressDialog 壓縮） ───
+  // 統一所有上傳位置：縮略圖、Quill 編輯器圖片、擴展字段圖片
   const { uploading: imgUploading, progress: imgProgress, error: imgUploadError, uploadSingle, clearError: clearImgError } = useImageUpload({
-    autoCompress: true,
+    autoCompress: false,
   })
+
+  // ─── 圖片壓縮對話框狀態 ───
+  // 當用戶選擇圖片時，彈出 ImageCompressDialog 讓用戶控制壓縮質量
+  // 回調函數在壓縮確認後被調用，傳入壓縮後的文件
+  const [pendingImageUpload, setPendingImageUpload] = useState<{
+    file: File
+    callback: (url: string | null) => void
+  } | null>(null)
 
   /** 載入欄目樹 (支持按 mcode 過濾) */
   const fetchCategories = useCallback(async () => {
@@ -945,19 +955,53 @@ export default function ContentEdit() {
   }
 
   /**
-   * 圖片上傳到 R2（自動壓縮為 WebP）
-   * 
-   * 底層使用 useImageUpload hook（autoCompress=true）：
-   *   - 圖片自動壓縮為 WebP 格式（節省 30-70% 體積）
-   *   - SVG 和非圖片文件直接上傳
-   *   - 上傳進度和錯誤由 hook 統一管理（imgProgress / imgUploadError）
-   * 
+   * 圖片上傳到 R2（統一使用 ImageCompressDialog 讓用戶控制壓縮質量）
+   *
+   * 流程：
+   *   1. 用戶選擇圖片文件
+   *   2. 彈出 ImageCompressDialog（質量滑桿+尺寸控制+前後對比）
+   *   3. 用戶確認壓縮設置後，hook 上傳壓縮後的文件
+   *   4. 返回上傳後的 URL
+   *
+   * 非圖片文件（SVG等）直接上傳，不彈出對話框。
+   *
    * 使用位置：縮略圖、Quill 編輯器圖片、擴展字段圖片
    */
   const uploadImage = useCallback(async (file: File): Promise<string | null> => {
     clearImgError()
-    return await uploadSingle(file)
+    // SVG 和非圖片文件直接上傳，不壓縮
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+      return await uploadSingle(file)
+    }
+    // 圖片文件：彈出壓縮對話框，等待用戶確認
+    return new Promise<string | null>((resolve) => {
+      setPendingImageUpload({ file, callback: resolve })
+    })
   }, [uploadSingle, clearImgError])
+
+  /** ImageCompressDialog 確認回調 — 上傳壓縮後的文件 */
+  const handleImageCompressConfirm = useCallback(async (compressedFiles: File[]) => {
+    if (!pendingImageUpload) return
+    const { callback } = pendingImageUpload
+    setPendingImageUpload(null)
+
+    if (compressedFiles.length === 0) {
+      callback(null)
+      return
+    }
+
+    clearImgError()
+    const url = await uploadSingle(compressedFiles[0])
+    callback(url)
+  }, [pendingImageUpload, uploadSingle, clearImgError])
+
+  /** ImageCompressDialog 取消回調 */
+  const handleImageCompressCancel = useCallback(() => {
+    if (pendingImageUpload) {
+      pendingImageUpload.callback(null)
+      setPendingImageUpload(null)
+    }
+  }, [pendingImageUpload])
 
   /** 縮略圖（ico）上傳處理 */
   const handleIcoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1576,56 +1620,22 @@ export default function ContentEdit() {
         }}
       />
 
-      {/* ─── 浮動上傳進度/錯誤提示（適用於 Quill 編輯器圖片上傳） ─── */}
-      {(imgUploading || imgUploadError) && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-          {/* 錯誤提示 */}
-          {imgUploadError && (
-            <div className="mb-2 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg shadow-lg text-sm">
-              <div className="flex items-center gap-2 mb-1">
-                <span>❌</span>
-                <span className="font-semibold">圖片上傳失敗</span>
-                <button
-                  onClick={clearImgError}
-                  className="ml-auto text-red-400 hover:text-red-600 text-xs"
-                >
-                  關閉
-                </button>
-              </div>
-              <pre className="whitespace-pre-wrap text-xs font-mono">{imgUploadError}</pre>
-            </div>
-          )}
-          {/* 進度提示 */}
-          {imgUploading && imgProgress && (
-            <div className="px-4 py-3 bg-white border border-blue-200 rounded-lg shadow-lg text-sm">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="animate-spin inline-block">🔄</span>
-                <span className="font-semibold text-blue-700">
-                  {imgProgress.phase === 'compressing' ? '🗜️ 圖片壓縮中' : '📤 上傳中'}
-                </span>
-                <span className="text-blue-500 truncate flex-1 max-w-[180px]" title={imgProgress.fileName}>
-                  {imgProgress.fileName}
-                </span>
-                <span className="font-mono font-bold text-blue-600">
-                  {imgProgress.phase === 'compressing'
-                    ? `${imgProgress.compressProgress ?? 0}%`
-                    : `${imgProgress.uploadProgress ?? 0}%`}
-                </span>
-              </div>
-              <div className="h-2 bg-blue-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${imgProgress.phase === 'compressing'
-                      ? (imgProgress.compressProgress ?? 0)
-                      : (imgProgress.uploadProgress ?? 0)}%`,
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+      {/* ─── 圖片壓縮對話框（所有圖片上傳統一使用） ─── */}
+      {pendingImageUpload && (
+        <ImageCompressDialog
+          files={[pendingImageUpload.file]}
+          onConfirm={handleImageCompressConfirm}
+          onCancel={handleImageCompressCancel}
+        />
       )}
+
+      {/* ─── 上傳進度 + 錯誤（屏幕居中覆蓋層，統一組件） ─── */}
+      <UploadProgressOverlay
+        uploading={imgUploading}
+        progress={imgProgress}
+        error={imgUploadError}
+        onClearError={clearImgError}
+      />
     </div>
   )
 }

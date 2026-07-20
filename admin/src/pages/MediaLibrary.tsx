@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 import ImageCompressDialog from '../components/ImageCompressDialog'
+import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import { useImageUpload } from '../hooks/useImageUpload'
 
 /** S3 文件信息（含使用狀態與標記狀態） */
@@ -189,10 +190,11 @@ export default function MediaLibrary() {
     const fileList = e.target.files
     if (!fileList || fileList.length === 0) return
 
-    // 清空 input 值，確保連續選擇同一文件也能觸發 change
+    // ⚠️ 必須先複製文件到數組，再清空 input！
+    // 否則 input.value='' 會清空 FileList，導致 Array.from 得到空數組
+    const allFiles = Array.from(fileList)
     if (fileInputRef.current) fileInputRef.current.value = ''
 
-    const allFiles = Array.from(fileList)
     // 分離圖片和非圖片
     const imageFiles = allFiles.filter((f) => f.type.startsWith('image/') && f.type !== 'image/svg+xml')
     const nonImageFiles = allFiles.filter((f) => !f.type.startsWith('image/') || f.type === 'image/svg+xml')
@@ -408,7 +410,7 @@ export default function MediaLibrary() {
         </div>
       </div>
 
-      {/* 錯誤提示 */}
+      {/* 錯誤提示（頁面級別錯誤，如載入失敗） */}
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm flex items-center gap-2">
           <span className="flex-shrink-0">⚠️</span>
@@ -416,57 +418,13 @@ export default function MediaLibrary() {
         </div>
       )}
 
-      {/* 上傳錯誤提示（來自 hook，含失敗文件名和原因） */}
-      {uploadError && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="flex-shrink-0">❌</span>
-            <span className="font-semibold">上傳失敗</span>
-            <button
-              onClick={clearError}
-              className="ml-auto text-red-400 hover:text-red-600 text-xs"
-            >
-              關閉
-            </button>
-          </div>
-          <pre className="whitespace-pre-wrap text-xs ml-6 font-mono bg-red-50">{uploadError}</pre>
-        </div>
-      )}
-
-      {/* 上傳進度（壓縮中 / 上傳中，含文件名和百分比） */}
-      {progress && (
-        <div className="mb-4 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 rounded-md text-sm">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="animate-spin inline-block">🔄</span>
-            <span className="font-semibold">
-              {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
-            </span>
-            <span className="text-blue-500">
-              第 {progress.current} / {progress.total} 個
-            </span>
-            <span className="text-xs text-blue-400 truncate flex-1" title={progress.fileName}>
-              {progress.fileName}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
-                style={{
-                  width: `${progress.phase === 'compressing'
-                    ? (progress.compressProgress ?? 0)
-                    : (progress.uploadProgress ?? 0)}%`,
-                }}
-              />
-            </div>
-            <span className="text-xs font-mono font-bold text-blue-600 min-w-[3rem] text-right">
-              {progress.phase === 'compressing'
-                ? `${progress.compressProgress ?? 0}%`
-                : `${progress.uploadProgress ?? 0}%`}
-            </span>
-          </div>
-        </div>
-      )}
+      {/* 上傳進度 + 錯誤（屏幕居中覆蓋層，統一組件） */}
+      <UploadProgressOverlay
+        uploading={uploading}
+        progress={progress}
+        error={uploadError}
+        onClearError={clearError}
+      />
 
       {/* 統計欄 */}
       <div className="mb-4 flex items-center gap-4 text-sm text-muted-foreground">
@@ -519,7 +477,8 @@ export default function MediaLibrary() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {/* 瀑布流佈局：寬度固定，高度自適應圖片原始比例，方便辨別 PC/Mobile 圖片 */}
+          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3">
             {filteredFiles.map((file) => {
               const category = getFileCategory(file.key)
               const fileName = file.key.split('/').pop() || file.key
@@ -533,18 +492,18 @@ export default function MediaLibrary() {
               return (
                 <div
                   key={file.key}
-                  className={`bg-white rounded-lg border-2 overflow-hidden group hover:shadow-md transition-all cursor-pointer relative ${
+                  className={`break-inside-avoid mb-3 bg-white rounded-lg border-2 overflow-hidden group hover:shadow-lg transition-all cursor-pointer relative ${
                     isMarked ? 'border-amber-400' : isUsed ? 'border-green-300' : 'border-gray-200'
                   }`}
                   onClick={() => handleShowDetail(file.key)}
                 >
-                  {/* 預覽區 */}
-                  <div className="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden">
+                  {/* 預覽區 — 圖片按原始比例顯示，非圖片固定高度 */}
+                  <div className={`bg-gray-50 flex items-center justify-center relative overflow-hidden ${isImage ? '' : 'h-32'}`}>
                     {isImage && fileUrl ? (
                       <img
                         src={fileUrl}
                         alt={fileName}
-                        className="w-full h-full object-cover"
+                        className="w-full h-auto object-cover"
                         loading="lazy"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none'
