@@ -99,7 +99,8 @@
 
   "vars": {
     "API_PREFIX": "/api/v1",
-    "JWT_EXPIRE_DAYS": "7"
+    "JWT_EXPIRE_DAYS": "7",
+    "TZ": "Asia/Hong_Kong"
   },
 
   "observability": {

@@ -102,6 +102,8 @@ export default function Slides() {
   const [draggingId, setDraggingId] = useState<number | null>(null)
   const [dragOverId, setDragOverId] = useState<number | null>(null)
   const [sortingUpdate, setSortingUpdate] = useState(false)
+  // 手動修改排序的 dirty 記錄（id → 新排序值），保存按鈕統一提交
+  const [dirtySorts, setDirtySorts] = useState<Record<number, number>>({})
 
   // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
   // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
@@ -240,10 +242,21 @@ export default function Slides() {
     setActiveGroup(nextGid)
   }
 
-  /** 開啟新增對話框 */
+  /** 開啟新增對話框 — 默認分組 1，排序自增 */
   const openCreate = () => {
     setEditTarget(null)
-    setForm(EMPTY_FORM)
+    // 默認分組：當前選中的分組，若為 'all' 則用 '1'
+    const defaultGid = activeGroup !== 'all' ? activeGroup : '1'
+    // 計算該分組下的最大排序值 + 1（自增序號）
+    const groupSlides = slides.filter((s) => (s.gid ?? '0') === defaultGid)
+    const maxSorting = groupSlides.length > 0
+      ? Math.max(...groupSlides.map((s) => s.sorting ?? 0))
+      : 0
+    setForm({
+      ...EMPTY_FORM,
+      gid: defaultGid,
+      sorting: maxSorting + 1,
+    })
     setActionError('')
     setModalOpen(true)
   }
@@ -362,20 +375,32 @@ export default function Slides() {
     }
   }
 
-  /** 手動修改排序值 */
-  const handleSortingChange = async (id: number, newSorting: number) => {
-    // 先本地更新
+  /** 手動修改排序值 — 僅標記 dirty，等待保存按鈕統一提交 */
+  const handleSortingInput = (id: number, newSorting: number) => {
+    // 更新本地顯示
     setSlides((prev) =>
       prev.map((s) => (s.id === id ? { ...s, sorting: newSorting } : s)),
     )
-    // 異步更新後端
+    // 標記為 dirty（等待保存按鈕提交）
+    setDirtySorts((prev) => ({ ...prev, [id]: newSorting }))
+  }
+
+  /** 批量保存所有修改的排序值 */
+  const handleSaveSorts = async () => {
+    const items = Object.entries(dirtySorts).map(([id, sorting]) => ({
+      id: Number(id),
+      sorting,
+    }))
+    if (items.length === 0) return
+
     setSortingUpdate(true)
     try {
-      await api.put('/admin/slides/batch-sorting', {
-        items: [{ id, sorting: newSorting }],
-      })
+      await api.put('/admin/slides/batch-sorting', { items })
+      setDirtySorts({})
     } catch {
+      // 失敗時重新載入以恢復正確狀態
       await fetchSlides()
+      setDirtySorts({})
     } finally {
       setSortingUpdate(false)
     }
@@ -646,19 +671,15 @@ export default function Slides() {
                         value={item.sorting ?? 0}
                         onChange={(e) => {
                           const val = parseInt(e.target.value) || 0
-                          // 僅本地更新，失焦時提交
-                          setSlides((prev) =>
-                            prev.map((s) => (s.id === item.id ? { ...s, sorting: val } : s)),
-                          )
+                          handleSortingInput(item.id, val)
                         }}
-                        onBlur={(e) => {
-                          const val = parseInt(e.target.value) || 0
-                          if (val !== item.sorting) {
-                            handleSortingChange(item.id, val)
-                          }
-                        }}
-                        className="w-14 px-1.5 py-1 text-center border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300"
-                        title="修改排序值（失焦後自動保存）"
+                        className={cn(
+                          'w-14 px-1.5 py-1 text-center border rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 hover:border-blue-300',
+                          dirtySorts[item.id] !== undefined
+                            ? 'border-amber-400 bg-amber-50'
+                            : 'border-slate-200',
+                        )}
+                        title={dirtySorts[item.id] !== undefined ? '已修改，點擊「保存排序」提交' : '修改排序值'}
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -687,11 +708,21 @@ export default function Slides() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-2 bg-slate-50 text-xs text-muted-foreground border-t flex items-center gap-2">
+          <div className="px-4 py-2 bg-slate-50 text-xs text-muted-foreground border-t flex items-center gap-2 flex-wrap">
             <span>💡 提示：</span>
-            <span>拖拽 <span className="font-mono text-slate-500">⋮⋮</span> 圖示可調整順序</span>
+            <span>拖拽 <span className="font-mono text-slate-500">⋮⋮</span> 圖示可調整順序（即時生效）</span>
             <span className="text-slate-300">|</span>
-            <span>直接修改排序輸入框，失焦後自動保存</span>
+            <span>修改排序輸入框後，點擊「保存排序」提交</span>
+            {/* 有未保存的排序修改時顯示保存按鈕 */}
+            {Object.keys(dirtySorts).length > 0 && (
+              <button
+                onClick={handleSaveSorts}
+                disabled={sortingUpdate}
+                className="ml-auto inline-flex items-center gap-1 px-3 py-1 bg-amber-500 text-white rounded text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {sortingUpdate ? '⏳ 保存中...' : `💾 保存排序（${Object.keys(dirtySorts).length} 項）`}
+              </button>
+            )}
           </div>
         </div>
       )}

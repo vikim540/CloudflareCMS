@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.5.6**（2026-07-20）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.5.7**（2026-07-20）
 
 ---
 
@@ -14,6 +14,7 @@
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
 | Cloudflare API Token | 環境變量 `CLOUDFLARE_API_TOKEN` | — |
 | JWT_SECRET | wrangler secret | — |
+| TZ | `Asia/Hong_Kong` | wrangler.jsonc vars，Worker 運行時自動使用香港時區 |
 
 ---
 
