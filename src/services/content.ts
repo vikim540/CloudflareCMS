@@ -21,8 +21,8 @@ export async function handleListContents(
   const isrecommend = params.get('isrecommend');
   const order = params.get('order') || 'date';
 
-  // 摘要字段（排除 content 正文、enclosure 附件等大字段）
-  const summaryFields = 'c.id, c.scode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.gtype, c.gid, c.urlname, c.visits, c.likes, c.oppose, c.create_time, c.update_time';
+  // 列表字段（僅排除 content 正文，其餘字段全部返回）
+  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
 
   const conditions: string[] = ["c.status = '1'", "c.scode != ''"];
   const binds: (string | number)[] = [];
@@ -141,9 +141,15 @@ export async function handleAdminListContents(
     binds.push(mcode);
   }
 
+  // 欄目篩選（含子孫欄目，與公開 API 邏輯一致）
   if (scode) {
-    conditions.push('scode = ?');
-    binds.push(scode);
+    const scodes = await getDescendantScodes(db, scode);
+    if (scodes.length === 0) {
+      return okList([], createMeta(pagination.page, pagination.pagesize, 0), '成功');
+    }
+    const placeholders = scodes.map(() => '?').join(',');
+    conditions.push(`scode IN (${placeholders})`);
+    binds.push(...scodes);
   }
 
   if (keyword) {
@@ -155,6 +161,7 @@ export async function handleAdminListContents(
   const whereClause = conditions.join(' AND ');
   const off = offset(pagination);
 
+  // 後台列表需要返回所有字段（含 content 正文，供預覽/編輯）
   const listSql = `SELECT * FROM ay_content WHERE ${whereClause} ORDER BY istop DESC, isrecommend DESC, isheadline DESC, sorting ASC, date DESC, id DESC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
@@ -271,3 +278,31 @@ export async function handleDeleteContent(db: D1Database, id: number): Promise<R
 
 // 注意: handleRestoreContent 和 handlePermanentDeleteContent 已移至 ./model.ts
 // model.ts 版本包含更嚴格的 status 守衛條件, 確保回收站操作安全
+
+/**
+ * 獲取所有歷史標籤（從 ay_content.tags 字段提取，去重排序）
+ * 用於內容編輯器的標籤快速補充功能
+ */
+export async function handleAllContentTags(db: D1Database): Promise<Response> {
+  try {
+    const result = await db.prepare(
+      "SELECT tags FROM ay_content WHERE tags IS NOT NULL AND tags != '' AND CAST(status AS INTEGER) >= 0",
+    ).all<{ tags: string }>();
+
+    // 提取、分割、去重
+    const tagSet = new Set<string>();
+    for (const row of result.results) {
+      if (!row.tags) continue;
+      const parts = row.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
+      for (const tag of parts) {
+        tagSet.add(tag);
+      }
+    }
+
+    const tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+    return okData(tags, '成功');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知錯誤';
+    return err(`獲取標籤列表失敗: ${msg}`, 1005);
+  }
+}

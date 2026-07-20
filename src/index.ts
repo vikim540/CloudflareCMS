@@ -486,6 +486,13 @@ app.get('/api/v1/admin/contents/extfields', async (c) => {
   return modelService.handleGetContentExtFields(siteDB(c), scode);
 });
 
+// 歷史標籤列表（供編輯器快速補充）- 必須在 :id 路由之前
+app.get('/api/v1/admin/contents/all-tags', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return contentService.handleAllContentTags(siteDB(c));
+});
+
 // 回收站列表 - 必須在 :id 路由之前
 app.get('/api/v1/admin/contents/trash', async (c) => {
   const claims = await requireAuth(c);

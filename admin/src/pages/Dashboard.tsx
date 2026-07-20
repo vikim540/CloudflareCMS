@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.6.2',
+    date: '2026-07-20 22:30:00',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 內容管理修復 + 標籤輸入體驗升級\n\n📂 父欄目文章列表修復\n• 後台內容列表點擊父欄目（如醫生專欄）現在正確顯示所有子欄目文章\n• handleAdminListContents 改用 getDescendantScodes（與公開 API 邏輯一致）\n\n📋 公開內容列表 API 字段補全\n• 補回被過度刪除的字段：acode、subscode、enclosure、gnote、create_user、update_user\n• 僅排除 content 正文字段（減小響應體積）\n\n🏷️ 標籤輸入器升級\n• 文字輸入改為 TagInput 組件：輸入後按 Enter 生成可關閉的標籤塊\n• 歷史標籤快速補充：顯示曾用標籤，點擊即可添加，無需重複打字\n• 新增 API：GET /admin/contents/all-tags 獲取所有歷史標籤\n\n🔁 Slug 去重\n• 移除基本內容 Tab 中重複的 Slug 字段，僅保留高級內容 Tab 中的 Slug',
+  },
+  {
     version: 'v1.6.1',
     date: '2026-07-20 18:00:00',
     icon: '🗂️',
-    latest: true,
+    latest: false,
     changes: '🗂️ 欄目管理批量操作 — 批量排序 + 批量刪除 + 排序默認值優化\n\n📝 批量排序（dirty tracking 模式）\n• 排序列改為可編輯的 SortInput 組件（統一組件 useBatchSorting + BatchSortSaveBar）\n• 修改後標記 dirty（amber 高亮），底部顯示「保存排序」按鈕統一提交\n• 調用 PUT /admin/sorts/batch-sorting 批量更新\n• 成功/失敗均自動刷新欄目樹\n\n🗑️ 批量刪除\n• 表格頭部全選 checkbox + 每行 checkbox\n• 選中後顯示「批量刪除（N）」按鈕\n• 確認對話框警告「刪除欄目將同時刪除所有子欄目和關聯內容」\n• 逐條調用 DELETE /admin/sorts/:id（後端級聯刪除）\n• 顯示刪除進度 X/Y，失敗項計數\n\n🔢 排序默認值優化\n• 新建欄目 sorting 從硬編碼 255 改為 max(sorting)+1（同級 pcode 範圍）\n• 無同級欄目時默認為 1\n• 後端 handleCreateSort 查詢 MAX(sorting) 計算新值',
   },
   {
@@ -270,7 +277,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/tags', desc: '標籤列表', auth: false },
   { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
   // 管理接口 (300次/分/用戶)
-  { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?mcode=&page=)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?scode=&mcode=&page=)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/contents/all-tags', desc: '歷史標籤列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
   { method: 'GET', path: '/api/v1/admin/models/all', desc: '所有模型', auth: true },

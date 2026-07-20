@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
+import { TagInput } from '../components/TagInput'
 import { useImageUpload } from '../hooks/useImageUpload'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
@@ -800,6 +801,7 @@ export default function ContentEdit() {
   const [icoUrlInput, setIcoUrlInput] = useState('') // 縮略圖外鏈 URL 輸入框值
   const [icoMediaPickerOpen, setIcoMediaPickerOpen] = useState(false) // 縮略圖媒體庫選擇器
   const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
+  const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
 
   // 自定義擴展欄位
   const [extFields, setExtFields] = useState<ExtField[]>([])
@@ -883,6 +885,15 @@ export default function ContentEdit() {
   useEffect(() => {
     fetchCategories()
   }, [fetchCategories])
+
+  // 載入歷史標籤列表（供標籤輸入器快速補充）
+  useEffect(() => {
+    api.get<string[]>('/admin/contents/all-tags').then((res) => {
+      setAllTags(res.data ?? [])
+    }).catch(() => {
+      // 獲取失敗不影響編輯功能
+    })
+  }, [])
 
   useEffect(() => {
     if (isEdit) {
@@ -1273,19 +1284,6 @@ export default function ContentEdit() {
               />
             </div>
 
-            {/* Slug (URL別名) - 與高級內容共享 filename 狀態 */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
-              <input
-                type="text"
-                value={form.filename}
-                onChange={(e) => updateField('filename', e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="用於生成友好的 URL，留空則自動使用 ID"
-                pattern="[a-zA-Z0-9\-_/]+"
-              />
-            </div>
-
             {/* 欄目 + 狀態 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -1324,18 +1322,46 @@ export default function ContentEdit() {
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
             </div>
 
-            {/* 標籤、作者、來源 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1.5">標籤</label>
-                <input
-                  type="text"
-                  value={form.tags}
-                  onChange={(e) => updateField('tags', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="多個標籤以英文逗號隔開"
-                />
-              </div>
+            {/* 標籤（TagInput 組件 + 歷史標籤快速補充） */}
+            <div>
+              <label className="block text-sm font-medium mb-1.5">標籤</label>
+              <TagInput
+                values={form.tags ? form.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : []}
+                onChange={(tags) => updateField('tags', tags.join(','))}
+                placeholder="輸入標籤後按 Enter 添加"
+              />
+              {allTags.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground mb-1">📋 歷史標籤（點擊添加）</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allTags
+                      .filter((t) => {
+                        const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()) : []
+                        return !current.includes(t)
+                      })
+                      .slice(0, 30)
+                      .map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
+                            if (!current.includes(tag)) {
+                              updateField('tags', [...current, tag].join(','))
+                            }
+                          }}
+                          className="px-2 py-0.5 text-xs border border-border text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 作者、來源 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5">作者</label>
                 <input
@@ -1515,7 +1541,7 @@ export default function ContentEdit() {
               />
             </div>
 
-            {/* Slug (URL別名) + 外鏈 - filename 與基本內容 Tab 共享同一狀態 */}
+            {/* Slug (URL別名) + 外鏈 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
