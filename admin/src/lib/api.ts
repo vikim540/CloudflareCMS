@@ -50,6 +50,64 @@ export function clearUserInfo(): void {
   localStorage.removeItem('cms_user')
 }
 
+/** 站點信息（多站點管理） */
+export interface SiteInfo {
+  siteId: string
+  name: string
+  binding: string
+  databaseId: string
+  databaseName: string
+  domain: string
+  region: string
+  accessType: string
+  status: string
+  isPrimary: boolean
+  sorting: number
+}
+
+const SITE_ID_KEY = 'cms_site_id'
+const SITE_NAME_KEY = 'cms_site_name'
+const SITES_KEY = 'cms_sites'
+
+/** 獲取當前選中的站點 ID */
+export function getCurrentSiteId(): string {
+  return localStorage.getItem(SITE_ID_KEY) || 'endoscopy'
+}
+
+/** 獲取當前站點名稱 */
+export function getCurrentSiteName(): string {
+  return localStorage.getItem(SITE_NAME_KEY) || 'Endoscopy CMS'
+}
+
+/** 設置當前站點 */
+export function setCurrentSite(siteId: string, siteName: string): void {
+  localStorage.setItem(SITE_ID_KEY, siteId)
+  localStorage.setItem(SITE_NAME_KEY, siteName)
+}
+
+/** 清除站點選擇 */
+export function clearCurrentSite(): void {
+  localStorage.removeItem(SITE_ID_KEY)
+  localStorage.removeItem(SITE_NAME_KEY)
+  localStorage.removeItem(SITES_KEY)
+}
+
+/** 緩存用戶可訪問的站點列表 */
+export function setCachedSites(sites: SiteInfo[]): void {
+  localStorage.setItem(SITES_KEY, JSON.stringify(sites))
+}
+
+/** 獲取緩存的站點列表 */
+export function getCachedSites(): SiteInfo[] {
+  const raw = localStorage.getItem(SITES_KEY)
+  if (!raw) return []
+  try {
+    return JSON.parse(raw) as SiteInfo[]
+  } catch {
+    return []
+  }
+}
+
 /** 統一 API 響應格式 */
 export interface ApiResponse<T = unknown> {
   code: number
@@ -77,6 +135,7 @@ async function request<T>(
   const token = getToken()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Site-Id': getCurrentSiteId(),
     ...(options.headers as Record<string, string>),
   }
   if (token) headers['Authorization'] = `Bearer ${token}`

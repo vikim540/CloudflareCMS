@@ -8,12 +8,25 @@
   "workers_dev": false,
   "preview_urls": false,
 
+  // 多站點 D1 綁定（全部 APAC 地區）
+  // DB = 主庫 endoscopy-cms（認證/用戶/角色/菜單等全局數據，向後兼容）
+  // DB_SMILE / DB_VISION = 站點庫（各站點內容/配置等獨立數據）
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "rust-cms-db",
-      "database_id": "28a95ec3-7228-4c47-b9f6-e9cfcfcaf319",
+      "database_name": "endoscopy-cms",
+      "database_id": "c824a999-6a14-4878-bc43-2f3de023cbde",
       "migrations_dir": "./migrations"
+    },
+    {
+      "binding": "DB_SMILE",
+      "database_name": "smile-cms",
+      "database_id": "f59320b5-b1f2-47cf-8b32-e341e1c5da48"
+    },
+    {
+      "binding": "DB_VISION",
+      "database_name": "vision-cms",
+      "database_id": "a49903a9-098e-43cd-934c-9bad2466d8ae"
     }
   ],
 
@@ -100,7 +113,12 @@
   "vars": {
     "API_PREFIX": "/api/v1",
     "JWT_EXPIRE_DAYS": "7",
-    "TZ": "Asia/Hong_Kong"
+    "TZ": "Asia/Hong_Kong",
+    // Cloudflare Account ID（D1 REST API 創建動態站點用，非敏感信息）
+    "CF_ACCOUNT_ID": "f5d4e94cb23f69f8ae69baedff94f2ba",
+    // 多站點註冊表：site_id → { binding, name, domain, isPrimary }
+    // 認證中間件解析 X-Site-Id header，路由到對應 binding
+    "SITE_REGISTRY": "{\"endoscopy\":{\"binding\":\"DB\",\"name\":\"Endoscopy CMS\",\"domain\":\"cms.cmermedical.com.hk\",\"isPrimary\":true},\"smile\":{\"binding\":\"DB_SMILE\",\"name\":\"Smile CMS\",\"domain\":\"smile.cmermedical.com.hk\",\"isPrimary\":false},\"vision\":{\"binding\":\"DB_VISION\",\"name\":\"Vision CMS\",\"domain\":\"vision.cmermedical.com.hk\",\"isPrimary\":false}}"
   },
 
   "observability": {

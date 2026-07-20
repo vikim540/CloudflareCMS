@@ -25,6 +25,7 @@ import Roles from './pages/Roles'
 import Menus from './pages/Menus'
 import Logs from './pages/Logs'
 import Database from './pages/Database'
+import Sites from './pages/Sites'
 
 /** 路由守衛:未登錄跳轉到登錄頁 */
 function Protected({ children }: { children: React.ReactNode }) {
@@ -98,6 +99,7 @@ export default function App() {
         <Route path="menus" element={<RequirePermission mcode="M506"><Menus /></RequirePermission>} />
         <Route path="logs" element={<RequirePermission mcode="M507"><Logs /></RequirePermission>} />
         <Route path="database" element={<RequirePermission mcode="__super__"><Database /></RequirePermission>} />
+        <Route path="sites" element={<RequirePermission mcode="M308"><Sites /></RequirePermission>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

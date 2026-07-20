@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import { api, clearToken, getUserInfo, clearUserInfo, setPermissionDeniedCallback, setUserInfo, type UserInfo } from '../lib/api'
+import { api, clearToken, getUserInfo, clearUserInfo, setPermissionDeniedCallback, setUserInfo, getCurrentSiteId, getCurrentSiteName, setCurrentSite, getCachedSites, setCachedSites, clearCurrentSite, type UserInfo, type SiteInfo } from '../lib/api'
 import { cn } from '../lib/utils'
 import { FeatureFlagProvider } from '../hooks/useFeatureFlags'
 
@@ -59,6 +59,7 @@ const LABEL_MCODE_MAP: Record<string, string> = {
   '角色管理': 'M505',
   '菜單管理': 'M506',
   '系統日誌': 'M507',
+  '多站點管理': 'M308',
   // 「資料庫管理」「存儲設置」無對應菜單 → 不在映射中，默認僅超管可見
 }
 
@@ -123,6 +124,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/roles', label: '角色管理', icon: '🔐' },
       { to: '/menus', label: '菜單管理', icon: '📋' },
       { to: '/logs', label: '系統日誌', icon: '📜' },
+      { to: '/sites', label: '多站點管理', icon: '🌐' },
       // 以下兩項無對應菜單 mcode，默認僅超級管理員可見
       { to: '/database', label: '資料庫管理', icon: '🖥️' },
       { to: '/storage', label: '存儲設置', icon: '💾' },
@@ -141,6 +143,11 @@ export default function Layout() {
   const [models, setModels] = useState<Model[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）
   const [userInfo, setUserInfoState] = useState(() => getUserInfo())
+  // 多站點：可訪問站點列表 + 當前站點名稱 + 下拉開關
+  const [sites, setSites] = useState<SiteInfo[]>(() => getCachedSites())
+  const [currentSiteName, setCurrentSiteName] = useState(() => getCurrentSiteName())
+  const [siteDropdownOpen, setSiteDropdownOpen] = useState(false)
+  const siteDropdownRef = useRef<HTMLDivElement>(null)
 
   // ─── 權限拒絕 toast 提示 ────────────────────────────────
   const [permToast, setPermToast] = useState<string | null>(null)
@@ -162,6 +169,50 @@ export default function Layout() {
         /* 載入失敗時靜默處理，側邊欄僅顯示回收站 */
       })
   }, [])
+
+  // 載入用戶可訪問的站點列表
+  useEffect(() => {
+    api
+      .get<{ sites: SiteInfo[] }>('/admin/sites')
+      .then((res) => {
+        const siteList = res.data?.sites ?? []
+        setSites(siteList)
+        setCachedSites(siteList)
+        // 如果當前選中的站點不在列表中，切換到第一個可用站點
+        const currentId = getCurrentSiteId()
+        const found = siteList.find((s) => s.siteId === currentId)
+        if (!found && siteList.length > 0) {
+          setCurrentSite(siteList[0].siteId, siteList[0].name)
+          setCurrentSiteName(siteList[0].name)
+        } else if (found) {
+          setCurrentSiteName(found.name)
+          setCurrentSite(found.siteId, found.name)
+        }
+      })
+      .catch(() => {
+        /* 使用緩存的站點列表 */
+      })
+  }, [])
+
+  // 點擊外部關閉站點下拉
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (siteDropdownRef.current && !siteDropdownRef.current.contains(e.target as Node)) {
+        setSiteDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  /** 切換站點：保存到 localStorage 並刷新頁面 */
+  function handleSiteSwitch(site: SiteInfo) {
+    setSiteDropdownOpen(false)
+    if (site.siteId === getCurrentSiteId()) return
+    setCurrentSite(site.siteId, site.name)
+    // 刷新頁面以重新載入新站點的數據
+    window.location.reload()
+  }
 
   // ─── 掛載時拉取最新用戶信息（刷新權限，解決角色權限變更後 JWT 過時的問題）───
   useEffect(() => {
@@ -262,6 +313,7 @@ export default function Layout() {
     }
     clearToken()
     clearUserInfo()
+    clearCurrentSite()
     navigate('/login')
   }
 
@@ -280,8 +332,41 @@ export default function Layout() {
     <div className="flex h-screen">
       {/* 側邊欄 */}
       <aside className="w-56 bg-white border-r flex flex-col">
-        <div className="h-14 flex items-center px-6 border-b">
-          <span className="font-bold text-lg">CMS 管理後台</span>
+        <div className="h-14 flex items-center px-6 border-b relative" ref={siteDropdownRef}>
+          {/* 站點選擇器：顯示當前站點名稱，點擊展開下拉選單 */}
+          <button
+            onClick={() => setSiteDropdownOpen(!siteDropdownOpen)}
+            className="flex items-center gap-2 font-bold text-lg hover:text-primary transition-colors truncate"
+            title={sites.length > 1 ? '切換站點' : currentSiteName}
+          >
+            <span className="truncate">{currentSiteName}</span>
+            {sites.length > 1 && (
+              <span className={cn('text-xs transition-transform', siteDropdownOpen && 'rotate-180')}>
+                ▼
+              </span>
+            )}
+          </button>
+          {/* 站點下拉選單 */}
+          {siteDropdownOpen && sites.length > 1 && (
+            <div className="absolute top-full left-0 mt-px w-56 bg-white border border-t-0 shadow-lg z-50 max-h-80 overflow-y-auto">
+              {sites.map((site) => (
+                <button
+                  key={site.siteId}
+                  onClick={() => handleSiteSwitch(site)}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-6 py-2.5 text-sm text-left transition-colors',
+                    site.siteId === getCurrentSiteId()
+                      ? 'bg-secondary text-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                  )}
+                >
+                  <span>{site.isPrimary ? '⭐' : '🌐'}</span>
+                  <span className="truncate">{site.name}</span>
+                  {site.siteId === getCurrentSiteId() && <span className="ml-auto text-xs">✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <nav className="flex-1 py-3 overflow-y-auto">
           {/* 儀表板（置頂，獨立項目） */}

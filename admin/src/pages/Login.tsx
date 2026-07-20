@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, setToken, setUserInfo } from '../lib/api'
+import { api, setToken, setUserInfo, setCachedSites, setCurrentSite, type SiteInfo } from '../lib/api'
 
 /** Turnstile 全局類型聲明 */
 declare global {
@@ -172,6 +172,13 @@ export default function Login() {
         isSuper: res.data!.user.isSuper,
         permissions: res.data!.user.permissions || [],
       })
+      // 緩存用戶可訪問的站點列表，並設置默認站點（主站或第一個）
+      const sites: SiteInfo[] = (res.data as { sites?: SiteInfo[] })?.sites ?? []
+      setCachedSites(sites)
+      if (sites.length > 0) {
+        const primary = sites.find((s) => s.isPrimary) ?? sites[0]
+        setCurrentSite(primary.siteId, primary.name)
+      }
       navigate('/')
     } catch (err) {
       setError(err instanceof Error ? err.message : '登錄失敗')

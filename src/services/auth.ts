@@ -9,6 +9,7 @@ import { signJwt, genUuid, type JwtClaims } from '../utils/jwt';
 import { okData, ok, err, notFound } from '../utils/response';
 import { nowStr } from '../utils/datetime';
 import { getConfig } from './config';
+import { getUserSites } from './site';
 
 /** 超級管理員 ucode */
 const SUPER_ADMIN_UCODE = '10001';
@@ -163,6 +164,9 @@ export async function handleLogin(
     .bind(loginIp, nowStr(), user.id)
     .run();
 
+  // 獲取用戶可訪問的站點列表
+  const sites = await getUserSites(db, user.id, isSuper);
+
   return okData(
     {
       token,
@@ -175,6 +179,7 @@ export async function handleLogin(
         isSuper,
         permissions,
       },
+      sites,
       expires: exp,
     },
     '登錄成功',
@@ -194,11 +199,15 @@ export async function handleProfile(db: D1Database, claims: JwtClaims): Promise<
   // 重新從數據庫加載權限（而非使用 JWT 中的快照），確保角色權限變更後即時生效
   const permissions = claims.isSuper ? [] : await loadUserPermissions(db, (user as { rcodes: string }).rcodes || '');
 
+  // 獲取用戶可訪問的站點列表（確保站點分配變更後即時生效）
+  const sites = await getUserSites(db, Number(claims.sub), claims.isSuper);
+
   return okData(
     {
       ...user,
       isSuper: claims.isSuper,
       permissions,
+      sites,
     },
     '成功',
   );

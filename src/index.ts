@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cloudflare CMS Worker - 主入口
  * 基於 PbootCMS 3.2.12 數據庫結構,純 API 後端
  *
@@ -19,6 +19,7 @@ import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Fla
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission, hasMenuPermission, reloadUserPermissions } from './services/auth';
 import { ok, okData, err, forbidden } from './utils/response';
+import { siteDB, primaryDB, currentSiteId, currentSiteName, resolveBinding, parseSiteRegistry, listRegisteredSites, D1RestClient, createD1Database } from './utils/sitedb';
 import * as authService from './services/auth';
 import * as configService from './services/config';
 import * as sortService from './services/sort';
@@ -28,6 +29,7 @@ import * as extraService from './services/extra';
 import * as modelService from './services/model';
 import * as systemService from './services/system';
 import * as notifyService from './services/notify';
+import * as siteService from './services/site';
 import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
 import { apiCache, clearContentCache, clearConfigCache } from './services/cache';
 import * as vectorizeService from './services/vectorize';
@@ -37,13 +39,19 @@ import { nowStr, todayStr } from './utils/datetime';
 
 /** Worker 環境綁定 */
 export interface Env {
-  DB: D1Database;
+  DB: D1Database;                    // 主庫 endoscopy-cms（認證/用戶/角色/菜單/站點註冊表）
+  DB_SMILE: D1Database;              // smile-cms 站點庫
+  DB_VISION: D1Database;             // vision-cms 站點庫
   CONFIG_CACHE: KVNamespace;
   TOKEN_BLACKLIST: KVNamespace;
   API_CACHE: KVNamespace;
   JWT_SECRET: string;
   API_PREFIX: string;
   JWT_EXPIRE_DAYS: string;
+  TZ: string;
+  SITE_REGISTRY: string;             // 多站點註冊表 JSON（site_id → {binding, name, domain}）
+  CF_ACCOUNT_ID: string;             // Cloudflare Account ID（D1 REST API 創建動態站點用）
+  CF_API_TOKEN: string;              // Cloudflare API Token（Secrets Store 綁定，D1 REST API 用）
   PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string }>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
@@ -55,7 +63,7 @@ export interface Env {
 }
 
 /** Hono 應用環境類型 (含 Bindings 和 Variables) */
-type AppEnv = { Bindings: Env; Variables: { claims?: JwtClaims } };
+type AppEnv = { Bindings: Env; Variables: { claims?: JwtClaims; siteDb?: D1Database; siteId?: string; siteName?: string } };
 
 const app = new Hono<AppEnv>();
 
@@ -105,7 +113,7 @@ app.use('*', async (c, next) => {
 
   c.header('Access-Control-Allow-Origin', allowedOrigin);
   c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Site-Id');
   c.header('Access-Control-Max-Age', '86400');
   if (credentials) {
     c.header('Access-Control-Allow-Credentials', 'true');
@@ -116,6 +124,25 @@ app.use('*', async (c, next) => {
     return c.body(null, 204);
   }
 
+  await next();
+});
+
+// ===== 多站點上下文中間件（解析 X-Site-Id header → 路由到對應 D1 binding）=====
+// 數據路由通過 siteDB(c) 獲取當前站點庫，認證/系統路由通過 primaryDB(c) 始終用主庫
+// 未攜帶 X-Site-Id 或未知站點時，回退到主庫（endoscopy-cms）確保向後兼容
+app.use('*', async (c, next) => {
+  const siteId = c.req.header('X-Site-Id') || 'endoscopy';
+  const registry = parseSiteRegistry(c.env.SITE_REGISTRY ?? '{}');
+  const entry = registry[siteId];
+  if (entry && entry.binding) {
+    const envBindings = c.env as unknown as Record<string, D1Database>;
+    const db = envBindings[entry.binding];
+    if (db) {
+      c.set('siteDb', db);
+      c.set('siteId', siteId);
+      c.set('siteName', entry.name);
+    }
+  }
   await next();
 });
 
@@ -196,7 +223,7 @@ function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {
     if (!claims) return await next(); // 未認證由 requireAuth 處理
     if (claims.isSuper) return await next(); // 超級管理員跳過
 
-    const map = await getUrlMcodeMap(c.env.DB);
+    const map = await getUrlMcodeMap(primaryDB(c));
     const mcode = map.get(menuUrl);
     if (!mcode) return await next(); // 找不到 mcode 時放行 (避免誤攔)
 
@@ -233,20 +260,20 @@ app.get('/api/health', (c) => {
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  return authService.handleLogin(c.env.DB, c.env.CONFIG_CACHE, c.env.JWT_SECRET, body, loginIp);
+  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, c.env.JWT_SECRET, body, loginIp);
 });
 
 // 公開：獲取 Turnstile 配置（site key 是公開的，secret key 不返回）
 app.get('/api/v1/auth/turnstile-config', async (c) => {
-  const enabled = await configService.getConfig(c.env.DB, c.env.CONFIG_CACHE, 'turnstile_enabled', '0');
-  const siteKey = await configService.getConfig(c.env.DB, c.env.CONFIG_CACHE, 'turnstile_site_key', '');
+  const enabled = await configService.getConfig(primaryDB(c), c.env.CONFIG_CACHE, 'turnstile_enabled', '0');
+  const siteKey = await configService.getConfig(primaryDB(c), c.env.CONFIG_CACHE, 'turnstile_site_key', '');
   return okData({ enabled: enabled === '1', siteKey }, '成功');
 });
 
 app.get('/api/v1/auth/profile', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權或 Token 已過期', 2002);
-  return authService.handleProfile(c.env.DB, claims);
+  return authService.handleProfile(primaryDB(c), claims);
 });
 
 app.post('/api/v1/auth/logout', async (c) => {
@@ -257,78 +284,93 @@ app.post('/api/v1/auth/logout', async (c) => {
 
 // ===== 前台公開接口 =====
 app.get('/api/v1/site', async (c) => {
-  const site = await configService.getSiteInfo(c.env.DB);
+  const site = await configService.getSiteInfo(siteDB(c));
   if (!site) return err('站點信息未配置', 1004);
   return okData(site, '成功');
 });
 
 app.get('/api/v1/company', async (c) => {
-  const company = await extraService.getPublicCompany(c.env.DB);
+  const company = await extraService.getPublicCompany(siteDB(c));
   return okData(company, '成功');
 });
 
-app.get('/api/v1/sorts', async (c) => sortService.handleSortTree(c.env.DB));
-app.get('/api/v1/nav', async (c) => sortService.handleNav(c.env.DB));
+app.get('/api/v1/sorts', async (c) => sortService.handleSortTree(siteDB(c)));
+app.get('/api/v1/nav', async (c) => sortService.handleNav(siteDB(c)));
 
 app.get('/api/v1/sorts/:scode', async (c) => {
   const scode = c.req.param('scode');
-  return sortService.handleSortDetail(c.env.DB, scode);
+  return sortService.handleSortDetail(siteDB(c), scode);
 });
 
 app.get('/api/v1/contents', publicRateLimit(), async (c) => {
   const params = new URL(c.req.url).searchParams;
-  return contentService.handleListContents(c.env.DB, params);
+  return contentService.handleListContents(siteDB(c), params);
 });
 
 app.get('/api/v1/contents/:id', async (c) => {
   const id = Number(c.req.param('id')) || 0;
   const track = c.req.query('track') === '1';
-  return contentService.handleContentDetail(c.env.DB, id, track);
+  return contentService.handleContentDetail(siteDB(c), id, track);
 });
 
 // ===== 前台公開接口 - 擴展模塊 =====
-app.get('/api/v1/singles', async (c) => extraService.handleListSingles(c.env.DB));
+app.get('/api/v1/singles', async (c) => extraService.handleListSingles(siteDB(c)));
 
 app.get('/api/v1/singles/:scode', async (c) => {
   const scode = c.req.param('scode');
-  return extraService.handleSingleDetail(c.env.DB, scode);
+  return extraService.handleSingleDetail(siteDB(c), scode);
 });
 
 app.get('/api/v1/links', async (c) => {
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleListLinks(c.env.DB, params);
+  return extraService.handleListLinks(siteDB(c), params);
 });
 
 app.get('/api/v1/slides', async (c) => {
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleListSlides(c.env.DB, params);
+  return extraService.handleListSlides(siteDB(c), params);
 });
 
-app.get('/api/v1/tags', async (c) => extraService.handleListTags(c.env.DB));
+app.get('/api/v1/tags', async (c) => extraService.handleListTags(siteDB(c)));
 
 app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const body = await c.req.json();
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(c.env.DB, c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body);
+  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body);
 });
 
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
 // 在 requireMenuPermission 之前執行, 將驗證後的 claims 存入上下文
 // 未認證請求不放行 (由各 handler 中的 requireAuth 返回 401)
 // 非超管用戶每次請求重新加載權限，確保角色權限變更後即時生效（無需重新登錄）
+// 多站點：非超管用戶只能訪問已分配的站點，否則返回 403
 app.use('/api/v1/admin/*', async (c, next) => {
   const claims = await requireAuth(c);
   if (claims) {
     if (!claims.isSuper) {
       // 非超管用戶：從數據庫重新加載權限（解決 JWT 中權限過時的問題）
-      const freshPerms = await reloadUserPermissions(c.env.DB, Number(claims.sub));
+      const freshPerms = await reloadUserPermissions(primaryDB(c), Number(claims.sub));
       if (freshPerms === null) {
         // 用戶不存在或已禁用 → 返回 401，觸發前端登出
         return err('用戶已被禁用或不存在', 2006);
       }
       claims.permissions = freshPerms;
+
+      // 多站點訪問權限檢查：非超管用戶只能訪問已分配的站點
+      // 站點管理路由（/admin/sites）本身允許訪問（用戶需要查看自己的站點列表）
+      const requestedSiteId = c.req.header('X-Site-Id') || 'endoscopy';
+      const path = c.req.path;
+      const isSiteMgmtRoute = path.startsWith('/api/v1/admin/sites') || path.startsWith('/api/v1/admin/users');
+      if (!isSiteMgmtRoute) {
+        const hasAccess = await siteService.checkSiteAccess(
+          primaryDB(c), Number(claims.sub), requestedSiteId, false,
+        );
+        if (!hasAccess) {
+          return forbidden('無權訪問此站點');
+        }
+      }
     }
     c.set('claims', claims);
   }
@@ -388,7 +430,7 @@ app.use('/api/v1/admin/*', async (c, next) => {
   const event = `${method} ${path} - ${action}${isError ? ` 失敗: ${errorMsg}` : ''}`;
 
   c.executionCtx.waitUntil(
-    systemService.logAction(c.env.DB, claims.username, userIp, userAgent, event, finalLevel, path),
+    systemService.logAction(primaryDB(c), claims.username, userIp, userAgent, event, finalLevel, path),
   );
 });
 
@@ -433,7 +475,7 @@ app.get('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return contentService.handleAdminListContents(c.env.DB, params);
+  return contentService.handleAdminListContents(siteDB(c), params);
 });
 
 // 擴展字段定義 (根據欄目 scode 查詢) - 必須在 :id 路由之前
@@ -441,7 +483,7 @@ app.get('/api/v1/admin/contents/extfields', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const scode = c.req.query('scode') || '';
-  return modelService.handleGetContentExtFields(c.env.DB, scode);
+  return modelService.handleGetContentExtFields(siteDB(c), scode);
 });
 
 // 回收站列表 - 必須在 :id 路由之前
@@ -449,14 +491,14 @@ app.get('/api/v1/admin/contents/trash', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return modelService.handleListTrashedContents(c.env.DB, params);
+  return modelService.handleListTrashedContents(siteDB(c), params);
 });
 
 app.post('/api/v1/admin/contents', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await contentService.handleCreateContent(c.env.DB, body);
+  const result = await contentService.handleCreateContent(siteDB(c), body);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;
@@ -467,7 +509,7 @@ app.put('/api/v1/admin/contents/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  const result = await contentService.handleUpdateContent(c.env.DB, id, body);
+  const result = await contentService.handleUpdateContent(siteDB(c), id, body);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;
@@ -477,7 +519,7 @@ app.delete('/api/v1/admin/contents/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  const result = await contentService.handleDeleteContent(c.env.DB, id);
+  const result = await contentService.handleDeleteContent(siteDB(c), id);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
   return result;
@@ -488,7 +530,7 @@ app.get('/api/v1/admin/contents/:id/ext', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleGetContentExt(c.env.DB, id);
+  return modelService.handleGetContentExt(siteDB(c), id);
 });
 
 // 從回收站恢復 (使用 modelService 版本, 包含 status 守衛)
@@ -496,7 +538,7 @@ app.post('/api/v1/admin/contents/:id/restore', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleRestoreContent(c.env.DB, id);
+  return modelService.handleRestoreContent(siteDB(c), id);
 });
 
 // 永久刪除 (使用 modelService 版本, 包含 status 守衛)
@@ -504,7 +546,7 @@ app.delete('/api/v1/admin/contents/:id/permanent', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handlePermanentDeleteContent(c.env.DB, id);
+  return modelService.handlePermanentDeleteContent(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 欄目管理 =====
@@ -512,14 +554,14 @@ app.get('/api/v1/admin/sorts', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const mcode = c.req.query('mcode') || undefined;
-  return sortService.handleSortTreeAll(c.env.DB, mcode);
+  return sortService.handleSortTreeAll(siteDB(c), mcode);
 });
 
 app.post('/api/v1/admin/sorts', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return sortService.handleCreateSort(c.env.DB, body);
+  return sortService.handleCreateSort(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/sorts/:id', async (c) => {
@@ -527,28 +569,28 @@ app.put('/api/v1/admin/sorts/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return sortService.handleUpdateSort(c.env.DB, id, body);
+  return sortService.handleUpdateSort(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/sorts/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return sortService.handleDeleteSort(c.env.DB, id);
+  return sortService.handleDeleteSort(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 系統配置 =====
 app.get('/api/v1/admin/configs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return configService.handleListConfigs(c.env.DB, c.env.CONFIG_CACHE);
+  return configService.handleListConfigs(siteDB(c), c.env.CONFIG_CACHE);
 });
 
 app.put('/api/v1/admin/configs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await configService.handleUpdateConfig(c.env.DB, c.env.CONFIG_CACHE, body);
+  const result = await configService.handleUpdateConfig(siteDB(c), c.env.CONFIG_CACHE, body);
   // 清除 API 響應緩存
   await clearConfigCache(c.env.API_CACHE);
   return result;
@@ -559,7 +601,7 @@ app.get('/api/v1/admin/stats', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
 
-  const db = c.env.DB;
+  const db = siteDB(c);
   const today = todayStr();
 
   const [contentTotal, sortTotal, visitsTotal, todayNew] = await Promise.all([
@@ -581,40 +623,40 @@ app.get('/api/v1/admin/stats', async (c) => {
 app.get('/api/v1/admin/storage/config', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleGetStorageConfig(c.env.DB, c.env.CONFIG_CACHE);
+  return storageService.handleGetStorageConfig(siteDB(c), c.env.CONFIG_CACHE);
 });
 
 app.put('/api/v1/admin/storage/config', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json<Record<string, string>>();
-  return storageService.handleUpdateStorageConfig(c.env.DB, c.env.CONFIG_CACHE, body);
+  return storageService.handleUpdateStorageConfig(siteDB(c), c.env.CONFIG_CACHE, body);
 });
 
 app.post('/api/v1/admin/storage/test', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleTestStorage(c.env.DB, c.env.CONFIG_CACHE);
+  return storageService.handleTestStorage(siteDB(c), c.env.CONFIG_CACHE);
 });
 
 app.post('/api/v1/admin/storage/upload', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleUpload(c.env.DB, c.env.CONFIG_CACHE, c.req.raw);
+  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw);
 });
 
 app.get('/api/v1/admin/storage/download/:key{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
-  return storageService.handleDownload(c.env.DB, c.env.CONFIG_CACHE, key);
+  return storageService.handleDownload(siteDB(c), c.env.CONFIG_CACHE, key);
 });
 
 app.delete('/api/v1/admin/storage/:key{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
-  return storageService.handleDelete(c.env.DB, c.env.CONFIG_CACHE, key);
+  return storageService.handleDelete(siteDB(c), c.env.CONFIG_CACHE, key);
 });
 
 app.get('/api/v1/admin/storage/presigned/:key{.+}', async (c) => {
@@ -622,7 +664,7 @@ app.get('/api/v1/admin/storage/presigned/:key{.+}', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
   const expires = parseInt(c.req.query('expires') || '3600', 10);
-  return storageService.handlePresignedUrl(c.env.DB, c.env.CONFIG_CACHE, key, expires);
+  return storageService.handlePresignedUrl(siteDB(c), c.env.CONFIG_CACHE, key, expires);
 });
 
 // ===== 後台管理接口 - 媒體庫 =====
@@ -630,7 +672,7 @@ app.get('/api/v1/admin/media', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return storageService.handleListMedia(c.env.DB, c.env.CONFIG_CACHE, params);
+  return storageService.handleListMedia(siteDB(c), c.env.CONFIG_CACHE, params);
 });
 
 // 文件詳情 (含使用狀態和標記狀態)
@@ -639,7 +681,7 @@ app.get('/api/v1/admin/media/detail', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.query('key') || '';
   if (!key) return err('缺少 key 參數', 1001);
-  return storageService.handleMediaDetail(c.env.DB, c.env.CONFIG_CACHE, key);
+  return storageService.handleMediaDetail(siteDB(c), c.env.CONFIG_CACHE, key);
 });
 
 // 切換文件標記 (標記保護/取消標記)
@@ -649,7 +691,7 @@ app.post('/api/v1/admin/media/mark', async (c) => {
   const body = await c.req.json();
   const key = body.key || '';
   if (!key) return err('缺少 key 參數', 1001);
-  return storageService.handleToggleMediaMark(c.env.DB, key);
+  return storageService.handleToggleMediaMark(siteDB(c), key);
 });
 
 // 清理未使用的文件
@@ -658,7 +700,7 @@ app.post('/api/v1/admin/media/clean', async (c) => {
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json().catch(() => ({}));
   const force = body.force === true || body.force === 1 || body.force === '1';
-  return storageService.handleCleanUnused(c.env.DB, c.env.CONFIG_CACHE, force);
+  return storageService.handleCleanUnused(siteDB(c), c.env.CONFIG_CACHE, force);
 });
 
 app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
@@ -666,14 +708,14 @@ app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
   const force = c.req.query('force') === '1';
-  return storageService.handleDeleteMedia(c.env.DB, c.env.CONFIG_CACHE, key, force);
+  return storageService.handleDeleteMedia(siteDB(c), c.env.CONFIG_CACHE, key, force);
 });
 
 // 通用上傳端點 (供編輯器圖片上傳使用)
 app.post('/api/v1/admin/upload', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleUpload(c.env.DB, c.env.CONFIG_CACHE, c.req.raw);
+  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw);
 });
 
 // ===== 後台管理接口 - 單頁管理 =====
@@ -681,21 +723,21 @@ app.get('/api/v1/admin/singles', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListSingles(c.env.DB, params);
+  return extraService.handleAdminListSingles(siteDB(c), params);
 });
 
 app.get('/api/v1/admin/singles/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleAdminGetSingle(c.env.DB, id);
+  return extraService.handleAdminGetSingle(siteDB(c), id);
 });
 
 app.post('/api/v1/admin/singles', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateSingle(c.env.DB, body);
+  return extraService.handleCreateSingle(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/singles/:id', async (c) => {
@@ -703,14 +745,14 @@ app.put('/api/v1/admin/singles/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateSingle(c.env.DB, id, body);
+  return extraService.handleUpdateSingle(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/singles/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteSingle(c.env.DB, id);
+  return extraService.handleDeleteSingle(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 友情連結 =====
@@ -718,14 +760,14 @@ app.get('/api/v1/admin/links', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListLinks(c.env.DB, params);
+  return extraService.handleAdminListLinks(siteDB(c), params);
 });
 
 app.post('/api/v1/admin/links', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateLink(c.env.DB, body);
+  return extraService.handleCreateLink(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/links/:id', async (c) => {
@@ -733,14 +775,14 @@ app.put('/api/v1/admin/links/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateLink(c.env.DB, id, body);
+  return extraService.handleUpdateLink(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/links/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteLink(c.env.DB, id);
+  return extraService.handleDeleteLink(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 幻燈片 =====
@@ -748,14 +790,14 @@ app.get('/api/v1/admin/slides', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListSlides(c.env.DB, params);
+  return extraService.handleAdminListSlides(siteDB(c), params);
 });
 
 app.post('/api/v1/admin/slides', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateSlide(c.env.DB, body);
+  return extraService.handleCreateSlide(siteDB(c), body);
 });
 
 // ⚠️ batch-sorting 路由必須在 :id 路由之前，否則 "batch-sorting" 會被當作 :id 匹配
@@ -764,7 +806,7 @@ app.put('/api/v1/admin/slides/batch-sorting', async (c) => {
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
   const items = Array.isArray(body?.items) ? body.items : [];
-  return extraService.handleBatchUpdateSlideSorting(c.env.DB, items);
+  return extraService.handleBatchUpdateSlideSorting(siteDB(c), items);
 });
 
 app.put('/api/v1/admin/slides/:id', async (c) => {
@@ -772,14 +814,14 @@ app.put('/api/v1/admin/slides/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateSlide(c.env.DB, id, body);
+  return extraService.handleUpdateSlide(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/slides/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteSlide(c.env.DB, id);
+  return extraService.handleDeleteSlide(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 標籤管理 =====
@@ -787,14 +829,14 @@ app.get('/api/v1/admin/tags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListTags(c.env.DB, params);
+  return extraService.handleAdminListTags(siteDB(c), params);
 });
 
 app.post('/api/v1/admin/tags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateTag(c.env.DB, body);
+  return extraService.handleCreateTag(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/tags/:id', async (c) => {
@@ -802,14 +844,14 @@ app.put('/api/v1/admin/tags/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateTag(c.env.DB, id, body);
+  return extraService.handleUpdateTag(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/tags/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteTag(c.env.DB, id);
+  return extraService.handleDeleteTag(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 留言管理 =====
@@ -817,14 +859,14 @@ app.get('/api/v1/admin/messages', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return extraService.handleAdminListMessages(c.env.DB, params);
+  return extraService.handleAdminListMessages(siteDB(c), params);
 });
 
 app.get('/api/v1/admin/messages/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleAdminGetMessage(c.env.DB, id);
+  return extraService.handleAdminGetMessage(siteDB(c), id);
 });
 
 app.put('/api/v1/admin/messages/:id', async (c) => {
@@ -832,14 +874,14 @@ app.put('/api/v1/admin/messages/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateMessage(c.env.DB, id, body);
+  return extraService.handleUpdateMessage(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/messages/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteMessage(c.env.DB, id);
+  return extraService.handleDeleteMessage(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 通知測試 =====
@@ -848,7 +890,7 @@ app.post('/api/v1/admin/notify/test-mail', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleTestMail(c.env.DB, c.env.CONFIG_CACHE, body);
+  return notifyService.handleTestMail(siteDB(c), c.env.CONFIG_CACHE, body);
 });
 
 // Webhook 推送測試
@@ -856,7 +898,7 @@ app.post('/api/v1/admin/notify/test-webhook', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleTestWebhook(c.env.DB, c.env.CONFIG_CACHE, body);
+  return notifyService.handleTestWebhook(siteDB(c), c.env.CONFIG_CACHE, body);
 });
 
 // 版本更新通知 — Dashboard 掛載時自動觸發（KV 去重，每版本只推送一次）
@@ -864,35 +906,35 @@ app.post('/api/v1/admin/notify/version-check', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return notifyService.handleVersionNotify(c.env.DB, c.env.CONFIG_CACHE, c.env['Flagship-service'], body);
+  return notifyService.handleVersionNotify(siteDB(c), c.env.CONFIG_CACHE, c.env['Flagship-service'], body);
 });
 
 // ===== 後台管理接口 - 站點信息 =====
 app.get('/api/v1/admin/site', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return extraService.handleAdminGetSite(c.env.DB);
+  return extraService.handleAdminGetSite(siteDB(c));
 });
 
 app.put('/api/v1/admin/site', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleAdminUpdateSite(c.env.DB, body);
+  return extraService.handleAdminUpdateSite(siteDB(c), body);
 });
 
 // ===== 後台管理接口 - 公司信息 =====
 app.get('/api/v1/admin/company', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return extraService.handleAdminGetCompany(c.env.DB);
+  return extraService.handleAdminGetCompany(siteDB(c));
 });
 
 app.put('/api/v1/admin/company', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleAdminUpdateCompany(c.env.DB, body);
+  return extraService.handleAdminUpdateCompany(siteDB(c), body);
 });
 
 // ===== 後台管理接口 - 模型管理 =====
@@ -900,27 +942,27 @@ app.get('/api/v1/admin/models', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return modelService.handleListModels(c.env.DB, params);
+  return modelService.handleListModels(siteDB(c), params);
 });
 
 app.get('/api/v1/admin/models/all', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return modelService.handleListModelAll(c.env.DB);
+  return modelService.handleListModelAll(siteDB(c));
 });
 
 app.get('/api/v1/admin/models/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleGetModel(c.env.DB, id);
+  return modelService.handleGetModel(siteDB(c), id);
 });
 
 app.post('/api/v1/admin/models', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return modelService.handleCreateModel(c.env.DB, body);
+  return modelService.handleCreateModel(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/models/:id', async (c) => {
@@ -928,14 +970,14 @@ app.put('/api/v1/admin/models/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return modelService.handleUpdateModel(c.env.DB, id, body);
+  return modelService.handleUpdateModel(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/models/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleDeleteModel(c.env.DB, id);
+  return modelService.handleDeleteModel(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 擴展字段管理 =====
@@ -943,14 +985,14 @@ app.get('/api/v1/admin/extfields', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return modelService.handleListExtFields(c.env.DB, params);
+  return modelService.handleListExtFields(siteDB(c), params);
 });
 
 app.post('/api/v1/admin/extfields', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return modelService.handleCreateExtField(c.env.DB, body);
+  return modelService.handleCreateExtField(siteDB(c), body);
 });
 
 app.put('/api/v1/admin/extfields/:id', async (c) => {
@@ -958,14 +1000,14 @@ app.put('/api/v1/admin/extfields/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return modelService.handleUpdateExtField(c.env.DB, id, body);
+  return modelService.handleUpdateExtField(siteDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/extfields/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleDeleteExtField(c.env.DB, id);
+  return modelService.handleDeleteExtField(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 用戶管理 =====
@@ -973,21 +1015,21 @@ app.get('/api/v1/admin/users', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return systemService.handleListUsers(c.env.DB, params);
+  return systemService.handleListUsers(primaryDB(c), params);
 });
 
 app.get('/api/v1/admin/users/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return systemService.handleGetUser(c.env.DB, id);
+  return systemService.handleGetUser(primaryDB(c), id);
 });
 
 app.post('/api/v1/admin/users', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return systemService.handleCreateUser(c.env.DB, body);
+  return systemService.handleCreateUser(primaryDB(c), body);
 });
 
 app.put('/api/v1/admin/users/:id', async (c) => {
@@ -995,14 +1037,14 @@ app.put('/api/v1/admin/users/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return systemService.handleUpdateUser(c.env.DB, id, body);
+  return systemService.handleUpdateUser(primaryDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/users/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return systemService.handleDeleteUser(c.env.DB, id);
+  return systemService.handleDeleteUser(primaryDB(c), id);
 });
 
 app.post('/api/v1/admin/users/:id/reset-password', async (c) => {
@@ -1010,7 +1052,7 @@ app.post('/api/v1/admin/users/:id/reset-password', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return systemService.handleResetPassword(c.env.DB, id, body);
+  return systemService.handleResetPassword(primaryDB(c), id, body);
 });
 
 // ===== 後台管理接口 - 角色管理 =====
@@ -1018,27 +1060,27 @@ app.get('/api/v1/admin/roles', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return systemService.handleListRoles(c.env.DB, params);
+  return systemService.handleListRoles(primaryDB(c), params);
 });
 
 app.get('/api/v1/admin/roles/all', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListRolesAll(c.env.DB);
+  return systemService.handleListRolesAll(primaryDB(c));
 });
 
 app.get('/api/v1/admin/roles/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return systemService.handleGetRole(c.env.DB, id);
+  return systemService.handleGetRole(primaryDB(c), id);
 });
 
 app.post('/api/v1/admin/roles', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return systemService.handleCreateRole(c.env.DB, body);
+  return systemService.handleCreateRole(primaryDB(c), body);
 });
 
 app.put('/api/v1/admin/roles/:id', async (c) => {
@@ -1046,34 +1088,34 @@ app.put('/api/v1/admin/roles/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return systemService.handleUpdateRole(c.env.DB, id, body);
+  return systemService.handleUpdateRole(primaryDB(c), id, body);
 });
 
 app.delete('/api/v1/admin/roles/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return systemService.handleDeleteRole(c.env.DB, id);
+  return systemService.handleDeleteRole(primaryDB(c), id);
 });
 
 // ===== 後台管理接口 - 菜單管理 =====
 app.get('/api/v1/admin/menus', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListMenus(c.env.DB);
+  return systemService.handleListMenus(primaryDB(c));
 });
 
 app.get('/api/v1/admin/menus/flat', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListMenusFlat(c.env.DB);
+  return systemService.handleListMenusFlat(primaryDB(c));
 });
 
 app.post('/api/v1/admin/menus', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await systemService.handleCreateMenu(c.env.DB, body);
+  const result = await systemService.handleCreateMenu(primaryDB(c), body);
   // 清除 URL→mcode 緩存 (菜單新增後)
   clearUrlMcodeCache();
   return result;
@@ -1084,7 +1126,7 @@ app.put('/api/v1/admin/menus/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  const result = await systemService.handleUpdateMenu(c.env.DB, id, body);
+  const result = await systemService.handleUpdateMenu(primaryDB(c), id, body);
   // 清除 URL→mcode 緩存 (菜單更新後)
   clearUrlMcodeCache();
   return result;
@@ -1094,7 +1136,7 @@ app.delete('/api/v1/admin/menus/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  const result = await systemService.handleDeleteMenu(c.env.DB, id);
+  const result = await systemService.handleDeleteMenu(primaryDB(c), id);
   // 清除 URL→mcode 緩存 (菜單刪除後)
   clearUrlMcodeCache();
   return result;
@@ -1105,41 +1147,41 @@ app.get('/api/v1/admin/logs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return systemService.handleListLogs(c.env.DB, params);
+  return systemService.handleListLogs(primaryDB(c), params);
 });
 
 app.post('/api/v1/admin/logs/clear', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return systemService.handleClearLogs(c.env.DB, body);
+  return systemService.handleClearLogs(primaryDB(c), body);
 });
 
 // ===== 後台管理接口 - 數據庫備份 =====
 app.get('/api/v1/admin/database/backups', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListBackups(c.env.DB, c.env.CONFIG_CACHE);
+  return systemService.handleListBackups(siteDB(c), c.env.CONFIG_CACHE);
 });
 
 app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleCreateBackup(c.env.DB, c.env.CONFIG_CACHE);
+  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE);
 });
 
 app.get('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDownloadBackup(c.env.DB, c.env.CONFIG_CACHE, filename);
+  return systemService.handleDownloadBackup(siteDB(c), c.env.CONFIG_CACHE, filename);
 });
 
 app.delete('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDeleteBackup(c.env.DB, c.env.CONFIG_CACHE, filename);
+  return systemService.handleDeleteBackup(siteDB(c), c.env.CONFIG_CACHE, filename);
 });
 
 // ===== 語義搜索 (Vectorize + Workers AI) =====
@@ -1147,14 +1189,14 @@ app.get('/api/v1/search', publicRateLimit(), async (c) => {
   const query = c.req.query('q') || '';
   const topK = parseInt(c.req.query('topK') || '10', 10);
   const threshold = parseFloat(c.req.query('threshold') || '0.7');
-  return vectorizeService.semanticSearch(c.env.AI, c.env.ARTICLE_INDEX, c.env.DB, query, topK, threshold);
+  return vectorizeService.semanticSearch(c.env.AI, c.env.ARTICLE_INDEX, siteDB(c), query, topK, threshold);
 });
 
 // ===== 定時發布管理 (Queues + Cron) =====
 app.get('/api/v1/admin/scheduler/list', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return schedulerService.handleListScheduled(c.env.DB);
+  return schedulerService.handleListScheduled(siteDB(c));
 });
 
 app.post('/api/v1/admin/scheduler/schedule', async (c) => {
@@ -1163,14 +1205,14 @@ app.post('/api/v1/admin/scheduler/schedule', async (c) => {
   const body = await c.req.json();
   const id = Number(body.id) || 0;
   const publishDate = body.publishDate || '';
-  return schedulerService.handleScheduleArticle(c.env.DB, c.env.PUBLISH_QUEUE, id, publishDate);
+  return schedulerService.handleScheduleArticle(siteDB(c), c.env.PUBLISH_QUEUE, id, publishDate);
 });
 
 // ===== Vectorize 索引管理 =====
 app.post('/api/v1/admin/vectorize/reindex', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return vectorizeService.reindexAllArticles(c.env.AI, c.env.ARTICLE_INDEX, c.env.DB);
+  return vectorizeService.reindexAllArticles(c.env.AI, c.env.ARTICLE_INDEX, siteDB(c));
 });
 
 // ===== 功能開關（標準化：註冊表驅動 + API 攔截 + 前端聯動）=====
@@ -1182,7 +1224,7 @@ app.use('/api/v1/*', autoRouteProtection());
 app.get('/api/v1/admin/flags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  const flags = await getAllFlags(c.env);
+  const flags = await getAllFlags({ ...c.env, DB: siteDB(c) } as never);
   return okData(flags, '成功');
 });
 
@@ -1197,7 +1239,7 @@ app.put('/api/v1/admin/flags', async (c) => {
       return err('缺少 key 或 enabled 參數');
     }
 
-    const result = await setFlagEnabled(c.env, body.key, body.enabled);
+    const result = await setFlagEnabled({ ...c.env, DB: siteDB(c) } as never, body.key, body.enabled);
     if (!result.success) {
       return err(result.error || '開關切換失敗', 1005);
     }
@@ -1214,6 +1256,58 @@ app.put('/api/v1/admin/flags', async (c) => {
 
 // ===== 內容更新時清除緩存 + 索引向量 =====
 
+// ===== 多站點管理接口 =====
+// 列出站點（超管看全部，普通用戶看已分配）
+app.get('/api/v1/admin/sites', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return siteService.handleListSites(primaryDB(c), Number(claims.sub), claims.isSuper);
+});
+
+// 獲取當前站點信息（根據 X-Site-Id header）
+app.get('/api/v1/admin/sites/current', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const siteId = c.req.header('X-Site-Id') || 'endoscopy';
+  return siteService.handleGetCurrentSite(primaryDB(c), siteId);
+});
+
+// 創建新站點（僅超管，通過 REST API 創建 D1 數據庫）
+app.post('/api/v1/admin/sites/create', requireSuperAdmin(), async (c) => {
+  const body = await c.req.json();
+  return siteService.handleCreateSite(primaryDB(c), {
+    CF_ACCOUNT_ID: c.env.CF_ACCOUNT_ID,
+    CF_API_TOKEN: c.env.CF_API_TOKEN,
+    SITE_REGISTRY: c.env.SITE_REGISTRY,
+  }, body);
+});
+
+// 更新站點信息
+app.put('/api/v1/admin/sites/:siteId', requireSuperAdmin(), async (c) => {
+  const siteId = c.req.param('siteId');
+  const body = await c.req.json();
+  return siteService.handleUpdateSite(primaryDB(c), siteId, body);
+});
+
+// 用戶站點分配管理
+// 獲取用戶已分配的站點列表
+app.get('/api/v1/admin/users/:id/sites', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return siteService.handleGetUserSites(primaryDB(c), id);
+});
+
+// 設置用戶可訪問的站點
+app.post('/api/v1/admin/users/:id/sites', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json<{ siteIds?: string[] }>();
+  const siteIds = Array.isArray(body?.siteIds) ? body.siteIds : [];
+  return siteService.handleSetUserSites(primaryDB(c), id, siteIds);
+});
+
 // ===== 404 兜底 =====
 app.notFound((c) => err('接口不存在', 1004));
 
@@ -1228,7 +1322,7 @@ app.onError((e, c) => {
   const url = new URL(c.req.url);
   const errorEvent = `路由錯誤: ${c.req.method} ${url.pathname} - ${msg}`;
   c.executionCtx.waitUntil(
-    systemService.logAction(c.env.DB, claims?.username || '', userIp, userAgent, errorEvent, 'error', url.pathname),
+    systemService.logAction(primaryDB(c), claims?.username || '', userIp, userAgent, errorEvent, 'error', url.pathname),
   );
   return err(msg, 500);
 });

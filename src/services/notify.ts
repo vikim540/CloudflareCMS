@@ -249,7 +249,7 @@ export async function triggerNotify(
     const configs = await loadConfigsFromDB(db);
     const { os, bs } = parseUserAgent(userAgent);
     const meta: NotifyMeta = { ip, os, browser: bs, sourceUrl, timestamp: nowStr() };
-    const site = await getSite(db);
+    const site = await getSiteInfo(db);
     const detailUrl = buildAdminUrl(site.domain, category);
 
     // 功能開關：統一使用 flags.ts 標準化服務
@@ -295,7 +295,7 @@ export async function handleTestMail(db: D1Database, kv: KVNamespace, body: { to
   const to = body.to;
   if (!to) return err('缺少收件人 to 參數', 1001);
   const configs = await loadConfigsFromDB(db);
-  const site = await getSite(db);
+  const site = await getSiteInfo(db);
   const ts = nowStr();
   const fields: NotifyField[] = [
     { label: '測試類型', value: '郵件配置驗證' },
@@ -314,7 +314,7 @@ export async function handleTestWebhook(db: D1Database, kv: KVNamespace, body: {
   const webhookUrl = cfg(configs, 'webhook_url');
   if (!webhookUrl) return err('webhook_url 未配置', 1001);
   const category = body.category || 'message';
-  const site = await getSite(db);
+  const site = await getSiteInfo(db);
   const detailUrl = buildAdminUrl(site.domain, category);
   const ts = nowStr();
   const fields: NotifyField[] = [

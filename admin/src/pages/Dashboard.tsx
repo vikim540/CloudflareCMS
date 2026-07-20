@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.6.0',
+    date: '2026-07-20 17:29:20',
+    icon: '🌐',
+    latest: true,
+    changes: '🌐 多站點架構 — 亞太三站點獨立數據庫 + 用戶站點權限分配\n\n🏗️ 架構設計\n• 主庫 endoscopy-cms：全局用戶/角色/菜單/站點註冊表\n• 站點庫 smile-cms / vision-cms：各站點獨立內容/配置\n• SITE_REGISTRY 環境變量映射 siteId → D1 binding\n• X-Site-Id header 中間件路由至對應站點數據庫\n• siteDB(c) / primaryDB(c) 雙軌數據庫訪問模式\n\n🗄️ 數據庫（全部 APAC 地區）\n• endoscopy-cms（主站，現有數據）\n• smile-cms（結構 + 初始數據）\n• vision-cms（結構 + 初始數據）\n• 遷移 0006：ay_site_registry + ay_user_site 關聯表\n• 遷移 0007：M308 多站點管理菜單 + R101 權限\n\n👥 用戶站點權限分配\n• 全局用戶 + 站點分配模式（用戶/角色/菜單在主庫）\n• 非超管用戶必須至少分配一個站點（前端驗證 + 後端檢查）\n• 超級管理員自動擁有所有站點權限\n• 用戶編輯對話框新增站點勾選 UI（全選/清空）\n• GET /admin/users/:id/sites + POST /admin/users/:id/sites\n\n🎨 前端多站點體驗\n• 側邊欄頂部站點選擇下拉（替代固定標題）\n• 切換站點自動刷新頁面載入新站點數據\n• Login.tsx 登入後緩存站點列表 + 設置默認站點\n• 多站點管理頁（/sites）：站點列表 + 創建嚮導 + 編輯\n\n🔌 API 端點\n• GET /admin/sites — 列出用戶可訪問的站點\n• GET /admin/sites/current — 當前站點信息\n• POST /admin/sites/create — 一鍵創建新站點（REST API）\n• PUT /admin/sites/:siteId — 更新站點信息\n• GET /admin/users/:id/sites — 用戶已分配站點\n• POST /admin/users/:id/sites — 設置用戶站點分配',
+  },
+  {
     version: 'v1.5.9',
     date: '2026-07-20 15:02:38',
     icon: '🧹',
-    latest: true,
+    latest: false,
     changes: '版本通知自動化 + 格式化 + 幻燈片排序優化\n\n🔧 版本通知自動推送（恢復）\n• 機制：Dashboard useEffect 偵測最新版本 → POST /notify/version-check → 後端構造 ActionCard markdown 推送\n• KV 去重：notified_version:{version} 確保每個版本只推送一次（避免重複）\n• 格式：changes 字段帶 emoji + 換行，直接渲染為釘釘 ActionCard / 企業微信 markdown\n• 優勢：無需開發者手動推送，部署後首次訪問 Dashboard 即自動觸發\n\n📝 版本更新格式化\n• changes 字段從純文字改為帶 emoji + 換行格式（whitespace-pre-line）\n• 與釘釘 webhook 推送格式保持一致\n\n📊 幻燈片排序優化\n• 默認排序從 0 改為從 1 開始（拖拽 idx+1，新增 maxSorting+1）\n• 列表按 sorting ASC 排序展示（拖到第一則顯示第一）',
   },
   {
@@ -276,6 +283,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
+  // 多站點管理 (v1.6.0+)
+  { method: 'GET', path: '/api/v1/admin/sites', desc: '列出用戶可訪問的站點', auth: true },
+  { method: 'GET', path: '/api/v1/admin/sites/current', desc: '當前站點信息', auth: true },
+  { method: 'POST', path: '/api/v1/admin/sites/create', desc: '一鍵創建新站點 (超管，REST API)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/sites/:siteId', desc: '更新站點信息 (超管)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/users/:id/sites', desc: '用戶已分配的站點列表', auth: true },
+  { method: 'POST', path: '/api/v1/admin/users/:id/sites', desc: '設置用戶站點分配', auth: true },
 ]
 
 /** 錯誤碼對照 */
@@ -844,7 +858,13 @@ console.log(articles) // 相似文章列表`}</code>
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-foreground">rust-cms-db</code>
+                        <code className="font-mono text-foreground">endoscopy-cms</code>
+                        <span className="text-muted-foreground mx-1 text-xs">（主庫）</span>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">smile-cms</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">vision-cms</code>
+                        <span className="text-muted-foreground mx-2 text-xs">（APAC）</span>
                       </td>
                     </tr>
                     <tr className="hover:bg-secondary/50 transition-colors">

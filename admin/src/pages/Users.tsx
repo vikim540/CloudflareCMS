@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { api } from '../lib/api'
+import { api, type SiteInfo } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 
 /** 系統用戶數據結構 */
@@ -103,6 +103,10 @@ export default function Users() {
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
 
+  // 多站點：可用站點列表 + 當前編輯用戶已分配的站點
+  const [sites, setSites] = useState<SiteInfo[]>([])
+  const [userSiteIds, setUserSiteIds] = useState<string[]>([])
+
   // 權限預覽狀態
   const [roleLevelsCache, setRoleLevelsCache] = useState<Record<string, string[]>>({})
   const [showPermissionPreview, setShowPermissionPreview] = useState(false)
@@ -142,11 +146,22 @@ export default function Users() {
     }
   }, [])
 
+  /** 載入站點列表（用於用戶站點分配） */
+  const fetchSites = useCallback(async () => {
+    try {
+      const res = await api.get<{ sites: SiteInfo[] }>('/admin/sites')
+      setSites(res.data?.sites ?? [])
+    } catch {
+      /* 忽略站點載入錯誤 */
+    }
+  }, [])
+
   useEffect(() => {
     fetchUsers()
     fetchRoles()
     fetchMenuTree()
-  }, [fetchUsers, fetchRoles, fetchMenuTree])
+    fetchSites()
+  }, [fetchUsers, fetchRoles, fetchMenuTree, fetchSites])
 
   /** 取得角色名稱 */
   const getRoleNames = (rcodes: string): string => {
@@ -204,6 +219,8 @@ export default function Users() {
     setForm(EMPTY_FORM)
     setActionError('')
     setShowPermissionPreview(false)
+    // 新建用戶時：默認選中所有站點
+    setUserSiteIds(sites.map((s) => s.siteId))
     setModalOpen(true)
   }
 
@@ -225,6 +242,11 @@ export default function Users() {
     if (codeList.length > 0) {
       loadRolePermissions(codeList)
     }
+    // 預載入用戶已分配的站點
+    api
+      .get<{ siteIds: string[] }>(`/admin/users/${item.id}/sites`)
+      .then((res) => setUserSiteIds(res.data?.siteIds ?? []))
+      .catch(() => setUserSiteIds([]))
   }
 
   /** 單選角色（同一時間只能分配一個角色） */
@@ -251,9 +273,20 @@ export default function Users() {
       return
     }
 
+    // 判斷是否為超級管理員（超管擁有所有站點訪問權限，無需分配站點）
+    const isSuperAdmin = editTarget?.ucode === SUPER_ADMIN_UCODE
+
+    // 非超級管理員：必須至少分配一個站點
+    if (!isSuperAdmin && userSiteIds.length === 0) {
+      setActionError('必須為用戶選擇至少一個可訪問的站點')
+      return
+    }
+
     setSaving(true)
     setActionError('')
     try {
+      let userId: number | undefined
+
       if (editTarget) {
         const payload: Record<string, unknown> = {
           realname: form.realname,
@@ -264,6 +297,7 @@ export default function Users() {
           payload.password = form.password
         }
         await api.put(`/admin/users/${editTarget.id}`, payload)
+        userId = editTarget.id
       } else {
         const payload = {
           username: form.username.trim(),
@@ -272,8 +306,21 @@ export default function Users() {
           rcodes: form.rcodes.join(','),
           status: form.status,
         }
-        await api.post('/admin/users', payload)
+        const res = await api.post<{ id?: number; user?: { id?: number } }>('/admin/users', payload)
+        // 嘗試從響應中獲取新用戶 ID（兼容兩種返回格式）
+        userId = res.data?.id ?? res.data?.user?.id
       }
+
+      // 保存站點分配（超級管理員跳過，自動擁有所有站點權限）
+      if (userId && !isSuperAdmin) {
+        try {
+          await api.post(`/admin/users/${userId}/sites`, { siteIds: userSiteIds })
+        } catch (siteErr) {
+          // 站點分配失敗不阻塞用戶創建，但提示警告
+          console.warn('站點分配保存失敗:', siteErr)
+        }
+      }
+
       setModalOpen(false)
       await fetchUsers()
     } catch (err) {
@@ -694,6 +741,105 @@ export default function Users() {
                   </div>
                 )}
               </div>
+
+              {/* 站點分配區（超級管理員跳過，自動擁有所有站點權限） */}
+              {editTarget?.ucode !== SUPER_ADMIN_UCODE && (
+                <div className="border rounded-md overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🌐</span>
+                      <span className="text-sm font-medium">站點訪問權限</span>
+                      <span className="text-xs text-muted-foreground">
+                        已選 {userSiteIds.length} / {sites.length} 個站點
+                        {userSiteIds.length === 0 && (
+                          <span className="text-destructive ml-1">（必須至少選擇一個）</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setUserSiteIds(sites.map((s) => s.siteId))}
+                        className="text-xs px-2.5 py-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                      >
+                        全選
+                      </button>
+                      <span className="text-muted-foreground text-xs">|</span>
+                      <button
+                        type="button"
+                        onClick={() => setUserSiteIds([])}
+                        className="text-xs px-2.5 py-1 text-muted-foreground hover:bg-accent rounded transition-colors"
+                      >
+                        清空
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 站點勾選列表 */}
+                  <div className="p-3">
+                    {sites.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground text-sm">
+                        <span className="text-2xl block mb-2 opacity-50">🌐</span>
+                        尚未配置任何站點
+                        <p className="text-xs mt-1">請先到「多站點管理」創建站點</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {sites.map((site) => {
+                          const isSelected = userSiteIds.includes(site.siteId)
+                          return (
+                            <label
+                              key={site.siteId}
+                              className={cn(
+                                'flex items-center gap-2.5 p-2.5 rounded-md border transition-all cursor-pointer',
+                                isSelected
+                                  ? 'border-primary bg-primary/5'
+                                  : 'border-gray-200 hover:border-gray-300 hover:bg-accent/30',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setUserSiteIds((prev) => [...prev, site.siteId])
+                                  } else {
+                                    setUserSiteIds((prev) => prev.filter((id) => id !== site.siteId))
+                                  }
+                                }}
+                                className="w-4 h-4 accent-primary shrink-0"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm font-medium truncate">{site.name}</span>
+                                  {site.isPrimary && (
+                                    <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 shrink-0">
+                                      ⭐ 主站
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {site.domain || site.siteId}
+                                </p>
+                              </div>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 超級管理員站點權限提示 */}
+              {editTarget?.ucode === SUPER_ADMIN_UCODE && (
+                <div className="border rounded-md px-4 py-3 bg-purple-50 border-purple-200 flex items-center gap-2">
+                  <span className="text-sm">🛡️</span>
+                  <span className="text-sm text-purple-700">
+                    超級管理員自動擁有所有站點的訪問權限，無需單獨分配
+                  </span>
+                </div>
+              )}
 
               {actionError && (
                 <p className="text-sm text-destructive flex items-center gap-1.5">

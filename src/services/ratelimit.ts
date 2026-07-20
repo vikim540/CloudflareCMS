@@ -9,6 +9,7 @@
  *   FORM_LIMIT        - 表單提交 (1 req/10s per IP)
  */
 import type { RateLimit } from '@cloudflare/workers-types';
+import type { MiddlewareHandler } from 'hono';
 
 /** 統一錯誤響應構建 */
 function rateLimitResponse() {
@@ -22,7 +23,7 @@ function rateLimitResponse() {
 }
 
 /** 從請求中獲取客戶端 IP */
-function getClientIp(c: { req: { header: (n: string) => string | null } }): string {
+function getClientIp(c: { req: { header: (n: string) => string | undefined } }): string {
   return c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || 'unknown';
 }
 
@@ -31,20 +32,12 @@ function getClientIp(c: { req: { header: (n: string) => string | null } }): stri
  * @param bindingName - Env 上的 RateLimit 綁定名
  * @param keyFn - 從上下文提取唯一標識的函數
  */
-export function createRateLimiter<T extends Record<string, unknown>>(
-  bindingName: keyof T,
-  keyFn: (c: { req: { header: (n: string) => string | null }; get?: (k: string) => unknown }) => string,
-) {
-  return async (
-    c: {
-      env: T;
-      req: { header: (n: string) => string | null };
-      get?: (k: string) => unknown;
-      header: (n: string, v: string) => void;
-    },
-    next: () => Promise<void>,
-  ): Promise<void | Response> => {
-    const limiter = c.env[bindingName] as unknown as RateLimit | undefined;
+export function createRateLimiter(
+  bindingName: string,
+  keyFn: (c: { req: { header: (n: string) => string | undefined }; get?: (k: string) => unknown }) => string,
+): MiddlewareHandler {
+  return async (c, next) => {
+    const limiter = (c.env as Record<string, unknown>)[bindingName] as RateLimit | undefined;
     if (!limiter) {
       // 綁定未配置，跳過限流
       await next();
@@ -65,7 +58,7 @@ export function createRateLimiter<T extends Record<string, unknown>>(
  * 適用於: /api/v1/contents, /api/v1/sorts, /api/v1/site 等公開接口
  */
 export function publicRateLimit() {
-  return createRateLimiter<{ PUBLIC_API_LIMIT: RateLimit }>('PUBLIC_API_LIMIT', (c) => {
+  return createRateLimiter('PUBLIC_API_LIMIT', (c) => {
     const ip = getClientIp(c);
     return `public:${ip}`;
   });
@@ -76,7 +69,7 @@ export function publicRateLimit() {
  * 適用於: /api/v1/admin/* 需認證接口
  */
 export function adminRateLimit() {
-  return createRateLimiter<{ ADMIN_API_LIMIT: RateLimit }>('ADMIN_API_LIMIT', (c) => {
+  return createRateLimiter('ADMIN_API_LIMIT', (c) => {
     // 優先使用已登錄用戶的 uid
     const user = c.get?.('user') as { uid?: number } | undefined;
     if (user?.uid) return `admin:${user.uid}`;
@@ -91,7 +84,7 @@ export function adminRateLimit() {
  * 防止暴力破解密碼
  */
 export function loginRateLimit() {
-  return createRateLimiter<{ LOGIN_LIMIT: RateLimit }>('LOGIN_LIMIT', (c) => {
+  return createRateLimiter('LOGIN_LIMIT', (c) => {
     const ip = getClientIp(c);
     return `login:${ip}`;
   });
@@ -102,7 +95,7 @@ export function loginRateLimit() {
  * 防止垃圾留言和表單轟炸
  */
 export function formRateLimit() {
-  return createRateLimiter<{ FORM_LIMIT: RateLimit }>('FORM_LIMIT', (c) => {
+  return createRateLimiter('FORM_LIMIT', (c) => {
     const ip = getClientIp(c);
     return `form:${ip}`;
   });

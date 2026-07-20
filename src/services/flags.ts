@@ -160,7 +160,10 @@ export async function getAllFlags(env: FlagReadEnv): Promise<
  */
 export function featureFlagMiddleware(flagKey: string): MiddlewareHandler {
   return async (c, next) => {
-    const enabled = await getFlagEnabled(c.env as FlagReadEnv, flagKey);
+    // 多站點：優先使用站點庫，回退到主庫
+    const siteDb = (c.get('siteDb') as D1Database | undefined) ?? c.env.DB;
+    const flagEnv = { ...c.env, DB: siteDb } as FlagReadEnv;
+    const enabled = await getFlagEnabled(flagEnv, flagKey);
     if (!enabled) {
       return err('此功能已關閉', 1004);
     }
@@ -175,12 +178,15 @@ export function featureFlagMiddleware(flagKey: string): MiddlewareHandler {
 export function autoRouteProtection(): MiddlewareHandler {
   return async (c, next) => {
     const path = c.req.path;
+    // 多站點：優先使用站點庫，回退到主庫
+    const siteDb = (c.get('siteDb') as D1Database | undefined) ?? c.env.DB;
+    const flagEnv = { ...c.env, DB: siteDb } as FlagReadEnv;
     for (const def of FLAG_REGISTRY) {
       if (!def.protectedRoutes) continue;
       for (const route of def.protectedRoutes) {
         // 精確匹配或前綴匹配（route + /*）
         if (path === route || path.startsWith(route + '/') || path.startsWith(route + '?')) {
-          const enabled = await getFlagEnabled(c.env as FlagReadEnv, def.key);
+          const enabled = await getFlagEnabled(flagEnv, def.key);
           if (!enabled) {
             return err(`${def.label}功能已關閉`, 1004);
           }
