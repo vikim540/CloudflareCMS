@@ -175,8 +175,23 @@ function clearUrlMcodeCache(): void {
  *
  * @param menuUrl 菜單 URL (如 '/admin/system/user', '/admin/content/model')
  */
+/**
+ * 公開讀取端點白名單（供側邊欄/下拉選單使用，所有登錄用戶可訪問）
+ * 這些端點只返回基礎引用數據，不涉及敏感操作，無需菜單權限
+ */
+const PUBLIC_READ_PATHS = new Set([
+  '/api/v1/admin/models/all',  // 側邊欄動態模型項目（所有用戶需載入）
+  '/api/v1/admin/menus',       // 權限選擇器菜單樹（角色管理頁需要）
+  '/api/v1/admin/sorts/all',   // 下拉選單欄目列表（輕量級引用數據）
+]);
+
 function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    // 公開讀取端點跳過權限檢查（僅限 GET，供側邊欄/下拉選單使用）
+    // POST/PUT/DELETE 仍需權限，防止非授權用戶創建/修改數據
+    if (c.req.method === 'GET' && PUBLIC_READ_PATHS.has(c.req.path)) {
+      return await next();
+    }
     const claims = c.get('claims');
     if (!claims) return await next(); // 未認證由 requireAuth 處理
     if (claims.isSuper) return await next(); // 超級管理員跳過
@@ -189,6 +204,19 @@ function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {
       return err('無權限訪問此功能', 2005);
     }
     await next();
+  };
+}
+
+/**
+ * 僅超級管理員可訪問的中間件
+ * 用於無對應菜單條目但需限制為超管專用的功能（如資料庫管理、存儲設置）
+ */
+function requireSuperAdmin(): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const claims = c.get('claims');
+    if (!claims) return await next(); // 未認證由 requireAuth 處理
+    if (claims.isSuper) return await next(); // 超級管理員放行
+    return err('僅超級管理員可訪問此功能', 2005);
   };
 }
 
@@ -347,15 +375,28 @@ app.use('/api/v1/admin/*', async (c, next) => {
 // ===== 後台管理 - 菜單權限攔截中間件 =====
 // 按菜單 URL 查詢 mcode, 檢查 JWT claims.permissions 是否包含該 mcode
 // 超級管理員跳過; 找不到 mcode 時放行 (避免誤攔)
-// 不攔截通用接口: /flags, /stats, /notify/*, /upload, /media 等 (所有登錄用戶可用)
+// 不攔截通用接口: /flags, /stats, /notify/*, /upload 等 (所有登錄用戶可用)
 app.use('/api/v1/admin/users/*', requireMenuPermission('/admin/system/user'));
 app.use('/api/v1/admin/roles/*', requireMenuPermission('/admin/system/role'));
 app.use('/api/v1/admin/menus/*', requireMenuPermission('/admin/system/menu'));
 app.use('/api/v1/admin/logs/*', requireMenuPermission('/admin/system/syslog'));
-app.use('/api/v1/admin/database/*', requireMenuPermission('/admin/system/database'));
-app.use('/api/v1/admin/storage/*', requireMenuPermission('/admin/system/storage'));
+app.use('/api/v1/admin/database/*', requireSuperAdmin());
+app.use('/api/v1/admin/storage/*', requireSuperAdmin());
 app.use('/api/v1/admin/configs/*', requireMenuPermission('/admin/system/config'));
 app.use('/api/v1/admin/models/*', requireMenuPermission('/admin/content/model'));
+// 補齊: 內容管理及擴展內容路由的權限保護（防非授權用戶繞過前端直接調用 API）
+app.use('/api/v1/admin/contents/*', requireMenuPermission('/admin/content/index'));     // M201 文章列表
+app.use('/api/v1/admin/sorts/*', requireMenuPermission('/admin/content/sort'));         // M202 欄目管理
+app.use('/api/v1/admin/singles/*', requireMenuPermission('/admin/content/single'));     // M203 單頁管理
+app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理
+app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfield')); // M206 擴展字段
+app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M300 多媒體
+app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));             // M401 友情連結
+app.use('/api/v1/admin/slides/*', requireMenuPermission('/admin/seo/slide'));           // M402 幻燈片
+app.use('/api/v1/admin/tags/*', requireMenuPermission('/admin/seo/tags'));              // M403 標籤管理
+app.use('/api/v1/admin/labels/*', requireMenuPermission('/admin/seo/label'));           // M404 自定義標籤
+app.use('/api/v1/admin/site/*', requireMenuPermission('/admin/system/site'));           // M501 站點信息
+app.use('/api/v1/admin/company/*', requireMenuPermission('/admin/system/company'));     // M502 公司信息
 
 // ===== 後台管理接口 - 內容管理 =====
 app.get('/api/v1/admin/contents', async (c) => {

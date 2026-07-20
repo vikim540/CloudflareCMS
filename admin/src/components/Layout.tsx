@@ -31,63 +31,88 @@ interface NavGroup {
   items: NavItem[]
 }
 
-/** 菜單樹節點（用於權限過濾） */
-interface MenuNode {
-  mcode: string
-  name: string
-  url: string | null
-  children?: MenuNode[]
+/**
+ * 側邊欄標籤 → 菜單 mcode 顯式映射
+ * 與 ay_menu 表完全對齊，確保權限選擇器（Roles.tsx）與側邊欄分組一致。
+ * 未列出的標籤默認隱藏（安全優先），僅超級管理員可見。
+ */
+const LABEL_MCODE_MAP: Record<string, string> = {
+  // 內容管理 (M200 子菜單)
+  '欄目管理': 'M202',
+  '單頁管理': 'M203',
+  '留言管理': 'M204',
+  '擴展字段': 'M206',
+  '內容模型': 'M207',
+  '回收站': 'M208',
+  // 多媒體 (M300)
+  '媒體庫': 'M300',
+  // SEO設置 (M400 子菜單)
+  '友情連結': 'M401',
+  '幻燈片': 'M402',
+  '標籤管理': 'M403',
+  '自定義標籤': 'M404',
+  // 系統設置 (M500 子菜單)
+  '站點信息': 'M501',
+  '公司信息': 'M502',
+  '系統配置': 'M503',
+  '系統用戶': 'M504',
+  '角色管理': 'M505',
+  '菜單管理': 'M506',
+  '系統日誌': 'M507',
+  // 「資料庫管理」「存儲設置」無對應菜單 → 不在映射中，默認僅超管可見
 }
 
-/** 側邊欄分組配置（與 Go CMS 結構對齊） */
+/** 內容模型列表的統一權限鍵（ay_menu M201 = 文章列表） */
+const CONTENT_LIST_PERMISSION = 'M201'
+
+/**
+ * 側邊欄分組配置（與 ay_menu 菜單樹結構完全對齊）
+ * 分組順序與數據庫頂級菜單一致：內容管理 → 多媒體 → SEO設置 → 系統設置
+ * 這樣權限選擇器（Roles.tsx）中的菜單樹與側邊欄完全對應，管理員可直觀控制
+ */
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: '全局配置',
-    icon: '⚙️',
-    items: [
-      { to: '/settings', label: '配置參數', icon: '🎛️' },
-      { to: '/models', label: '模型管理', icon: '📦' },
-      { to: '/extfields', label: '模型欄位', icon: '🧩' },
-    ],
-  },
-  {
-    title: '基礎內容',
-    icon: '🗄️',
-    items: [
-      { to: '/site', label: '站點信息', icon: '🌐' },
-      { to: '/company', label: '公司信息', icon: '🏢' },
-      { to: '/categories', label: '內容欄目', icon: '🗂️' },
-    ],
-  },
-  {
-    title: '文章內容',
+    title: '內容管理',
     icon: '📄',
     items: [
       // 列表型模型子菜單在組件中動態注入（見 navGroups）
+      { to: '/categories', label: '欄目管理', icon: '🗂️' },
+      { to: '/singles', label: '單頁管理', icon: '📄' },
+      { to: '/messages', label: '留言管理', icon: '💬' },
+      { to: '/extfields', label: '擴展字段', icon: '🧩' },
+      { to: '/models', label: '內容模型', icon: '📦' },
       { to: '/trash', label: '回收站', icon: '🗑️' },
     ],
   },
   {
-    title: '擴展內容',
-    icon: '📦',
+    title: '多媒體',
+    icon: '🖼️',
     items: [
-      { to: '/singles', label: '單頁管理', icon: '📄' },
-      { to: '/links', label: '友情連結', icon: '🔗' },
-      { to: '/slides', label: '幻燈片', icon: '🖼️' },
-      { to: '/tags', label: '標籤管理', icon: '🏷️' },
-      { to: '/labels', label: '自定義標籤', icon: '📑' },
-      { to: '/messages', label: '留言管理', icon: '💬' },
       { to: '/media', label: '媒體庫', icon: '🖼️' },
     ],
   },
   {
-    title: '系統管理',
-    icon: '🛡️',
+    title: 'SEO設置',
+    icon: '🔍',
     items: [
+      { to: '/links', label: '友情連結', icon: '🔗' },
+      { to: '/slides', label: '幻燈片', icon: '🖼️' },
+      { to: '/tags', label: '標籤管理', icon: '🏷️' },
+      { to: '/labels', label: '自定義標籤', icon: '📑' },
+    ],
+  },
+  {
+    title: '系統設置',
+    icon: '⚙️',
+    items: [
+      { to: '/site', label: '站點信息', icon: '🌐' },
+      { to: '/company', label: '公司信息', icon: '🏢' },
+      { to: '/settings', label: '系統配置', icon: '🎛️' },
       { to: '/users', label: '系統用戶', icon: '👥' },
       { to: '/roles', label: '角色管理', icon: '🔐' },
-      { to: '/menus', label: '選單管理', icon: '📋' },
+      { to: '/menus', label: '菜單管理', icon: '📋' },
       { to: '/logs', label: '系統日誌', icon: '📜' },
+      // 以下兩項無對應菜單 mcode，默認僅超級管理員可見
       { to: '/database', label: '資料庫管理', icon: '🖥️' },
       { to: '/storage', label: '存儲設置', icon: '💾' },
     ],
@@ -97,16 +122,14 @@ const NAV_GROUPS: NavGroup[] = [
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
-  // 預設所有分組收起，僅「文章內容」展開
+  // 預設所有分組收起，僅「內容管理」展開（文案日常工作區域）
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
-    () => new Set(NAV_GROUPS.filter((g) => g.title !== '文章內容').map((g) => g.title)),
+    () => new Set(NAV_GROUPS.filter((g) => g.title !== '內容管理').map((g) => g.title)),
   )
   // 模型列表（掛載時載入一次）
   const [models, setModels] = useState<Model[]>([])
   // 當前用戶信息（用於側邊欄權限過濾）
   const [userInfo, setUserInfo] = useState(() => getUserInfo())
-  // 菜單名稱 → mcode 映射（從菜單樹構建）
-  const [menuMcodeMap, setMenuMcodeMap] = useState<Map<string, string>>(new Map())
 
   // 載入模型列表
   useEffect(() => {
@@ -118,25 +141,7 @@ export default function Layout() {
       })
   }, [])
 
-  // 載入菜單樹，構建名稱 → mcode 映射（用於側邊欄權限過濾）
-  useEffect(() => {
-    api
-      .get<MenuNode[]>('/admin/menus')
-      .then((res) => {
-        const map = new Map<string, string>()
-        const walk = (nodes: MenuNode[]) => {
-          for (const node of nodes ?? []) {
-            map.set(node.name, node.mcode)
-            if (node.children?.length) walk(node.children)
-          }
-        }
-        walk(res.data ?? [])
-        setMenuMcodeMap(map)
-      })
-      .catch(() => {})
-  }, [])
-
-  // 構建導航分組（將動態模型注入「文章內容」分組前端，回收站保留末尾）
+  // 構建導航分組（將動態模型注入「內容管理」分組前端，欄目管理保持首位）
   const navGroups = useMemo<NavGroup[]>(() => {
     const contentModelItems: NavItem[] = models
       .filter((m) => m.type === '2' && m.status === '1')
@@ -147,7 +152,7 @@ export default function Layout() {
         mcode: m.mcode,
       }))
     return NAV_GROUPS.map((group) =>
-      group.title === '文章內容'
+      group.title === '內容管理'
         ? { ...group, items: [...contentModelItems, ...group.items] }
         : group,
     )
@@ -159,12 +164,14 @@ export default function Layout() {
     if (!userInfo) return true
     // 超級管理員看到所有菜單
     if (userInfo.isSuper) return true
-    // 內容模型項目有 mcode，直接檢查
-    if (item.mcode) return userInfo.permissions.includes(item.mcode)
-    // 其他項目：通過名稱查找對應的菜單 mcode
-    const mcode = menuMcodeMap.get(item.label)
-    // 找不到對應菜單時放行（如回收站等非菜單項目）
-    if (!mcode) return true
+    // 內容模型列表項目：統一使用 M201 (文章列表) 權限控制
+    // item.mcode 是模型編碼（如 M1、M2），非菜單編碼，不能直接用於權限校驗
+    if (item.mcode) return userInfo.permissions.includes(CONTENT_LIST_PERMISSION)
+    // 其他項目：通過顯式映射表查找權限鍵
+    const mcode = LABEL_MCODE_MAP[item.label]
+    // 未映射的項目默認隱藏（安全優先）
+    // 如「資料庫管理」「存儲設置」等僅超級管理員可用的功能
+    if (!mcode) return false
     return userInfo.permissions.includes(mcode)
   }
 
@@ -177,7 +184,7 @@ export default function Layout() {
       }))
       .filter((group) => group.items.length > 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navGroups, userInfo, menuMcodeMap])
+  }, [navGroups, userInfo])
 
   /** 判斷帶 mcode 的內容項目是否當前活躍（基於 query 參數比對） */
   const isContentItemActive = (itemMcode: string): boolean => {

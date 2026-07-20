@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
+import ImageCompressDialog from '../components/ImageCompressDialog'
 
 /** S3 文件信息（含使用狀態與標記狀態） */
 interface MediaFile {
@@ -124,6 +125,12 @@ export default function MediaLibrary() {
   const [cleaning, setCleaning] = useState(false)
   const [markingKey, setMarkingKey] = useState<string | null>(null)
 
+  // ─── 圖片壓縮對話框狀態 ────────────────────────────────
+  /** 待壓縮的圖片文件（非 null 時顯示壓縮對話框） */
+  const [pendingImages, setPendingImages] = useState<File[] | null>(null)
+  /** 上傳進度信息 */
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+
   /** 獲取存儲配置（用於生成文件 URL） */
   const fetchStorageConfig = useCallback(async () => {
     try {
@@ -165,38 +172,87 @@ export default function MediaLibrary() {
     fetchFiles(true)
   }, [])
 
-  /** 上傳文件 */
+  /** 上傳單個文件到 S3 */
+  const uploadSingleFile = useCallback(async (file: File): Promise<void> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const token = localStorage.getItem('cms_token')
+    const resp = await fetch(
+      `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      },
+    )
+    const json = await resp.json()
+    if (json.code !== 0) {
+      throw new Error(json.msg || '上傳失敗')
+    }
+  }, [])
+
+  /**
+   * 上傳文件入口 — 圖片走壓縮對話框，非圖片直接上傳
+   * 每個上傳動作的優化點：
+   *   - 圖片：彈出壓縮對話框，用戶控制質量/尺寸/格式，前端壓縮後再上傳
+   *   - 非圖片（文檔/視頻）：直接上傳，無需壓縮
+   *   - 上傳過程顯示進度（第 N/總數 張）
+   *   - 完成後自動刷新列表
+   */
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files
     if (!fileList || fileList.length === 0) return
 
+    // 清空 input 值，確保連續選擇同一文件也能觸發 change
+    if (fileInputRef.current) fileInputRef.current.value = ''
+
+    const allFiles = Array.from(fileList)
+    // 分離圖片和非圖片
+    const imageFiles = allFiles.filter((f) => f.type.startsWith('image/') && f.type !== 'image/svg+xml')
+    const nonImageFiles = allFiles.filter((f) => !f.type.startsWith('image/') || f.type === 'image/svg+xml')
+
+    // 非圖片文件直接上傳
+    if (nonImageFiles.length > 0) {
+      setUploading(true)
+      setError('')
+      setUploadProgress({ current: 0, total: nonImageFiles.length })
+      try {
+        for (let i = 0; i < nonImageFiles.length; i++) {
+          setUploadProgress({ current: i + 1, total: nonImageFiles.length })
+          await uploadSingleFile(nonImageFiles[i])
+        }
+        await fetchFiles(true)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '上傳失敗')
+      } finally {
+        setUploading(false)
+        setUploadProgress(null)
+      }
+    }
+
+    // 圖片文件彈出壓縮對話框
+    if (imageFiles.length > 0) {
+      setPendingImages(imageFiles)
+    }
+  }
+
+  /** 壓縮對話框確認後上傳壓縮後的圖片 */
+  const handleCompressedConfirm = async (compressedFiles: File[]) => {
+    setPendingImages(null)
     setUploading(true)
     setError('')
+    setUploadProgress({ current: 0, total: compressedFiles.length })
     try {
-      for (const file of Array.from(fileList)) {
-        const formData = new FormData()
-        formData.append('file', file)
-        const token = localStorage.getItem('cms_token')
-        const resp = await fetch(
-          `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          },
-        )
-        const json = await resp.json()
-        if (json.code !== 0) {
-          throw new Error(json.msg || '上傳失敗')
-        }
+      for (let i = 0; i < compressedFiles.length; i++) {
+        setUploadProgress({ current: i + 1, total: compressedFiles.length })
+        await uploadSingleFile(compressedFiles[i])
       }
-      // 刷新列表
       await fetchFiles(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : '上傳失敗')
     } finally {
       setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      setUploadProgress(null)
     }
   }
 
@@ -387,6 +443,22 @@ export default function MediaLibrary() {
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm flex items-center gap-2">
           <span className="flex-shrink-0">⚠️</span>
           {error}
+        </div>
+      )}
+
+      {/* 上傳進度 */}
+      {uploadProgress && (
+        <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm flex items-center gap-3">
+          <span className="animate-spin inline-block">🔄</span>
+          <span>
+            正在上傳... 第 <b>{uploadProgress.current}</b> / {uploadProgress.total} 個文件
+          </span>
+          <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-all duration-300"
+              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -791,6 +863,15 @@ export default function MediaLibrary() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ─── 圖片壓縮對話框 ──────────────────────────────── */}
+      {pendingImages && (
+        <ImageCompressDialog
+          files={pendingImages}
+          onConfirm={handleCompressedConfirm}
+          onCancel={() => setPendingImages(null)}
+        />
       )}
     </div>
   )

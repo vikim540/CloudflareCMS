@@ -24,11 +24,11 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | D1 | `rust-cms-db`（ID: `28a95ec3-7228-4c47-b9f6-e9cfcfcaf319`） |
 | KV | `CONFIG_CACHE`、`TOKEN_BLACKLIST`、`API_CACHE`（邏輯分離） |
 | Queues | `publish-queue`（定時發布）、`publish-dlq`（死信隊列） |
-| Vectorize | `article-semantic-search`（768維 cosine，中文語義搜索） |
-| Workers AI | 嵌入模型 `@cf/baai/bge-base-zh-v1.5` |
+| Vectorize | `article-semantic-search`（768維 cosine，多語言語義搜索） |
+| Workers AI | 嵌入模型 `@cf/baai/bge-base-en-v1.5`（XLM-RoBERTa，支持中文） |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min)、`ADMIN_API_LIMIT`(300/min)、`LOGIN_LIMIT`(5/min)、`FORM_LIMIT`(1/10s) |
 | 功能開關 | D1 存儲 + `FLAG_REGISTRY` 註冊表驅動，後台直接管理 |
-| Pages | `cms-admin`（管理後台 SPA），域名 `rbootcms.cmer.eu.org` |
+| Pages | `cms-admin`（管理後台 SPA），域名 `cms.cmermedical.com.hk` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms`（零延遲內部通信） |
 | GitHub | `https://github.com/vikim540/RustCMS.git` |
 | 賬號 | `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
@@ -50,7 +50,7 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 - 緩存：**KV**（`config:all` 配置緩存 + JWT 黑名單 + API 響應緩存）
 - 存儲：**R2**（S3 兼容，AWS SigV4 簽名）
 - 佇列：**Queues**（定時文章發布，`delaySeconds` 上限 24 小時，Cron 每 15 分鐘掃描）
-- 語義搜索：**Vectorize + Workers AI**（`@cf/baai/bge-base-zh-v1.5`，768 維）
+- 語義搜索：**Vectorize + Workers AI**（`@cf/baai/bge-base-en-v1.5`，768 維，默認閾值 0.5）
 - 速率限制：**Rate Limiting bindings**（零網絡開銷）
 - 功能開關：**D1 存儲** + `FLAG_REGISTRY` 註冊表驅動（`src/services/flags.ts`）
 - 郵件：**MailChannels / Resend** HTTP API
@@ -99,8 +99,8 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 
 - 前綴 `/api/v1/`，RESTful
 - 公開：`/api/v1/{resource}`（無認證，60 req/min）
-- 管理：`/api/v1/admin/{resource}`（JWT `requireAuth`，300 req/min）
-- 語義搜索：`/api/v1/search?q=關鍵詞&topK=10&threshold=0.7`
+- 管理：`/api/v1/admin/{resource}`（JWT `requireAuth` + `requireMenuPermission` 菜單權限，300 req/min；database/storage 路由僅超管可用 `requireSuperAdmin`）
+- 語義搜索：`/api/v1/search?q=關鍵詞&topK=10&threshold=0.5`
 - 功能開關：`/api/v1/admin/flags`（GET 查詢，PUT 切換）
 
 ---
@@ -161,10 +161,10 @@ TypeScript + Hono + Cloudflare Workers CMS，基於 PbootCMS 3.2.12 數據庫結
 | 內容按模型 | `src/services/content.ts` `handleAdminListContents` |
 | 配置加載 | `src/services/config.ts` KV `config:all` |
 | 密碼 | `src/utils/password.ts` 雙 MD5 |
-| 權限 | `src/services/auth.ts` JWT + `requireAuth`（超級管理員跳過） |
+| 權限 | `src/services/auth.ts` JWT + `requireAuth` + `requireMenuPermission`（菜單 mcode 權限）+ `requireSuperAdmin`（超管專用）；前端 `LABEL_MCODE_MAP` 顯式映射 |
 | Webhook | `src/services/notify.ts` `sendWebhook` |
 | 郵件 | `src/services/notify.ts` MailChannels / Resend |
-| 語義搜索 | `src/services/vectorize.ts` Vectorize + Workers AI |
+| 語義搜索 | `src/services/vectorize.ts` Vectorize + Workers AI（`@cf/baai/bge-base-en-v1.5`，閾值 0.5） |
 | 定時發布 | `src/services/scheduler.ts` Queues + Cron |
 | 速率限制 | `src/services/ratelimit.ts` Rate Limiting bindings |
 | 功能開關 | `src/services/flags.ts` D1 + FLAG_REGISTRY |
@@ -196,7 +196,7 @@ cd admin; npx vite dev
 # 部署（先 Worker 後 Pages）
 & 'D:\AI\Cache\pnpm-home\wrangler.CMD' deploy
 cd admin; npx vite build
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy build --project-name=cms-admin
+cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy build --project-name=cms-admin
 
 # 數據庫遷移
 & 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 migrations apply rust-cms-db --remote

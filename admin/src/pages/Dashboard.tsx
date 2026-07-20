@@ -43,10 +43,24 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.4.1',
+    date: '2026-07-20 10:30:00',
+    icon: '🔧',
+    latest: true,
+    changes: '側邊欄分組與數據庫菜單樹完全對齊（消除「全局配置」等自定義分組與權限選擇器不一致問題）：重構 NAV_GROUPS 為 4 個分組（內容管理/多媒體/SEO設置/系統設置），與 ay_menu 25 個菜單 1:1 映射；LABEL_MCODE_MAP 更新為 DB 菜單名稱；修正 copywriter 角色權限（移除 M205/M206/M207/M501/M502 技術與系統權限，保留 10 項內容相關權限）；後端權限中間件新增 GET 白名單（PUBLIC_READ_PATHS：models/all/menus/sorts/all 供側邊欄與下拉選單使用，POST/PUT/DELETE 仍需權限）；修復 ay_role_level 表權限同步問題（手動 SQL 需同時更新 levels 欄位與 ay_role_level 表）',
+  },
+  {
+    version: 'v1.4.0',
+    date: '2026-07-18 09:30:00',
+    icon: '🔐',
+    latest: false,
+    changes: 'RBAC 權限安全修復：前端側邊欄改用顯式 LABEL_MCODE_MAP 映射表（替代動態 API 查找），未映射項目默認隱藏（安全優先），內容模型統一檢查 M201 權限；後端補齊 12 條路由的 requireMenuPermission 中間件（contents/sorts/singles/messages/extfields/media/links/slides/tags/labels/site/company），新增 requireSuperAdmin 中間件保護 database/storage 路由；語義搜索模型替換（@cf/baai/bge-base-zh-v1.5 → @cf/baai/bge-base-en-v1.5，768 維不變），默認閾值降低 0.7→0.5；媒體庫上傳壓縮對話框（ImageCompressDialog 組件，質量滑桿+實時預覽+格式選擇）；存儲上傳 content-type 修復（generateKey 包含副檔名 + guessContentType 兜底）；幻燈片移動端圖片高度自適應（h-32 → maxWidth/maxHeight + auto）；admin 用戶分配 R101 超級管理員角色；Pages Functions 部署修復（從 admin/ 目錄部署以正確上傳 Functions bundle）',
+  },
+  {
     version: 'v1.3.0',
     date: '2026-07-17 17:17:50',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: '幻燈片管理優化：圖片預覽改為原比例展示（object-contain）+ 新增前端 WebP 壓縮上傳功能（Canvas API 自動縮放+質量壓縮，類似 Squoosh 效果）；域名安全重構：移除 Worker 後端公網域名暴露（wrangler.jsonc 取消自定義域名 + Pages Functions 回退改為錯誤響應 + Dashboard 系統信息不再顯示後端域名），Pages 域名更新為 cms.cmermedical.com.hk',
   },
   {

@@ -1,8 +1,11 @@
 /**
  * 語義搜索服務 - 基於 Cloudflare Vectorize + Workers AI
  *
- * 使用 @cf/baai/bge-base-zh-v1.5 嵌入模型 (768 維, 中文優化),
+ * 使用 @cf/baai/bge-base-en-v1.5 嵌入模型 (768 維),
  * 將 ay_content 表中的文章索引到 Vectorize, 提供語義相似度搜索能力。
+ *
+ * 注: 原 @cf/baai/bge-base-zh-v1.5 模型已被 Cloudflare 移除,
+ *     bge-base-en-v1.5 基於 XLM-RoBERTa 骨幹, 同樣支持中文分詞。
  *
  * 表結構 (ay_content, PbootCMS 3.2.12):
  *   - id (integer)          主鍵
@@ -22,8 +25,8 @@ import type { D1Database, VectorizeIndex, Ai } from '@cloudflare/workers-types';
 import { okData, err } from '../utils/response';
 import { nowStr } from '../utils/datetime';
 
-/** 嵌入模型名稱 (768 維, 中文優化) */
-const EMBEDDING_MODEL = '@cf/baai/bge-base-zh-v1.5';
+/** 嵌入模型名稱 (768 維, bge-base-en-v1.5 基於 XLM-RoBERTa 支持多語言) */
+const EMBEDDING_MODEL = '@cf/baai/bge-base-en-v1.5';
 
 /** 嵌入向量維度 */
 const EMBEDDING_DIMENSIONS = 768;
@@ -34,8 +37,9 @@ const MAX_INDEX_TEXT_LENGTH = 2000;
 /** 默認語義搜索返回數量 */
 const DEFAULT_TOP_K = 10;
 
-/** 默認相似度閾值 (低於此值的結果將被過濾) */
-const DEFAULT_THRESHOLD = 0.7;
+/** 默認相似度閾值 (低於此值的結果將被過濾)
+ *  bge-base-en-v1.5 處理中文時相似度分數略低於中文專用模型，閾值調低至 0.5 */
+const DEFAULT_THRESHOLD = 0.5;
 
 /** 批量重建索引時每批處理的文章數 */
 const REINDEX_BATCH_SIZE = 50;
@@ -117,22 +121,22 @@ function buildIndexText(title: string, description: string, content: string): st
  * @param text 待嵌入的文本
  * @returns 768 維浮點數向量, 若失敗則返回 null
  */
-async function generateEmbedding(ai: Ai, text: string): Promise<number[] | null> {
-  if (!text) return null;
+async function generateEmbedding(ai: Ai, text: string): Promise<{ vector: number[] | null; error: string }> {
+  if (!text) return { vector: null, error: '空文本' };
   try {
     const response = (await ai.run(EMBEDDING_MODEL, { text: [text] })) as EmbeddingResponse;
     if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
-      return null;
+      return { vector: null, error: `AI 返回空數據, shape=${JSON.stringify(response.shape)}` };
     }
     const vector = response.data[0];
     if (!vector || vector.length !== EMBEDDING_DIMENSIONS) {
-      console.warn(`generateEmbedding: 向量維度異常, 期望 ${EMBEDDING_DIMENSIONS}, 實際 ${vector?.length ?? 0}`);
-      return null;
+      return { vector: null, error: `向量維度異常, 期望 ${EMBEDDING_DIMENSIONS}, 實際 ${vector?.length ?? 0}` };
     }
-    return vector;
+    return { vector, error: '' };
   } catch (e) {
-    console.error('generateEmbedding: Workers AI 調用失敗:', e);
-    return null;
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('generateEmbedding: Workers AI 調用失敗:', msg);
+    return { vector: null, error: `AI 調用異常: ${msg}` };
   }
 }
 
@@ -160,9 +164,9 @@ export async function indexArticle(
   scode: string,
 ): Promise<void> {
   const combinedText = buildIndexText(title, '', content);
-  const embedding = await generateEmbedding(ai, combinedText);
+  const { vector: embedding, error: embedError } = await generateEmbedding(ai, combinedText);
   if (!embedding) {
-    console.warn(`indexArticle: 文章 ${articleId} 嵌入生成失敗, 跳過索引`);
+    console.warn(`indexArticle: 文章 ${articleId} 嵌入生成失敗 (${embedError}), 跳過索引`);
     return;
   }
   await index.upsert([
@@ -216,9 +220,9 @@ export async function semanticSearch(
   const effectiveThreshold = threshold !== undefined && threshold >= 0 ? threshold : DEFAULT_THRESHOLD;
 
   // 1. 將查詢文本轉為嵌入向量
-  const queryVector = await generateEmbedding(ai, query.trim());
+  const { vector: queryVector, error: embedError } = await generateEmbedding(ai, query.trim());
   if (!queryVector) {
-    return err('查詢向量化失敗, 請稍後重試', 1005);
+    return err(`查詢向量化失敗: ${embedError}`, 1005);
   }
 
   // 2. 在 Vectorize 中檢索相似向量
@@ -358,7 +362,7 @@ export async function reindexAllArticles(
     const vectors: Array<{ id: string; values: number[]; metadata: { articleId: number; scode: string } } | null> = [];
     for (let j = 0; j < batch.length; j++) {
       const article = batch[j];
-      const embedding = await generateEmbedding(ai, texts[j]);
+      const { vector: embedding, error: embedErr } = await generateEmbedding(ai, texts[j]);
       if (embedding) {
         vectors.push({
           id: `article-${article.id}`,
@@ -369,7 +373,7 @@ export async function reindexAllArticles(
       } else {
         vectors.push(null);
         failed++;
-        errors.push(`文章 ${article.id} 嵌入生成失敗`);
+        errors.push(`文章 ${article.id} 嵌入失敗: ${embedErr}`);
       }
     }
 

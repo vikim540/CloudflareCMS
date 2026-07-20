@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
-import { compressImageToWebP } from '../lib/imageCompress'
+import ImageCompressDialog from '../components/ImageCompressDialog'
 
 /** 幻燈片數據結構 */
 interface Slide {
@@ -94,24 +94,18 @@ export default function Slides() {
   const [uploadingPicMobile, setUploadingPicMobile] = useState(false)
   const desktopFileRef = useRef<HTMLInputElement>(null)
   const mobileFileRef = useRef<HTMLInputElement>(null)
+  // 壓縮對話框狀態：記錄待壓縮的圖片及其目標欄位
+  const [pendingSlideImage, setPendingSlideImage] = useState<{ file: File; target: 'desktop' | 'mobile' } | null>(null)
 
-  /** 壓縮並上傳圖片到 R2，返回 URL */
-  const uploadImage = useCallback(async (
+  /** 上傳壓縮後的圖片到 R2，返回 URL */
+  const uploadCompressedImage = useCallback(async (
     file: File,
     onProgress: (loading: boolean) => void,
   ): Promise<string | null> => {
     onProgress(true)
     try {
-      // 前端 WebP 壓縮（幻燈片桌面版最大 1920x1080，移動端最大 800x1200）
-      const isMobile = file.size < 2 * 1024 * 1024 // 小於 2MB 的可能是移動端圖片
-      const compressed = await compressImageToWebP(file, {
-        maxWidth: isMobile ? 800 : 1920,
-        maxHeight: isMobile ? 1200 : 1080,
-        quality: 0.82,
-      })
-
       const formData = new FormData()
-      formData.append('file', compressed)
+      formData.append('file', file)
       const token = localStorage.getItem('cms_token')
       const resp = await fetch(
         `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
@@ -135,22 +129,50 @@ export default function Slides() {
     }
   }, [])
 
-  /** 桌面版圖片上傳 */
+  /** 壓縮對話框確認後的上傳回調 */
+  const handleSlideCompressConfirm = async (compressedFiles: File[]) => {
+    if (!pendingSlideImage || compressedFiles.length === 0) {
+      setPendingSlideImage(null)
+      return
+    }
+    const compressed = compressedFiles[0]
+    const { target } = pendingSlideImage
+    setPendingSlideImage(null)
+
+    if (target === 'desktop') {
+      const url = await uploadCompressedImage(compressed, setUploadingPic)
+      if (url) setForm((f) => ({ ...f, pic: url }))
+    } else {
+      const url = await uploadCompressedImage(compressed, setUploadingPicMobile)
+      if (url) setForm((f) => ({ ...f, pic_mobile: url }))
+    }
+  }
+
+  /** 桌面版圖片上傳 — 彈出壓縮對話框 */
   const handleDesktopUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = await uploadImage(file, setUploadingPic)
-    if (url) setForm((f) => ({ ...f, pic: url }))
     if (desktopFileRef.current) desktopFileRef.current.value = ''
+    // 非圖片直接上傳，圖片走壓縮對話框
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+      const url = await uploadCompressedImage(file, setUploadingPic)
+      if (url) setForm((f) => ({ ...f, pic: url }))
+      return
+    }
+    setPendingSlideImage({ file, target: 'desktop' })
   }
 
-  /** 移動端圖片上傳 */
+  /** 移動端圖片上傳 — 彈出壓縮對話框 */
   const handleMobileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = await uploadImage(file, setUploadingPicMobile)
-    if (url) setForm((f) => ({ ...f, pic_mobile: url }))
     if (mobileFileRef.current) mobileFileRef.current.value = ''
+    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+      const url = await uploadCompressedImage(file, setUploadingPicMobile)
+      if (url) setForm((f) => ({ ...f, pic_mobile: url }))
+      return
+    }
+    setPendingSlideImage({ file, target: 'mobile' })
   }
 
   /** 載入幻燈片列表 */
@@ -521,8 +543,8 @@ export default function Slides() {
                         <img
                           src={item.pic_mobile}
                           alt={item.title || '移動端幻燈片'}
-                          className="w-18 h-32 rounded border bg-gray-50 object-contain"
-                          style={{ maxWidth: '72px' }}
+                          className="rounded border bg-gray-50"
+                          style={{ maxWidth: '72px', maxHeight: '128px', width: 'auto', height: 'auto' }}
                         />
                       ) : (
                         <span className="text-muted-foreground text-xs">無</span>
@@ -790,6 +812,15 @@ export default function Slides() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── 圖片壓縮對話框 ──────────────────────────────── */}
+      {pendingSlideImage && (
+        <ImageCompressDialog
+          files={[pendingSlideImage.file]}
+          onConfirm={handleSlideCompressConfirm}
+          onCancel={() => setPendingSlideImage(null)}
+        />
       )}
     </div>
   )

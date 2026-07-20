@@ -312,14 +312,32 @@ export async function getS3Config(db: D1Database, kv: KVNamespace): Promise<S3Co
   return { endpoint, accessKey, secretKey, bucket, region, publicUrl };
 }
 
-/** 生成文件 key */
+/** 從文件名推斷 Content-Type（當 file.type 為空時的兜底方案） */
+function guessContentType(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  const mimeMap: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
+    webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'image/svg+xml',
+    ico: 'image/x-icon', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+    mp3: 'audio/mpeg', wav: 'audio/wav', pdf: 'application/pdf',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    txt: 'text/plain', csv: 'text/csv', json: 'application/json', zip: 'application/zip',
+  };
+  return mimeMap[ext] || 'application/octet-stream';
+}
+
+/** 生成文件 key — 始終保留文件擴展名，確保 R2/S3 對象可被正確識別 */
 function generateKey(filename: string, prefix = 'uploads'): string {
   const now = new Date();
   const datePath = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
   const ext = filename.split('.').pop() || '';
   const randomStr = Math.random().toString(36).slice(2, 10);
-  const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
-  return `${prefix}/${datePath}/${randomStr}_${safeName}`;
+  // 安全化文件名（去除特殊字符），保留擴展名
+  const baseName = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
+  // 擴展名單獨拼接，確保即使原文件名無擴展名也能從壓縮後的類型推斷
+  const safeExt = ext ? `.${ext}` : '';
+  return `${prefix}/${datePath}/${randomStr}_${baseName}${safeExt}`;
 }
 
 /** 處理文件上傳 */
@@ -347,7 +365,8 @@ export async function handleUpload(
 
   const key = generateKey(file.name);
   const data = await file.arrayBuffer();
-  const contentType = file.type || 'application/octet-stream';
+  // file.type 可能在某些瀏覽器/場景下為空，從文件名推斷兜底
+  const contentType = file.type || guessContentType(file.name);
 
   try {
     const url = await s3PutObject(s3Config, key, data, contentType);
