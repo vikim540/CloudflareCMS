@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.8',
+    date: '2026-07-20 14:35:17',
+    icon: '🐛',
+    latest: true,
+    changes: '幻燈片排序 API 根因修復 — Hono 路由順序 bug：PUT /slides/:id 在 PUT /slides/batch-sorting 之前註冊，導致 "batch-sorting" 被當作 :id 參數匹配到 handleUpdateSlide（返回 1001 "沒有需要更新的字段"），batch-sorting handler 永遠不會被執行。修復方式：將 batch-sorting 路由移到 :id 路由之前（與 contents/trash、models/all、roles/all 的正確順序一致）。舉一反三：檢查所有 /:id 路由與子路徑路由的順序，確認 contents/trash（GET 不衝突）、models/all（順序正確）、roles/all（順序正確）無同類問題',
+  },
+  {
     version: 'v1.5.7',
     date: '2026-07-20 14:05:23',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '幻燈片排序 bug 修復 + 版本時間戳時區修正 + TZ 環境變量。Slides 排序根因：onBlur 中 val !== item.sorting 永遠為 false（onChange 已更新 item.sorting），改用 dirty tracking + 保存排序按鈕（修改後輸入框黃色高亮，底部顯示「保存排序（N 項）」按鈕批量提交）；新增幻燈片默認分組改為當前選中分組（或 1），排序自動填入該分組最大值+1；修正 v1.5.1-v1.5.6 版本時間戳從錯誤時區修正為香港 UTC+8；wrangler.jsonc 新增 TZ=Asia/Hong_Kong 環境變量',
   },
   {

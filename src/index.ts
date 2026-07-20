@@ -758,20 +758,21 @@ app.post('/api/v1/admin/slides', async (c) => {
   return extraService.handleCreateSlide(c.env.DB, body);
 });
 
-app.put('/api/v1/admin/slides/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  const body = await c.req.json();
-  return extraService.handleUpdateSlide(c.env.DB, id, body);
-});
-
+// ⚠️ batch-sorting 路由必須在 :id 路由之前，否則 "batch-sorting" 會被當作 :id 匹配
 app.put('/api/v1/admin/slides/batch-sorting', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
   const items = Array.isArray(body?.items) ? body.items : [];
   return extraService.handleBatchUpdateSlideSorting(c.env.DB, items);
+});
+
+app.put('/api/v1/admin/slides/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return extraService.handleUpdateSlide(c.env.DB, id, body);
 });
 
 app.delete('/api/v1/admin/slides/:id', async (c) => {
