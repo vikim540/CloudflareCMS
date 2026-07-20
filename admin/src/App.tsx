@@ -11,7 +11,6 @@ import SingleEdit from './pages/SingleEdit'
 import Links from './pages/Links'
 import Slides from './pages/Slides'
 import Tags from './pages/Tags'
-import Labels from './pages/Labels'
 import Messages from './pages/Messages'
 import SiteInfo from './pages/SiteInfo'
 import Company from './pages/Company'
@@ -56,7 +55,6 @@ export default function App() {
         <Route path="links" element={<Links />} />
         <Route path="slides" element={<Slides />} />
         <Route path="tags" element={<Tags />} />
-        <Route path="labels" element={<Labels />} />
         <Route path="messages" element={<Messages />} />
         <Route path="site" element={<SiteInfo />} />
         <Route path="company" element={<Company />} />

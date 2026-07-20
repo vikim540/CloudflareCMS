@@ -294,8 +294,6 @@ app.get('/api/v1/slides', async (c) => {
 
 app.get('/api/v1/tags', async (c) => extraService.handleListTags(c.env.DB));
 
-app.get('/api/v1/labels', async (c) => extraService.handleListLabelsPublic(c.env.DB));
-
 app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const body = await c.req.json();
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
@@ -771,43 +769,6 @@ app.delete('/api/v1/admin/tags/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return extraService.handleDeleteTag(c.env.DB, id);
-});
-
-// ===== 後台管理接口 - 自定義標籤 =====
-app.get('/api/v1/admin/labels', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  return extraService.handleListLabels(c.env.DB);
-});
-
-app.post('/api/v1/admin/labels', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const body = await c.req.json();
-  return extraService.handleCreateLabel(c.env.DB, body);
-});
-
-// 注意: batch 路由必須在 :id 之前註冊,避免被當作 id 參數
-app.put('/api/v1/admin/labels/batch', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const body = await c.req.json();
-  return extraService.handleBatchUpdateLabels(c.env.DB, body);
-});
-
-app.put('/api/v1/admin/labels/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  const body = await c.req.json();
-  return extraService.handleUpdateLabel(c.env.DB, id, body);
-});
-
-app.delete('/api/v1/admin/labels/:id', async (c) => {
-  const claims = await requireAuth(c);
-  if (!claims) return err('未授權', 2002);
-  const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteLabel(c.env.DB, id);
 });
 
 // ===== 後台管理接口 - 留言管理 =====

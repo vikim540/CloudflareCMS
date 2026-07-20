@@ -33,6 +33,8 @@ interface FilePreview {
   result: CompressResult | null
   /** 壓縮中標記 */
   compressing: boolean
+  /** 壓縮進度 0-100 */
+  compressProgress: number
 }
 
 /** 質量等級預設 */
@@ -58,7 +60,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
     const initialPreviews: FilePreview[] = files.map((file) => {
       const url = URL.createObjectURL(file)
       previewUrlsRef.current.push(url)
-      return { original: file, originalUrl: url, result: null, compressing: true }
+      return { original: file, originalUrl: url, result: null, compressing: true, compressProgress: 0 }
     })
     setPreviews(initialPreviews)
   }, [files])
@@ -67,12 +69,21 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
   const runCompress = useCallback(async () => {
     setCompressing(true)
     // 標記所有為壓縮中
-    setPreviews((prev) => prev.map((p) => ({ ...p, compressing: true })))
+    setPreviews((prev) => prev.map((p) => ({ ...p, compressing: true, compressProgress: 0 })))
 
     const results: FilePreview[] = []
     for (let i = 0; i < files.length; i++) {
       try {
-        const result = await compressImage(files[i], { quality, maxWidth, maxHeight, format })
+        const result = await compressImage(files[i], {
+          quality, maxWidth, maxHeight, format,
+          onProgress: (p) => {
+            setPreviews((prev) => {
+              const next = [...prev]
+              if (next[i]) next[i] = { ...next[i], compressProgress: p }
+              return next
+            })
+          },
+        })
         // 釋放舊的預覽 URL
         if (previews[i]?.result?.previewUrl) {
           URL.revokeObjectURL(previews[i].result!.previewUrl)
@@ -82,6 +93,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
           originalUrl: previews[i]?.originalUrl || '',
           result,
           compressing: false,
+          compressProgress: 100,
         })
         // 逐張更新，讓用戶看到進度
         setPreviews((prev) => {
@@ -95,6 +107,7 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
           originalUrl: previews[i]?.originalUrl || '',
           result: null,
           compressing: false,
+          compressProgress: 0,
         })
         setPreviews((prev) => {
           const next = [...prev]
@@ -299,8 +312,15 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                     </div>
                   )}
                   {preview.compressing && (
-                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-                      <span className="text-white text-xs animate-pulse">壓縮中...</span>
+                    <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1">
+                      <span className="text-white text-xs animate-pulse">壓縮中</span>
+                      <div className="w-12 h-1 bg-white/30 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-400 transition-all duration-200"
+                          style={{ width: `${preview.compressProgress}%` }}
+                        />
+                      </div>
+                      <span className="text-white text-[10px] font-mono">{preview.compressProgress}%</span>
                     </div>
                   )}
                 </div>

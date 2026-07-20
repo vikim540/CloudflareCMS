@@ -1,14 +1,21 @@
 /**
- * 前端圖片壓縮工具 — 使用 Canvas API 實現 WebP 壓縮
- * 類似 Squoosh 的效果：自動縮放 + 質量壓縮 + 格式轉換
+ * 前端圖片壓縮引擎 — 基於 browser-image-compression（Web Worker + WASM 級別壓縮質量）
  *
- * 特性：
+ * 設計原則（組件化管理）：
+ *   - 此文件是唯一的壓縮引擎入口，對外接口固定（CompressResult / compressImage）
+ *   - 替換引擎時只需修改此文件，ImageCompressDialog / useImageUpload 等消費方無需改動
+ *   - 底層使用 browser-image-compression（Web Worker 不阻塞 UI，自動 EXIF 旋轉修正）
+ *
+ * 引擎特性：
  *   - 自動按最大尺寸等比縮放（不變形）
  *   - 轉換為 WebP 格式（體積減少 30-70%）
  *   - 可配置壓縮質量（0-1，默認 0.82）
- *   - 保留 EXIF 方向信息（通過 createImageBitmap）
- *   - 返回 File 對象，可直接用 FormData 上傳
+ *   - Web Worker 壓縮（不阻塞主線程）
+ *   - 自動 EXIF 方向修正
+ *   - 壓縮進度回調
  */
+
+import imageCompression from 'browser-image-compression';
 
 /** 輸出格式 */
 export type CompressFormat = 'webp' | 'original';
@@ -25,6 +32,8 @@ export interface CompressOptions {
   format?: CompressFormat;
   /** 輸出文件名前綴（默認保留原名） */
   filename?: string;
+  /** 壓縮進度回調（0-100） */
+  onProgress?: (progress: number) => void;
 }
 
 /** 壓縮結果（含尺寸和預覽信息） */
@@ -48,7 +57,7 @@ export interface CompressResult {
 }
 
 /** 默認壓縮參數 */
-const DEFAULTS: Required<CompressOptions> = {
+const DEFAULTS: Required<Omit<CompressOptions, 'onProgress'>> = {
   maxWidth: 1920,
   maxHeight: 1080,
   quality: 0.82,
@@ -56,23 +65,40 @@ const DEFAULTS: Required<CompressOptions> = {
   filename: '',
 };
 
-/**
- * 壓縮圖片文件，支持 WebP 或保留原格式
- *
- * @param file 原始圖片文件
- * @param options 壓縮選項
- * @returns 壓縮後的 File 對象
- */
-export async function compressImageToWebP(
-  file: File,
-  options?: CompressOptions,
-): Promise<File> {
-  const result = await compressImage(file, options);
-  return result.file;
+/** 判斷文件是否為可壓縮的圖片格式 */
+function isCompressibleImage(file: File): boolean {
+  if (!file.type.startsWith('image/')) return false;
+  // SVG 是矢量圖，無需壓縮
+  if (file.type === 'image/svg+xml') return false;
+  return true;
+}
+
+/** 獲取圖片尺寸 */
+async function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  try {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    return await new Promise((resolve) => {
+      img.onload = () => {
+        const result = { width: img.naturalWidth, height: img.naturalHeight };
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: 0, height: 0 });
+      };
+      img.src = url;
+    });
+  } catch {
+    return { width: 0, height: 0 };
+  }
 }
 
 /**
  * 壓縮圖片文件並返回完整結果（含預覽 URL、尺寸、大小對比）
+ *
+ * 底層使用 browser-image-compression（Web Worker 壓縮，不阻塞 UI）
  *
  * @param file 原始圖片文件
  * @param options 壓縮選項
@@ -85,22 +111,8 @@ export async function compressImage(
   const opts = { ...DEFAULTS, ...options };
   const originalSize = file.size;
 
-  // 非圖片類型直接返回原文件
-  if (!file.type.startsWith('image/')) {
-    return {
-      file,
-      previewUrl: URL.createObjectURL(file),
-      width: 0,
-      height: 0,
-      size: originalSize,
-      originalSize,
-      savings: 0,
-      type: file.type,
-    };
-  }
-
-  // SVG 是矢量圖，無需壓縮
-  if (file.type === 'image/svg+xml') {
+  // 非圖片或 SVG 直接返回原文件
+  if (!isCompressibleImage(file)) {
     return {
       file,
       previewUrl: URL.createObjectURL(file),
@@ -114,68 +126,49 @@ export async function compressImage(
   }
 
   try {
-    // 使用 createImageBitmap 保留 EXIF 方向
-    const bitmap = await createImageBitmap(file, {
-      imageOrientation: 'from-image',
-    });
+    // 構建 browser-image-compression 選項
+    const outputType = opts.format === 'webp' ? 'image/webp' : file.type || 'image/png';
+    // 取寬高的較大值作為 maxWidthOrHeight
+    const maxWidthOrHeight = Math.max(opts.maxWidth, opts.maxHeight);
 
-    // 計算等比縮放後的尺寸
-    let { width, height } = bitmap;
-    const ratio = Math.min(
-      opts.maxWidth / width,
-      opts.maxHeight / height,
-      1, // 不放大
-    );
-    width = Math.round(width * ratio);
-    height = Math.round(height * ratio);
+    const compressOptions = {
+      maxSizeMB: 50, // 上限 50MB（基本不會觸及，主要由質量控制）
+      maxWidthOrHeight,
+      useWebWorker: true, // 使用 Web Worker，不阻塞主線程
+      fileType: outputType,
+      initialQuality: opts.quality,
+      onProgress: opts.onProgress,
+    };
 
-    // 創建 Canvas 並繪製
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas 2D 上下文不可用');
-
-    // 高質量縮放
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(bitmap, 0, 0, width, height);
-
-    // 釋放 bitmap 資源
-    bitmap.close();
-
-    // 根據格式選擇輸出 MIME 類型
-    const outputMime = opts.format === 'webp' ? 'image/webp' : file.type || 'image/png';
-    // 對於 PNG/GIF 等無損格式，toBlob 的 quality 參數無效，但仍可縮放尺寸
-    const useQuality = outputMime === 'image/webp' || outputMime === 'image/jpeg';
-
-    const blob = await new Promise<Blob | null>((resolve) => {
-      canvas.toBlob(resolve, outputMime, useQuality ? opts.quality : undefined);
-    });
-
-    if (!blob) throw new Error('圖片壓縮失敗');
+    // 執行壓縮
+    const compressedFile = await imageCompression(file, compressOptions);
 
     // 如果壓縮後反而變大，使用原文件
-    const finalBlob = blob.size >= originalSize ? file : blob;
-    const finalSize = finalBlob.size;
+    const finalFile = compressedFile.size >= originalSize ? file : compressedFile;
+    const finalSize = finalFile.size;
 
     // 生成文件名
     const baseName = opts.filename || file.name.replace(/\.[^.]+$/, '');
     const ext = opts.format === 'webp' ? 'webp' : (file.name.split('.').pop() || 'png');
     const outputName = `${baseName}.${ext}`;
 
-    const outputFile = new File([finalBlob], outputName, { type: outputMime });
-    const previewUrl = URL.createObjectURL(finalBlob);
+    // 確保 File 對象有正確的文件名和類型
+    const namedFile = finalFile.name === outputName && finalFile.type === outputType
+      ? finalFile
+      : new File([finalFile], outputName, { type: outputType });
+
+    // 獲取壓縮後的圖片尺寸
+    const { width, height } = await getImageDimensions(namedFile);
 
     return {
-      file: outputFile,
-      previewUrl,
+      file: namedFile,
+      previewUrl: URL.createObjectURL(namedFile),
       width,
       height,
       size: finalSize,
       originalSize,
       savings: originalSize > 0 ? 1 - finalSize / originalSize : 0,
-      type: outputMime,
+      type: outputType,
     };
   } catch (e) {
     console.warn('圖片壓縮失敗，使用原文件:', e);
@@ -190,6 +183,21 @@ export async function compressImage(
       type: file.type,
     };
   }
+}
+
+/**
+ * 壓縮圖片文件，僅返回 File 對象（簡便方法）
+ *
+ * @param file 原始圖片文件
+ * @param options 壓縮選項
+ * @returns 壓縮後的 File 對象
+ */
+export async function compressImageToWebP(
+  file: File,
+  options?: CompressOptions,
+): Promise<File> {
+  const result = await compressImage(file, options);
+  return result.file;
 }
 
 /**

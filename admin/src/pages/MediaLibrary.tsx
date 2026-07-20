@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../lib/api'
 import ImageCompressDialog from '../components/ImageCompressDialog'
+import { useImageUpload } from '../hooks/useImageUpload'
 
 /** S3 文件信息（含使用狀態與標記狀態） */
 interface MediaFile {
@@ -108,7 +109,6 @@ const FILTER_TABS: { key: FilterType; label: string; icon: string }[] = [
 export default function MediaLibrary() {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
   const [cursor, setCursor] = useState('')
   const [hasMore, setHasMore] = useState(false)
   const [search, setSearch] = useState('')
@@ -128,8 +128,12 @@ export default function MediaLibrary() {
   // ─── 圖片壓縮對話框狀態 ────────────────────────────────
   /** 待壓縮的圖片文件（非 null 時顯示壓縮對話框） */
   const [pendingImages, setPendingImages] = useState<File[] | null>(null)
-  /** 上傳進度信息 */
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
+
+  // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
+  // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
+  const { uploading, progress, error: uploadError, uploadFiles, clearError } = useImageUpload({
+    autoCompress: false,
+  })
 
   /** 獲取存儲配置（用於生成文件 URL） */
   const fetchStorageConfig = useCallback(async () => {
@@ -172,32 +176,14 @@ export default function MediaLibrary() {
     fetchFiles(true)
   }, [])
 
-  /** 上傳單個文件到 S3 */
-  const uploadSingleFile = useCallback(async (file: File): Promise<void> => {
-    const formData = new FormData()
-    formData.append('file', file)
-    const token = localStorage.getItem('cms_token')
-    const resp = await fetch(
-      `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      },
-    )
-    const json = await resp.json()
-    if (json.code !== 0) {
-      throw new Error(json.msg || '上傳失敗')
-    }
-  }, [])
-
   /**
    * 上傳文件入口 — 圖片走壓縮對話框，非圖片直接上傳
    * 每個上傳動作的優化點：
    *   - 圖片：彈出壓縮對話框，用戶控制質量/尺寸/格式，前端壓縮後再上傳
    *   - 非圖片（文檔/視頻）：直接上傳，無需壓縮
-   *   - 上傳過程顯示進度（第 N/總數 張）
+   *   - 上傳過程顯示進度（壓縮中/上傳中，第 N/總數 張）
    *   - 完成後自動刷新列表
+   *   - 上傳失敗顯示具體錯誤信息（文件名 + 錯誤原因）
    */
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files
@@ -211,22 +197,14 @@ export default function MediaLibrary() {
     const imageFiles = allFiles.filter((f) => f.type.startsWith('image/') && f.type !== 'image/svg+xml')
     const nonImageFiles = allFiles.filter((f) => !f.type.startsWith('image/') || f.type === 'image/svg+xml')
 
-    // 非圖片文件直接上傳
+    // 非圖片文件直接上傳（使用 hook，autoCompress=false）
     if (nonImageFiles.length > 0) {
-      setUploading(true)
       setError('')
-      setUploadProgress({ current: 0, total: nonImageFiles.length })
-      try {
-        for (let i = 0; i < nonImageFiles.length; i++) {
-          setUploadProgress({ current: i + 1, total: nonImageFiles.length })
-          await uploadSingleFile(nonImageFiles[i])
-        }
+      clearError()
+      const results = await uploadFiles(nonImageFiles)
+      const successCount = results.filter((r) => r !== null).length
+      if (successCount > 0) {
         await fetchFiles(true)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : '上傳失敗')
-      } finally {
-        setUploading(false)
-        setUploadProgress(null)
       }
     }
 
@@ -239,20 +217,12 @@ export default function MediaLibrary() {
   /** 壓縮對話框確認後上傳壓縮後的圖片 */
   const handleCompressedConfirm = async (compressedFiles: File[]) => {
     setPendingImages(null)
-    setUploading(true)
     setError('')
-    setUploadProgress({ current: 0, total: compressedFiles.length })
-    try {
-      for (let i = 0; i < compressedFiles.length; i++) {
-        setUploadProgress({ current: i + 1, total: compressedFiles.length })
-        await uploadSingleFile(compressedFiles[i])
-      }
+    clearError()
+    const results = await uploadFiles(compressedFiles)
+    const successCount = results.filter((r) => r !== null).length
+    if (successCount > 0) {
       await fetchFiles(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '上傳失敗')
-    } finally {
-      setUploading(false)
-      setUploadProgress(null)
     }
   }
 
@@ -446,18 +416,54 @@ export default function MediaLibrary() {
         </div>
       )}
 
-      {/* 上傳進度 */}
-      {uploadProgress && (
-        <div className="mb-4 px-4 py-3 bg-blue-50 border border-blue-200 text-blue-700 rounded-md text-sm flex items-center gap-3">
-          <span className="animate-spin inline-block">🔄</span>
-          <span>
-            正在上傳... 第 <b>{uploadProgress.current}</b> / {uploadProgress.total} 個文件
-          </span>
-          <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-300"
-              style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-            />
+      {/* 上傳錯誤提示（來自 hook，含失敗文件名和原因） */}
+      {uploadError && (
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="flex-shrink-0">❌</span>
+            <span className="font-semibold">上傳失敗</span>
+            <button
+              onClick={clearError}
+              className="ml-auto text-red-400 hover:text-red-600 text-xs"
+            >
+              關閉
+            </button>
+          </div>
+          <pre className="whitespace-pre-wrap text-xs ml-6 font-mono bg-red-50">{uploadError}</pre>
+        </div>
+      )}
+
+      {/* 上傳進度（壓縮中 / 上傳中，含文件名和百分比） */}
+      {progress && (
+        <div className="mb-4 px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 text-blue-700 rounded-md text-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="animate-spin inline-block">🔄</span>
+            <span className="font-semibold">
+              {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
+            </span>
+            <span className="text-blue-500">
+              第 {progress.current} / {progress.total} 個
+            </span>
+            <span className="text-xs text-blue-400 truncate flex-1" title={progress.fileName}>
+              {progress.fileName}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
+                style={{
+                  width: `${progress.phase === 'compressing'
+                    ? (progress.compressProgress ?? 0)
+                    : (progress.uploadProgress ?? 0)}%`,
+                }}
+              />
+            </div>
+            <span className="text-xs font-mono font-bold text-blue-600 min-w-[3rem] text-right">
+              {progress.phase === 'compressing'
+                ? `${progress.compressProgress ?? 0}%`
+                : `${progress.uploadProgress ?? 0}%`}
+            </span>
           </div>
         </div>
       )}

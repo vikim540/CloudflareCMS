@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.5.0',
+    date: '2026-07-20 18:00:00',
+    icon: '🗜️',
+    latest: true,
+    changes: '圖片壓縮引擎重構 + 自定義標籤移除：引入 browser-image-compression 開源庫（Web Worker 壓縮，不阻塞 UI），建立三層組件化架構（imageCompress.ts 引擎層 → useImageUpload.ts hook 層 → ImageCompressDialog.tsx UI 層），引擎可獨立替換不影響消費方；所有圖片上傳位置默認接入壓縮：媒體庫（壓縮對話框預覽+進度條）、幻燈片（桌面/移動端進度條）、文章內容（Quill 編輯器+縮略圖+擴展字段，autoCompress=true 自動壓縮為 WebP）；上傳過程實時進度展示（壓縮中/上傳中階段+百分比+文件名）；上傳失敗顯示具體錯誤（文件名+錯誤原因，可關閉）；ContentEdit 浮動進度提示（右下角 toast）；移除自定義標籤功能（headless CMS 無模板引擎，與 config API 重疊）— 刪除後端路由/services、前端頁面/路由/側邊欄、DB 菜單 M404 + 角色權限',
+  },
+  {
     version: 'v1.4.2',
     date: '2026-07-20 11:30:00',
     icon: '📐',
-    latest: true,
+    latest: false,
     changes: '側邊欄分組重構對齊 PbootCMS/Go 版邏輯（參考原版 6 分組結構）：新增 DB 頂級菜單 M600「全局配置」和 M610「基礎內容」；移動技術性子菜單（M206 擴展字段、M207 內容模型、M503 系統配置）pcode 從 M200/M500 → M600 全局配置；移動基礎內容子菜單（M501 站點信息、M502 公司信息、M202 欄目管理）pcode → M610；移動擴展內容子菜單（M203 單頁管理、M204 留言管理、M205 自定義表單）pcode → M400；M200 改名「內容管理→文章內容」、M400 改名「SEO設置→擴展內容」、M500 改名「系統設置→系統管理」；文章內容分組僅放文案相關（動態模型列表+回收站），技術性菜單移至全局配置；更新 copywriter 權限為 12 項（含父菜單 M610/M200/M400/M300）；更新超管 R101 權限為 27 項（含新增 M600/M610）',
   },
   {
@@ -175,7 +182,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=)', auth: false },
   { method: 'GET', path: '/api/v1/contents/:id', desc: '內容詳情', auth: false },
-  { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.7)', auth: false },
+  { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
   // 管理接口 (300次/分/用戶)
   { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?mcode=&page=)', auth: true },

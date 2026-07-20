@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
+import { useImageUpload } from '../hooks/useImageUpload'
 
 /** 幻燈片數據結構 */
 interface Slide {
@@ -90,44 +91,17 @@ export default function Slides() {
   const [newGroupName, setNewGroupName] = useState('')
 
   // 圖片上傳狀態
-  const [uploadingPic, setUploadingPic] = useState(false)
-  const [uploadingPicMobile, setUploadingPicMobile] = useState(false)
+  const [uploadTarget, setUploadTarget] = useState<'desktop' | 'mobile' | null>(null)
   const desktopFileRef = useRef<HTMLInputElement>(null)
   const mobileFileRef = useRef<HTMLInputElement>(null)
   // 壓縮對話框狀態：記錄待壓縮的圖片及其目標欄位
   const [pendingSlideImage, setPendingSlideImage] = useState<{ file: File; target: 'desktop' | 'mobile' } | null>(null)
 
-  /** 上傳壓縮後的圖片到 R2，返回 URL */
-  const uploadCompressedImage = useCallback(async (
-    file: File,
-    onProgress: (loading: boolean) => void,
-  ): Promise<string | null> => {
-    onProgress(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const token = localStorage.getItem('cms_token')
-      const resp = await fetch(
-        `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/upload`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        },
-      )
-      const json = await resp.json()
-      if (json.code === 0 && json.data?.url) {
-        return json.data.url as string
-      }
-      setActionError(json.msg || '圖片上傳失敗')
-      return null
-    } catch {
-      setActionError('圖片上傳失敗')
-      return null
-    } finally {
-      onProgress(false)
-    }
-  }, [])
+  // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
+  // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
+  const { uploading, progress, error: uploadError, uploadSingle, clearError } = useImageUpload({
+    autoCompress: false,
+  })
 
   /** 壓縮對話框確認後的上傳回調 */
   const handleSlideCompressConfirm = async (compressedFiles: File[]) => {
@@ -138,13 +112,18 @@ export default function Slides() {
     const compressed = compressedFiles[0]
     const { target } = pendingSlideImage
     setPendingSlideImage(null)
+    clearError()
 
-    if (target === 'desktop') {
-      const url = await uploadCompressedImage(compressed, setUploadingPic)
-      if (url) setForm((f) => ({ ...f, pic: url }))
-    } else {
-      const url = await uploadCompressedImage(compressed, setUploadingPicMobile)
-      if (url) setForm((f) => ({ ...f, pic_mobile: url }))
+    setUploadTarget(target)
+    const url = await uploadSingle(compressed)
+    setUploadTarget(null)
+
+    if (url) {
+      if (target === 'desktop') {
+        setForm((f) => ({ ...f, pic: url }))
+      } else {
+        setForm((f) => ({ ...f, pic_mobile: url }))
+      }
     }
   }
 
@@ -155,7 +134,10 @@ export default function Slides() {
     if (desktopFileRef.current) desktopFileRef.current.value = ''
     // 非圖片直接上傳，圖片走壓縮對話框
     if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
-      const url = await uploadCompressedImage(file, setUploadingPic)
+      clearError()
+      setUploadTarget('desktop')
+      const url = await uploadSingle(file)
+      setUploadTarget(null)
       if (url) setForm((f) => ({ ...f, pic: url }))
       return
     }
@@ -168,7 +150,10 @@ export default function Slides() {
     if (!file) return
     if (mobileFileRef.current) mobileFileRef.current.value = ''
     if (!file.type.startsWith('image/') || file.type === 'image/svg+xml') {
-      const url = await uploadCompressedImage(file, setUploadingPicMobile)
+      clearError()
+      setUploadTarget('mobile')
+      const url = await uploadSingle(file)
+      setUploadTarget(null)
       if (url) setForm((f) => ({ ...f, pic_mobile: url }))
       return
     }
@@ -635,13 +620,38 @@ export default function Slides() {
                   <button
                     type="button"
                     onClick={() => desktopFileRef.current?.click()}
-                    disabled={uploadingPic}
+                    disabled={uploading && uploadTarget === 'desktop'}
                     className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
                   >
-                    {uploadingPic ? <span className="animate-spin">🔄</span> : <span>📷</span>}
-                    {uploadingPic ? '壓縮上傳中...' : '上傳'}
+                    {uploading && uploadTarget === 'desktop' ? <span className="animate-spin">🔄</span> : <span>📷</span>}
+                    {uploading && uploadTarget === 'desktop' ? '上傳中...' : '上傳'}
                   </button>
                 </div>
+                {/* 上傳進度條 */}
+                {uploading && uploadTarget === 'desktop' && progress && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="animate-spin inline-block">🔄</span>
+                      <span className="font-semibold text-blue-700">
+                        {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
+                      </span>
+                      <span className="text-blue-500 truncate flex-1" title={progress.fileName}>{progress.fileName}</span>
+                      <span className="font-mono font-bold text-blue-600">
+                        {progress.phase === 'compressing' ? `${progress.compressProgress ?? 0}%` : `${progress.uploadProgress ?? 0}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${progress.phase === 'compressing'
+                            ? (progress.compressProgress ?? 0)
+                            : (progress.uploadProgress ?? 0)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {form.pic && (
                   <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
                     <img
@@ -677,13 +687,38 @@ export default function Slides() {
                   <button
                     type="button"
                     onClick={() => mobileFileRef.current?.click()}
-                    disabled={uploadingPicMobile}
+                    disabled={uploading && uploadTarget === 'mobile'}
                     className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
                   >
-                    {uploadingPicMobile ? <span className="animate-spin">🔄</span> : <span>📱</span>}
-                    {uploadingPicMobile ? '壓縮上傳中...' : '上傳'}
+                    {uploading && uploadTarget === 'mobile' ? <span className="animate-spin">🔄</span> : <span>📱</span>}
+                    {uploading && uploadTarget === 'mobile' ? '上傳中...' : '上傳'}
                   </button>
                 </div>
+                {/* 上傳進度條 */}
+                {uploading && uploadTarget === 'mobile' && progress && (
+                  <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md text-xs">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="animate-spin inline-block">🔄</span>
+                      <span className="font-semibold text-blue-700">
+                        {progress.phase === 'compressing' ? '🗜️ 壓縮中' : '📤 上傳中'}
+                      </span>
+                      <span className="text-blue-500 truncate flex-1" title={progress.fileName}>{progress.fileName}</span>
+                      <span className="font-mono font-bold text-blue-600">
+                        {progress.phase === 'compressing' ? `${progress.compressProgress ?? 0}%` : `${progress.uploadProgress ?? 0}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${progress.phase === 'compressing'
+                            ? (progress.compressProgress ?? 0)
+                            : (progress.uploadProgress ?? 0)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {form.pic_mobile && (
                   <div className="mt-2 rounded border bg-gray-50 p-2 flex items-center justify-center" style={{ maxHeight: '160px' }}>
                     <img
@@ -792,6 +827,21 @@ export default function Slides() {
                   <span className="mr-1">⚠️</span>
                   {actionError}
                 </p>
+              )}
+              {uploadError && (
+                <div className="px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-md text-xs">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span>❌</span>
+                    <span className="font-semibold">上傳失敗</span>
+                    <button
+                      onClick={clearError}
+                      className="ml-auto text-red-400 hover:text-red-600"
+                    >
+                      關閉
+                    </button>
+                  </div>
+                  <pre className="whitespace-pre-wrap font-mono">{uploadError}</pre>
+                </div>
               )}
             </div>
             <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">

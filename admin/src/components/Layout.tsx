@@ -50,7 +50,7 @@ const LABEL_MCODE_MAP: Record<string, string> = {
   '友情連結': 'M401',
   '幻燈片': 'M402',
   '標籤管理': 'M403',
-  '自定義標籤': 'M404',
+  // M404 自定義標籤已移除（headless CMS 無模板引擎，功能與 config API 重疊）
   // 系統設置 (M500 子菜單)
   '站點信息': 'M501',
   '公司信息': 'M502',
@@ -106,7 +106,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/links', label: '友情連結', icon: '🔗' },
       { to: '/slides', label: '幻燈片', icon: '🖼️' },
       { to: '/tags', label: '標籤管理', icon: '🏷️' },
-      { to: '/labels', label: '自定義標籤', icon: '📑' },
     ],
   },
   {
