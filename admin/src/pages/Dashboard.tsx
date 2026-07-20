@@ -43,57 +43,64 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
-    version: 'v1.5.5',
-    date: '2026-07-20 21:00:00',
-    icon: '🔑',
+    version: 'v1.5.6',
+    date: '2026-07-20 18:38:52',
+    icon: '🤖',
     latest: true,
+    changes: 'Cloudflare Turnstile 人機驗證整合：後端新增 verifyTurnstile() 函數調用 Cloudflare siteverify API 驗證 token；handleLogin 新增 turnstileToken 參數，開關開啟時強制驗證（網絡異常時放行避免故障）；新增公開端點 GET /api/v1/auth/turnstile-config（返回 enabled + siteKey，secret key 不暴露）；前端 Login.tsx 動態載入 Turnstile 腳本 + explicit 模式渲染 widget（語言 zh-HK，主題 light），登錄失敗自動 reset widget；DB 新增 3 條配置（turnstile_enabled/turnstile_site_key/turnstile_secret_key，sorting 35-37 安全配置分組）；新增錯誤碼 2007（人機驗證失敗）；修復 v1.5.1-v1.5.5 版本時間戳（時區從 UTC 修正為香港 UTC+8，修正順序顛倒問題，去除過於規整的整點時間）',
+  },
+  {
+    version: 'v1.5.5',
+    date: '2026-07-20 18:22:17',
+    icon: '🔑',
+    latest: false,
     changes: '權限系統根因修復 — JWT 權限實時刷新：後端 admin 認證中間件每次請求為非超管用戶從數據庫重新加載權限（reloadUserPermissions），解決角色權限變更後 JWT 中權限過時的問題（無需重新登錄即可生效）；handleProfile 改為從數據庫重新加載權限（非 JWT 快照）；loadUserPermissions 優化為單次 IN 查詢（替代逐角色查詢）；禁用用戶返回 401 觸發前端登出；回收站路由權限修復（contents/trash、restore、permanent 改用 M208 回收站權限，不再被 M201 文章列表攔截）；前端 Layout 掛載時拉取 /auth/profile 刷新 localStorage 權限（Outlet key 綁定權限變化，確保 RequirePermission 路由守衛即時生效）',
   },
   {
     version: 'v1.5.4',
-    date: '2026-07-20 20:30:00',
+    date: '2026-07-20 18:05:43',
     icon: '🇭🇰',
     latest: false,
     changes: '公司/站點信息香港本地化 + 公開公司 API：公司信息移除內地專用字段（QQ、郵編 postcode、ICP 備案號），新增 WhatsApp 字段（香港主流通訊），重命名標籤（法人代表→董事/公司秘書、營業執照號→商業登記證號碼、微信→WeChat 微信），placeholder 改為香港格式（8位電話號碼、.com.hk 郵箱）；站點信息移除 ICP 備案號（與公司信息重複且內地專用）和主題模板（headless CMS 無模板系統），域名 placeholder 改為 cms.cmermedical.com.hk，版權信息 placeholder 改為英文格式；後端 SITE_FIELDS/COMPANY_FIELDS 白名單同步更新，getOrCreateSite/getOrCreateCompany INSERT 語句對齊；DB 遷移 0005 新增 ay_company.whatsapp 列，ay_site.lang 從 zh-cn 更新為 zh-hk；新增公開 API GET /api/v1/company（參考 Go 版 /api/company，過濾敏感字段僅返回聯繫信息）；storage.ts 公司媒體引用新增 WhatsApp 二維碼列，標籤更新為 WeChat 二維碼/商業登記證',
   },
   {
     version: 'v1.5.3',
-    date: '2026-07-20 23:45:00',
+    date: '2026-07-20 17:48:31',
     icon: '🔐',
     latest: false,
     changes: '權限系統全面修復 + 幻燈片拖拽排序：後端新增 forbidden() 函數返回 HTTP 403（區分 401 未認證 vs 403 權限拒絕），requireMenuPermission 和 requireSuperAdmin 改用 403；前端 request() 僅 HTTP 401 時重定向 login，403 時彈出權限拒絕 toast 提示（Layout 註冊 setPermissionDeniedCallback，右上角紅色 toast 3秒自動消失）；App.tsx 新增 RequirePermission 路由守衛組件，所有 24 個頁面路由均包裹權限檢查（mcode 映射，storage/database 為 __super__ 僅超管），無權限時顯示 🔒 提示頁而非重定向 login；幻燈片管理新增分組 ID 自動遞增（計算 maxId+1，不允許重複），分組名稱改為可選（留空自動命名）；幻燈片表格新增拖拽排序（HTML5 draggable，拖拽 ⋮⋮ 圖示調整順序，即時更新後端 batch-sorting API）+ 手動排序輸入框（失焦自動保存）；新增 PUT /admin/slides/batch-sorting 批量排序 API（D1 batch 更新）',
   },
   {
     version: 'v1.5.2',
-    date: '2026-07-20 23:00:00',
+    date: '2026-07-20 17:31:22',
     icon: '📐',
     latest: false,
     changes: '媒體庫尺寸顯示 + 壓縮比例縮放 + 權限修復：媒體庫瀑布流卡片新增圖片尺寸徽章（ImageWithDimensions 組件，onLoad 取得 naturalWidth/naturalHeight，左下角黑色半透明徽章顯示 寬×高）；詳情面板也顯示前端取得的圖片尺寸；壓縮對話框從獨立「最大寬度1920 + 最大高度1080」改為單一「最大邊長」輸入（imageCompress.ts 新增 maxDimension 選項，browser-image-compression 的 maxWidthOrHeight 按原始比例等比縮放，不會拉伸變形），附帶四個尺寸預設（PC 1920 / Mobile 1080 / 縮略 800 / 小圖 400）；DB 新增 M301 媒體庫子菜單（M300 多媒體為父級容器，M301 為實際權限鍵，url=/admin/media 對應後端中間件），兩個角色均已加入 M301；後端 media 中間件註釋從 M300 更新為 M301；Layout.tsx LABEL_MCODE_MAP「媒體庫」從 M300 改為 M301；權限審計：所有 24 個前端頁面均有對應 mcode 權限控制（資料庫管理/存儲設置僅超管可見），上傳端點 /admin/upload 保留 requireAuth（所有可上傳角色均已含 M301）',
   },
   {
     version: 'v1.5.1',
-    date: '2026-07-20 22:30:00',
+    date: '2026-07-20 17:12:08',
     icon: '🎨',
     latest: false,
     changes: '上傳體驗統一 + 媒體庫瀑布流 + Worker URL 禁用：ImageCompressDialog 新增前後圖片對比區域（原始 vs 壓縮後並排展示，棋盤格背景，hover 彈出全屏放大預覽不超過 100vw/vh）；移除對比區域 px-3 加寬顯示空間；統一所有上傳位置使用 ImageCompressDialog（ContentEdit 從 autoCompress=true 改為 Promise-based 對話框模式，與媒體庫/幻燈片完全一致）；新增 UploadProgressOverlay 組件（屏幕居中進度覆蓋層，替代各頁面內聯進度條，漸變進度條+錯誤卡片可關閉）；媒體庫從固定网格改為 CSS columns 瀑布流佈局（columns-2~6 響應式，圖片按原始比例顯示高度，方便辨別 PC/Mobile 圖片尺寸）；修復 MediaLibrary 上傳 bug（FileList 清空順序：先 Array.from 複製再清空 input.value）；幻燈片菜單從擴展內容移至多媒體分組（DB M402 pcode M400→M300，Layout.tsx 分組調整）；Worker 禁用 workers.dev 和 preview_urls（僅作為 Pages cms-admin 內部 ServiceBinding，Cloudflare API 確認 subdomain enabled=false）；修復 Vite 構建 0 字節文件問題（fixEmptyChunksPlugin 插件，輸出目錄 build→deploy）',
   },
   {
     version: 'v1.5.0',
-    date: '2026-07-20 18:00:00',
+    date: '2026-07-20 10:08:35',
     icon: '🗜️',
     latest: false,
     changes: '圖片壓縮引擎重構 + 自定義標籤移除：引入 browser-image-compression 開源庫（Web Worker 壓縮，不阻塞 UI），建立三層組件化架構（imageCompress.ts 引擎層 → useImageUpload.ts hook 層 → ImageCompressDialog.tsx UI 層），引擎可獨立替換不影響消費方；所有圖片上傳位置默認接入壓縮：媒體庫（壓縮對話框預覽+進度條）、幻燈片（桌面/移動端進度條）、文章內容（Quill 編輯器+縮略圖+擴展字段，autoCompress=true 自動壓縮為 WebP）；上傳過程實時進度展示（壓縮中/上傳中階段+百分比+文件名）；上傳失敗顯示具體錯誤（文件名+錯誤原因，可關閉）；ContentEdit 浮動進度提示（右下角 toast）；移除自定義標籤功能（headless CMS 無模板引擎，與 config API 重疊）— 刪除後端路由/services、前端頁面/路由/側邊欄、DB 菜單 M404 + 角色權限',
   },
   {
     version: 'v1.4.2',
-    date: '2026-07-20 11:30:00',
+    date: '2026-07-20 09:43:18',
     icon: '📐',
     latest: false,
     changes: '側邊欄分組重構對齊 PbootCMS/Go 版邏輯（參考原版 6 分組結構）：新增 DB 頂級菜單 M600「全局配置」和 M610「基礎內容」；移動技術性子菜單（M206 擴展字段、M207 內容模型、M503 系統配置）pcode 從 M200/M500 → M600 全局配置；移動基礎內容子菜單（M501 站點信息、M502 公司信息、M202 欄目管理）pcode → M610；移動擴展內容子菜單（M203 單頁管理、M204 留言管理、M205 自定義表單）pcode → M400；M200 改名「內容管理→文章內容」、M400 改名「SEO設置→擴展內容」、M500 改名「系統設置→系統管理」；文章內容分組僅放文案相關（動態模型列表+回收站），技術性菜單移至全局配置；更新 copywriter 權限為 12 項（含父菜單 M610/M200/M400/M300）；更新超管 R101 權限為 27 項（含新增 M600/M610）',
   },
   {
     version: 'v1.4.1',
-    date: '2026-07-20 10:30:00',
+    date: '2026-07-20 09:17:42',
     icon: '🔧',
     latest: false,
     changes: '側邊欄分組與數據庫菜單樹完全對齊（消除「全局配置」等自定義分組與權限選擇器不一致問題）：重構 NAV_GROUPS 為 4 個分組（內容管理/多媒體/SEO設置/系統設置），與 ay_menu 25 個菜單 1:1 映射；LABEL_MCODE_MAP 更新為 DB 菜單名稱；修正 copywriter 角色權限（移除 M205/M206/M207/M501/M502 技術與系統權限，保留 10 項內容相關權限）；後端權限中間件新增 GET 白名單（PUBLIC_READ_PATHS：models/all/menus/sorts/all 供側邊欄與下拉選單使用，POST/PUT/DELETE 仍需權限）；修復 ay_role_level 表權限同步問題（手動 SQL 需同時更新 levels 欄位與 ay_role_level 表）',
@@ -211,6 +218,7 @@ const VERSIONS: VersionEntry[] = [
 const API_ENDPOINTS: ApiEndpoint[] = [
   // 認證
   { method: 'POST', path: '/api/v1/auth/login', desc: '登錄 (5次/分/IP)', auth: false },
+  { method: 'GET', path: '/api/v1/auth/turnstile-config', desc: 'Turnstile 人機驗證配置', auth: false },
   { method: 'GET', path: '/api/v1/auth/profile', desc: '個人信息', auth: true },
   // 公開接口 (60次/分/IP)
   { method: 'GET', path: '/api/v1/site', desc: '站點信息', auth: false },
@@ -260,6 +268,7 @@ const ERROR_CODES: { code: number; desc: string; color: string }[] = [
   { code: 2004, desc: 'Token 已登出', color: 'red' },
   { code: 2005, desc: '無權限訪問此功能', color: 'red' },
   { code: 2006, desc: '用戶已被禁用或不存在', color: 'red' },
+  { code: 2007, desc: '人機驗證失敗（Turnstile）', color: 'red' },
   { code: 4290, desc: '請求過於頻繁 (Rate Limited)', color: 'red' },
 ]
 
@@ -578,7 +587,7 @@ export default function Dashboard() {
                 <ul className="text-sm text-foreground space-y-1.5 list-disc list-inside">
                   <li>
                     登錄：<code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">POST /api/v1/auth/login</code>，請求體{' '}
-                    <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">{'{ username, password }'}</code>
+                    <code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">{'{ username, password, turnstileToken? }'}</code>
                   </li>
                   <li>返回：<code className="px-1.5 py-0.5 bg-gray-100 rounded text-xs font-mono">{'{ token }'}</code></li>
                   <li>

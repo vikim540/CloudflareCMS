@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.5.5**（2026-07-20）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.5.6**（2026-07-20）
 
 ---
 
@@ -127,7 +127,7 @@ Cloudflarerustcms/
 ### API 路由
 
 - 前綴 `/api/v1/`，RESTful
-- **公開**：`/api/v1/{resource}`（無認證，60 req/min）— 含 `/api/v1/company`（公開公司聯繫信息）、`/api/v1/search`（語義搜索）
+- **公開**：`/api/v1/{resource}`（無認證，60 req/min）— 含 `/api/v1/company`（公開公司聯繫信息）、`/api/v1/search`（語義搜索）、`/api/v1/auth/turnstile-config`（Turnstile 配置）
 - **管理**：`/api/v1/admin/{resource}`（JWT `requireAuth` + `requireMenuPermission`，300 req/min）
   - `database` / `storage` 路由僅超管可用 `requireSuperAdmin`
   - `flags` / `stats` / `upload` / `notify` / `vectorize` 路由僅需登錄（無菜單權限限制）
@@ -151,6 +151,7 @@ Cloudflarerustcms/
 |--------|------|------|----------|
 | 401 | 2002/2003/2004/2006 | 未認證/Token 過期/已登出/用戶禁用 | 重定向 login |
 | 403 | 2005 | 權限拒絕 | 彈出 toast 提示（**不重定向**） |
+| 400 | 2007 | Turnstile 人機驗證失敗 | 登錄頁提示重試 |
 
 ### 回收站路由特殊處理
 
@@ -209,6 +210,13 @@ Cloudflarerustcms/
 - 站點信息：移除 ICP 備案號（與公司重複）、主題模板（headless 無模板）
 - 系統設置：搜索引擎驗證從百度推送改為 Google/Bing 站點驗證
 - 公開 API：`GET /api/v1/company` 過濾敏感字段僅返回聯繫信息
+
+### Cloudflare Turnstile 人機驗證（v1.5.6）
+
+- **配置**：DB `ay_config` 表 3 條記錄（sorting 35-37，安全配置分組）— `turnstile_enabled`（開關）/ `turnstile_site_key`（站點密鑰）/ `turnstile_secret_key`（密鑰）
+- **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 開關開啟時強制驗證（網絡異常時放行避免故障）
+- **前端**：`Login.tsx` 動態載入 Turnstile 腳本（explicit 模式），掛載時拉取 `/auth/turnstile-config` 判斷是否啟用，登錄失敗自動 reset widget
+- **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不暴露）
 
 ---
 

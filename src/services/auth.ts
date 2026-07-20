@@ -8,6 +8,7 @@ import { verifyPassword } from '../utils/password';
 import { signJwt, genUuid, type JwtClaims } from '../utils/jwt';
 import { okData, ok, err, notFound } from '../utils/response';
 import { nowStr } from '../utils/datetime';
+import { getConfig } from './config';
 
 /** 超級管理員 ucode */
 const SUPER_ADMIN_UCODE = '10001';
@@ -50,17 +51,64 @@ export async function reloadUserPermissions(db: D1Database, userId: number): Pro
   return loadUserPermissions(db, user.rcodes || '');
 }
 
+/**
+ * Cloudflare Turnstile 人機驗證
+ * 文檔：https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+ *
+ * @param secretKey Turnstile 密鑰（從 D1 配置讀取）
+ * @param token 前端 Turnstile widget 返回的 token
+ * @param remoteip 用戶 IP（可選，用於增強驗證）
+ * @returns 驗證成功返回 true，失敗返回 false
+ */
+async function verifyTurnstile(
+  secretKey: string,
+  token: string,
+  remoteip?: string,
+): Promise<boolean> {
+  if (!secretKey || !token) return false;
+
+  const params = new URLSearchParams();
+  params.append('secret', secretKey);
+  params.append('response', token);
+  if (remoteip) params.append('remoteip', remoteip);
+
+  try {
+    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = (await resp.json()) as { success: boolean };
+    return data.success === true;
+  } catch {
+    // 網絡異常時放行（避免 Cloudflare API 故障導致無法登錄）
+    return true;
+  }
+}
+
 /** 管理員登錄 */
 export async function handleLogin(
   db: D1Database,
+  kv: KVNamespace,
   jwtSecret: string,
-  body: { username?: string; password?: string },
+  body: { username?: string; password?: string; turnstileToken?: string },
   loginIp: string = '',
 ): Promise<Response> {
   const username = body.username;
   const passwordInput = body.password;
   if (!username || !passwordInput) {
     return err('缺少用戶名或密碼參數', 1001);
+  }
+
+  // Cloudflare Turnstile 人機驗證（開關開啟時驗證）
+  const turnstileEnabled = await getConfig(db, kv, 'turnstile_enabled', '0');
+  if (turnstileEnabled === '1') {
+    const secretKey = await getConfig(db, kv, 'turnstile_secret_key', '');
+    const token = body.turnstileToken || '';
+    const verified = await verifyTurnstile(secretKey, token, loginIp || undefined);
+    if (!verified) {
+      return err('人機驗證失敗，請重試', 2007);
+    }
   }
 
   // 查詢用戶 (含 ucode, realname, rcodes 用於權限)

@@ -233,7 +233,14 @@ app.get('/api/health', (c) => {
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  return authService.handleLogin(c.env.DB, c.env.JWT_SECRET, body, loginIp);
+  return authService.handleLogin(c.env.DB, c.env.CONFIG_CACHE, c.env.JWT_SECRET, body, loginIp);
+});
+
+// 公開：獲取 Turnstile 配置（site key 是公開的，secret key 不返回）
+app.get('/api/v1/auth/turnstile-config', async (c) => {
+  const enabled = await configService.getConfig(c.env.DB, c.env.CONFIG_CACHE, 'turnstile_enabled', '0');
+  const siteKey = await configService.getConfig(c.env.DB, c.env.CONFIG_CACHE, 'turnstile_site_key', '');
+  return okData({ enabled: enabled === '1', siteKey }, '成功');
 });
 
 app.get('/api/v1/auth/profile', async (c) => {
