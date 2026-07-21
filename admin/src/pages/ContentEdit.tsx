@@ -1288,24 +1288,27 @@ export default function ContentEdit() {
                   required
                 />
                 {/* 標題顏色選擇器 */}
-                <div className="relative flex items-center gap-1.5">
-                  <input
-                    type="color"
-                    value={form.titlecolor || '#333333'}
-                    onChange={(e) => updateField('titlecolor', e.target.value)}
-                    className="w-10 h-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
-                    title="標題顏色"
-                  />
-                  {form.titlecolor && (
-                    <button
-                      type="button"
-                      onClick={() => updateField('titlecolor', '')}
-                      className="text-xs text-muted-foreground hover:text-destructive"
-                      title="清除顏色"
-                    >
-                      ✕
-                    </button>
-                  )}
+                <div className="flex flex-col items-center gap-0.5">
+                  <span className="text-xs text-muted-foreground">標題字色</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="color"
+                      value={form.titlecolor || '#333333'}
+                      onChange={(e) => updateField('titlecolor', e.target.value)}
+                      className="w-10 h-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
+                      title="標題顏色"
+                    />
+                    {form.titlecolor && (
+                      <button
+                        type="button"
+                        onClick={() => updateField('titlecolor', '')}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                        title="清除顏色"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
