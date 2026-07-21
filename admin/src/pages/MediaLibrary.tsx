@@ -238,8 +238,9 @@ export default function MediaLibrary() {
     if (fileInputRef.current) fileInputRef.current.value = ''
 
     // 分離圖片和非圖片
-    const imageFiles = allFiles.filter((f) => f.type.startsWith('image/') && f.type !== 'image/svg+xml')
-    const nonImageFiles = allFiles.filter((f) => !f.type.startsWith('image/') || f.type === 'image/svg+xml')
+    // WebP 已是壓縮格式，歸入直接上傳（避免二次壓縮產生 blob 文件名問題）
+    const imageFiles = allFiles.filter((f) => f.type.startsWith('image/') && f.type !== 'image/svg+xml' && f.type !== 'image/webp')
+    const nonImageFiles = allFiles.filter((f) => !f.type.startsWith('image/') || f.type === 'image/svg+xml' || f.type === 'image/webp')
 
     // 非圖片文件直接上傳（使用 hook，autoCompress=false）
     if (nonImageFiles.length > 0) {

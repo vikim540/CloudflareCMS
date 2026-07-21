@@ -16,16 +16,18 @@ interface LogItem {
 }
 
 /**
- * 日誌類型標籤頁定義
- * 後端 level 參數: admin=系統日誌, content=內容日誌, security=安全日誌, error=錯誤日誌, notify=通知日誌, all=全部
+ * 日誌類型標籤頁定義（7 類，完全互斥，每條日誌僅屬於一個類別）
+ * 後端 level 參數: admin=管理操作, content=內容操作, security=安全日誌, error=錯誤日誌, notify=通知日誌, spider=爬蟲日誌, all=全部
+ * 分類原則：通知日誌含成功+失敗（用顏色區分），錯誤日誌僅含系統級錯誤
  */
 const LOG_TABS = [
   { key: 'all', label: '📋 全部' },
-  { key: 'content', label: '📝 內容日誌' },
+  { key: 'content', label: '📝 內容操作' },
+  { key: 'admin', label: '🛡️ 管理操作' },
   { key: 'security', label: '🔐 安全日誌' },
-  { key: 'error', label: '❌ 錯誤日誌' },
-  { key: 'admin', label: '🛡️ 系統日誌' },
   { key: 'notify', label: '🔔 通知日誌' },
+  { key: 'error', label: '❌ 錯誤日誌' },
+  { key: 'spider', label: '🕷️ 爬蟲日誌' },
 ] as const
 
 /** 每頁條數 */
@@ -140,9 +142,9 @@ export default function Logs() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <span className="text-2xl">📜</span>
-            系統日誌
+            操作日誌
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">查看系統操作記錄及通知日誌</p>
+          <p className="text-sm text-muted-foreground mt-1">內容操作、管理操作、安全、通知、錯誤、爬蟲日誌分類查看</p>
         </div>
         <button
           onClick={handleClear}

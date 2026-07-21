@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { cn } from '../lib/utils'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import UploadProgressOverlay from '../components/UploadProgressOverlay'
+import ImagePreviewWithRemove from '../components/ImagePreviewWithRemove'
 import { TagInput } from '../components/TagInput'
 import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
@@ -654,21 +655,13 @@ function ExtFieldInput({
       return (
         <div className="space-y-2">
           {value && (
-            <div className="relative inline-block">
-              <img
-                src={value}
-                alt={field.name}
-                className="w-32 h-32 object-cover rounded border"
-              />
-              <button
-                type="button"
-                onClick={() => onChange('')}
-                className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
-                title="移除"
-              >
-                <span className="text-xs leading-none">❌</span>
-              </button>
-            </div>
+            <ImagePreviewWithRemove
+              src={value}
+              alt={field.name}
+              onRemove={() => onChange('')}
+              containerClassName="border rounded"
+              imgClassName="w-32 h-32"
+            />
           )}
           <input
             ref={fileRef}
@@ -806,21 +799,14 @@ function ExtFieldInput({
                 .split(',')
                 .filter(Boolean)
                 .map((url, idx) => (
-                  <div key={idx} className="relative">
-                    <img
-                      src={url}
-                      alt={`${field.name}-${idx}`}
-                      className="w-24 h-24 object-cover rounded border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(idx)}
-                      className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
-                      title="移除"
-                    >
-                      <span className="text-xs leading-none">❌</span>
-                    </button>
-                  </div>
+                  <ImagePreviewWithRemove
+                    key={idx}
+                    src={url}
+                    alt={`${field.name}-${idx}`}
+                    onRemove={() => removeImage(idx)}
+                    containerClassName="border rounded"
+                    imgClassName="w-24 h-24"
+                  />
                 ))}
             </div>
           )}
@@ -1690,21 +1676,13 @@ export default function ContentEdit() {
               <label className="block text-sm font-medium mb-1.5">縮略圖</label>
               <div className="space-y-2">
                 {form.ico && (
-                  <div className="relative inline-block">
-                    <img
-                      src={form.ico}
-                      alt="縮略圖"
-                      className="w-32 h-32 object-cover rounded border"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => updateField('ico', '')}
-                      className="absolute -top-2 -right-2 w-5 h-5 flex items-center justify-center rounded-full transition-transform hover:scale-110"
-                      title="移除"
-                    >
-                      <span className="text-xs leading-none">❌</span>
-                    </button>
-                  </div>
+                  <ImagePreviewWithRemove
+                    src={form.ico}
+                    alt="縮略圖"
+                    onRemove={() => updateField('ico', '')}
+                    containerClassName="border rounded"
+                    imgClassName="w-32 h-32"
+                  />
                 )}
                 <input
                   ref={icoFileRef}

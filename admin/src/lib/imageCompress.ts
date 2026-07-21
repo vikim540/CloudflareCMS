@@ -71,6 +71,10 @@ function isCompressibleImage(file: File): boolean {
   if (!file.type.startsWith('image/')) return false;
   // SVG 是矢量圖，無需壓縮
   if (file.type === 'image/svg+xml') return false;
+  // WebP 已是高壓縮格式，二次壓縮無益且 browser-image-compression 內部
+  // Canvas.toBlob('image/webp') 在部分瀏覽器返回的 Blob name 異常（變成 "blob"），
+  // 導致後端 generateKey 生成無擴展名的 key，文件在媒體庫顯示為 blob 類型
+  if (file.type === 'image/webp') return false;
   return true;
 }
 

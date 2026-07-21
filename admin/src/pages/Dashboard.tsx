@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.2',
+    date: '2026-07-21 17:10:00',
+    icon: '🧹',
+    latest: true,
+    changes: '🧹 數據庫清理 + 媒體庫 bug 修復 + 日誌分類重組 + 組件抽象\n\n📋 數據庫\n• 清理 ay_content_ext 幽靈字段（13 個無定義的 ext_* 刪除）\n  - 保留：extid, contentid, ext_price, ext_type, ext_color（PbootCMS 原版）, ext_content_whatsapp\n  - 三個數據庫（endoscopy/smile/vision）同步清理\n\n🐛 Bug 修復\n• 媒體庫上傳 WebP 變成 blob 文件\n  - 根因：browser-image-compression 對 WebP 二次壓縮時 Blob name 異常\n  - 修復：WebP 跳過壓縮直接上傳 + 後端 generateKey 從 Content-Type 推斷擴展名\n\n📋 日誌分類重組（7 類完全互斥）\n• 新增 🕷️ 爬蟲日誌 tab（spider）\n• 「系統日誌」重命名為「管理操作」（更準確）\n• 「內容日誌」重命名為「內容操作」\n• 頁面標題從「系統日誌」改為「操作日誌」\n\n🔧 組件抽象\n• 新增 ImagePreviewWithRemove 統一組件\n  - 取代 ContentEdit 中 3 處重複的圖片預覽+移除按鈕\n  - 統一圓形按鈕樣式，消除樣式不一致',
+  },
+  {
     version: 'v1.8.1',
     date: '2026-07-21 16:32:54',
     icon: '📝',
-    latest: true,
+    latest: false,
     changes: '📝 文章詳情 API 重構：參考 PbootCMS 平鋪模式\n\n📋 變更\n• GET /contents/:idOrSlug 響應結構重構，移除 sort/extFields/extValues 獨立對象\n  - 欄目名稱平鋪到 content.sortname（參考 PbootCMS b.name as sortname）\n  - 欄目 slug 平鋪到 content.sortfilename\n  - 擴展字段值直接平鋪到 content.ext_*（僅有值的字段，null 不返回）\n  - 移除一堆無用的 null 字段（ext_price/ext_type/ext_color 等硬編碼列）\n• prev/next 改為同欄目樹範圍查詢（參考 PbootCMS getSubScodes 邏輯）\n  - 使用遞迴 CTE 取得當前欄目及子孫欄目 scode 列表\n  - 上一篇/下一篇限制在同欄目樹內，不再全局查詢\n\n💡 設計原則\n• 對齊 PbootCMS ParserModel.getContent() 的 JOIN 平鋪模式\n• content 對象即為完整文章數據，前端無需二次組裝',
   },
   {

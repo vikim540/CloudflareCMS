@@ -327,15 +327,34 @@ function guessContentType(filename: string): string {
   return mimeMap[ext] || 'application/octet-stream';
 }
 
+/** 根據 MIME 類型推斷文件擴展名（當文件名無擴展名時的防禦性兜底） */
+function extFromContentType(contentType: string): string {
+  const mimeToExt: Record<string, string> = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+    'image/webp': 'webp', 'image/avif': 'avif', 'image/bmp': 'bmp',
+    'image/svg+xml': 'svg', 'image/x-icon': 'ico',
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+    'audio/mpeg': 'mp3', 'audio/wav': 'wav',
+    'application/pdf': 'pdf',
+    'text/plain': 'txt', 'text/csv': 'csv', 'application/json': 'json',
+    'application/zip': 'zip',
+  };
+  return mimeToExt[contentType] || '';
+}
+
 /** 生成文件 key — 始終保留文件擴展名，確保 R2/S3 對象可被正確識別 */
-function generateKey(filename: string, prefix = 'uploads'): string {
+function generateKey(filename: string, prefix = 'uploads', contentType = ''): string {
   const now = new Date();
   const datePath = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
-  const ext = filename.split('.').pop() || '';
+  let ext = filename.split('.').pop() || '';
+  // 防禦性兜底：文件名無擴展名時，從 Content-Type 推斷（避免生成 blob 無擴展名 key）
+  if (!ext && contentType) {
+    ext = extFromContentType(contentType);
+  }
   const randomStr = Math.random().toString(36).slice(2, 10);
   // 安全化文件名（去除特殊字符），保留擴展名
-  const baseName = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50);
-  // 擴展名單獨拼接，確保即使原文件名無擴展名也能從壓縮後的類型推斷
+  const baseName = filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 50) || 'file';
+  // 擴展名單獨拼接，確保即使原文件名無擴展名也能從 Content-Type 推斷
   const safeExt = ext ? `.${ext}` : '';
   return `${prefix}/${datePath}/${randomStr}_${baseName}${safeExt}`;
 }
@@ -363,10 +382,9 @@ export async function handleUpload(
     return err('S3 存儲未配置，請在系統設置中配置存儲參數', 1005);
   }
 
-  const key = generateKey(file.name);
-  const data = await file.arrayBuffer();
-  // file.type 可能在某些瀏覽器/場景下為空，從文件名推斷兜底
   const contentType = file.type || guessContentType(file.name);
+  const key = generateKey(file.name, 'uploads', contentType);
+  const data = await file.arrayBuffer();
 
   try {
     const url = await s3PutObject(s3Config, key, data, contentType);
