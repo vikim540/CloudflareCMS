@@ -267,7 +267,7 @@ function MediaPickerModal({
     setShowUrlInput(false)
     Promise.all([
       api.get<MediaListResult>('/admin/media'),
-      api.get<StorageConfig>('/admin/storage/config'),
+      api.get<StorageConfig>('/admin/media/config'),
     ])
       .then(([mediaRes, configRes]) => {
         setFiles(mediaRes.data?.files ?? [])

@@ -486,13 +486,28 @@ export async function handleGetStorageConfig(
   const storageConfig = {
     storage_type: configs['storage_type'] || 's3',
     s3_endpoint: configs['s3_endpoint'] || '',
-    s3_access_key: configs['s3_access_key'] || '',
+    s3_access_key: configs['s3_access_key'] ? '***' : '',
     s3_secret_key: configs['s3_secret_key'] ? '***' : '',
     s3_bucket: configs['s3_bucket'] || '',
     s3_region: configs['s3_region'] || 'auto',
     s3_public_url: configs['s3_public_url'] || '',
   };
   return okData(storageConfig, '成功');
+}
+
+/** 獲取媒體庫公開配置（僅返回非敏感字段，供所有有媒體庫權限的用戶生成圖片 URL）
+ *  v1.7.4：解決非超管用戶無法載入 /admin/storage/config（requireSuperAdmin）導致圖片預覽為空
+ */
+export async function handleGetMediaPublicConfig(
+  db: D1Database,
+  kv: KVNamespace,
+): Promise<Response> {
+  const configs = await getAllConfigs(db, kv);
+  return okData({
+    s3_public_url: configs['s3_public_url'] || '',
+    s3_endpoint: configs['s3_endpoint'] || '',
+    s3_bucket: configs['s3_bucket'] || '',
+  }, '成功');
 }
 
 /** 更新存儲配置 */

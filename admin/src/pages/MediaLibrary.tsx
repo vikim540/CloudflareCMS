@@ -175,10 +175,13 @@ export default function MediaLibrary() {
     autoCompress: false,
   })
 
-  /** 獲取存儲配置（用於生成文件 URL） */
+  /** 獲取存儲配置（用於生成文件 URL）
+   *  v1.7.4：改用 /admin/media/config（M301 權限），非超管用戶也能載入
+   *  原端點 /admin/storage/config 需要 requireSuperAdmin，非超管用戶收到 403 導致圖片預覽為空
+   */
   const fetchStorageConfig = useCallback(async () => {
     try {
-      const res = await api.get<{ s3_endpoint: string; s3_bucket: string; s3_public_url: string }>('/admin/storage/config')
+      const res = await api.get<{ s3_endpoint: string; s3_bucket: string; s3_public_url: string }>('/admin/media/config')
       if (res.data) setStorageConfig(res.data)
     } catch { /* 忽略 */ }
   }, [])

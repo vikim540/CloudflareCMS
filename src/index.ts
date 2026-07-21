@@ -719,6 +719,14 @@ app.get('/api/v1/admin/storage/presigned/:key{.+}', async (c) => {
 });
 
 // ===== 後台管理接口 - 媒體庫 =====
+// 媒體庫公開配置（僅非敏感字段，供所有有 M301 權限的用戶生成圖片 URL）
+// v1.7.4：解決非超管用戶無法載入 /admin/storage/config 導致圖片預覽為空
+app.get('/api/v1/admin/media/config', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return storageService.handleGetMediaPublicConfig(siteDB(c), c.env.CONFIG_CACHE);
+});
+
 app.get('/api/v1/admin/media', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

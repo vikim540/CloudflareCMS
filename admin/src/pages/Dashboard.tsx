@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.4',
+    date: '2026-07-21 13:20:00',
+    icon: '🔒',
+    latest: true,
+    changes: '🔒 媒體庫權限修復 + 存儲配置安全修復\n\n🖼️ 非超管用戶圖片預覽為空修復\n• 根因：MediaLibrary 和 ContentEdit 調用 /admin/storage/config 獲取存儲配置，但該端點需要 requireSuperAdmin，非超管用戶收到 403 導致 storageConfig 為 null\n• 結果：fileUrl 為空，圖片 fallback 到 🖼️ emoji 而非實際預覽\n• 修復：新增 GET /admin/media/config 端點（M301 權限，僅返回 s3_public_url/endpoint/bucket 非敏感字段）\n• 前端 MediaLibrary + ContentEdit 媒體選擇器改用新端點\n\n🔐 存儲配置安全修復\n• handleGetStorageConfig 中 s3_access_key 原為明文返回，改為 *** 遮罩（與 s3_secret_key 一致）\n• 新增 handleGetMediaPublicConfig 函數，僅暴露非敏感字段',
+  },
+  {
     version: 'v1.7.3',
     date: '2026-07-21 12:10:00',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 內容編輯全鏈路修復 + Webhook 推送修復 + 粘貼圖片轉存\n\n📝 創建文章丟失字段修復\n• 根因：handleCreateContent INSERT 語句缺少 author/source/ico/filename/subtitle/outlink/tags/keywords/description 等 9 個字段\n• 修復：INSERT 補全所有表單字段，創建時不再丟失數據\n\n🔍 編輯頁面字段為空修復\n• 根因：前端使用公開 API /contents/:id 載入編輯數據，被 Workers Cache 緩存 300s\n• 根因2：公開 API 過濾 status=\'1\'，草稿無法載入\n• 修復：新增 admin 端點 GET /admin/contents/:id（無緩存、無 status 過濾、無訪問量追蹤）\n• 前端 ContentEdit 改用 admin 端點載入，確保讀到最新數據\n\n🔔 Webhook 版本通知修復\n• 根因：v1.7.0 Flagship 混合模式後，getFlagEnabled 優先讀 Flagship，未配置時返回 false 導致 webhook 被靜默跳過\n• 修復：版本通知直接讀 D1 配置 webhook_enabled（繞過 Flagship），系統級功能不受 Flagship 影響\n• 改善：Dashboard 版本通知添加結果日誌（成功/跳過原因/失敗），不再靜默吞錯\n\n📋 粘貼富文本 base64 圖片轉存\n• 場景：從本地文章/Word/網頁複製帶圖富文本，圖片為 base64 data URI\n• 修復：粘貼後延遲掃描編輯器 img[src^="data:image/"]，轉為 File 上傳 R2，替換 src 為媒體庫 URL',
   },
   {
@@ -326,6 +333,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/contents/:id', desc: '更新內容', auth: true },
   { method: 'GET', path: '/api/v1/admin/models/all', desc: '所有模型', auth: true },
   { method: 'GET', path: '/api/v1/admin/media', desc: '媒體列表', auth: true },
+  { method: 'GET', path: '/api/v1/admin/media/config', desc: '媒體庫公開配置（非敏感字段）', auth: true },
   { method: 'POST', path: '/api/v1/admin/upload', desc: '文件上傳 (multipart/form-data)', auth: true },
   { method: 'GET', path: '/api/v1/admin/configs', desc: '系統配置', auth: true },
   { method: 'PUT', path: '/api/v1/admin/configs', desc: '更新配置', auth: true },
