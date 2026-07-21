@@ -45,7 +45,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.112.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（全局 3.1.0 已禁用） |
+| wrangler | 4.112.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用） |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
