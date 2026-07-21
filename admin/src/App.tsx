@@ -117,7 +117,7 @@ export default function App() {
             <Route path="menus" element={<RequirePermission mcode="M506"><Menus /></RequirePermission>} />
             <Route path="logs" element={<RequirePermission mcode="M507"><Logs /></RequirePermission>} />
             <Route path="database" element={<RequirePermission mcode="__super__"><Database /></RequirePermission>} />
-            <Route path="sites" element={<RequirePermission mcode="M308"><Sites /></RequirePermission>} />
+            <Route path="sites" element={<RequirePermission mcode="M508"><Sites /></RequirePermission>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

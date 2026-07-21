@@ -253,12 +253,15 @@ app.use('/api/v1/*', autoRouteProtection());
 
 // ===== Workers Cache 中間件（聲明式邊緣緩存，2026 新功能）=====
 // 為公開 GET 請求設置 Cache-Control 頭，配合 wrangler.jsonc 的 cache.enabled 實現邊緣緩存
-// 管理接口（/api/v1/admin/*）因 Authorization 頭自動被 Workers Cache 繞過
+// 排除項：
+//   /api/v1/admin/* — 管理接口（Authorization 頭）
+//   /api/v1/auth/*  — 認證接口（返回用戶專屬數據，嚴禁跨用戶快取）
+//   /search         — 搜索結果（實時性要求高）
 // 多站點通過 Vary: X-Site-Id 實現緩存分區，防止跨站污染
 app.use('/api/v1/*', async (c, next) => {
   await next();
   // 僅對公開 GET、成功響應設置緩存頭
-  if (c.req.method === 'GET' && !c.req.path.startsWith('/api/v1/admin') && c.res.status === 200) {
+  if (c.req.method === 'GET' && !c.req.path.startsWith('/api/v1/admin') && !c.req.path.startsWith('/api/v1/auth') && c.res.status === 200) {
     const path = c.req.path;
     // 搜索結果不緩存（實時性要求高）
     if (path.includes('/search')) return;
@@ -298,7 +301,12 @@ app.get('/api/v1/auth/turnstile-config', async (c) => {
 app.get('/api/v1/auth/profile', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權或 Token 已過期', 2002);
-  return authService.handleProfile(primaryDB(c), claims);
+  const resp = authService.handleProfile(primaryDB(c), claims);
+  // 用戶專屬數據嚴禁快取（防禦性：即使 cache 中間件被誤改也不會跨用戶污染）
+  return resp.then((r) => {
+    r.headers.set('Cache-Control', 'no-store');
+    return r;
+  });
 });
 
 app.post('/api/v1/auth/logout', async (c) => {

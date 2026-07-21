@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.5**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.6**（2026-07-21）
 
 ---
 
@@ -10,7 +10,8 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
-| v1.7.5 | 2026-07-21 | 權限管理三處修復：多站點管理位置修正（M308 pcode M300→M500）、角色代碼自動生成（前端移除 rcode 輸入框，後端已自動生成）、用戶創建站點權限丟失修復（handleCreateUser 返回新用戶 ID） |
+| v1.7.6 | 2026-07-21 | 側邊欄權限過濾修復（根因：Workers Cache 邊緣快取 /auth/profile 跨用戶污染，管理員 profile 被快取後普通用戶拿到全部權限）、cache 中間件新增排除 /api/v1/auth/*、/auth/profile 響應顯式 no-store |
+| v1.7.5 | 2026-07-21 | 權限管理三處修復：多站點管理位置修正（mcode M308→M508 對齊 M500 父分組、pcode M300→M500）、角色代碼自動生成（前端移除 rcode 輸入框，後端已自動生成）、用戶創建站點權限丟失修復（handleCreateUser 返回新用戶 ID） |
 | v1.7.4 | 2026-07-21 | 媒體庫權限修復（新增 /admin/media/config 端點，M301 權限，解決非超管用戶圖片預覽為空）、存儲配置安全修復（s3_access_key 改為 *** 遮罩） |
 | v1.7.3 | 2026-07-21 | 創建文章全字段寫入修復（INSERT 補全 9 字段）、admin 內容詳情端點（無緩存，解決編輯頁字段為空）、webhook 版本通知繞過 Flagship 直接讀 D1、粘貼富文本 base64 圖片轉存媒體庫、Dashboard 版本通知結果日誌 |
 | v1.7.2 | 2026-07-21 | Service Binding 配置修復（admin/wrangler.jsonc 補回 services 綁定，解決 PUT 500）、全鏈路錯誤追蹤（後端 try/catch + Pages Function detail 字段 + api.ts 500/!res.ok 處理 + GlobalErrorToast 📋 一鍵複製按鈕 + 默認展開技術詳情） |
@@ -122,7 +123,7 @@ Cloudflarerustcms/
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min) / `ADMIN_API_LIMIT`(300/min) / `LOGIN_LIMIT`(5/min) / `FORM_LIMIT`(1/10s) | 零網絡開銷 |
 | Flagship | `Flagship-service`（app: `Rustcms-service`） | 真混合模式：Flagship 優先（`getBooleanValue`），失敗回退 D1；Flagship 模式下開關只讀 |
 | Secrets Store | `default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`） | 異步綁定（`await env.X.get()`），存儲 JWT_SECRET + CF_API_TOKEN |
-| Workers Cache | `cache.enabled: true` | 聲明式邊緣緩存，公開 GET 自動緩存（配置 3600s / 內容 300s），Vary: X-Site-Id 多站點分區 |
+| Workers Cache | `cache.enabled: true` | 聲明式邊緣緩存，公開 GET 自動緩存（配置 3600s / 內容 300s），排除 /admin/* 及 /auth/*，Vary: X-Site-Id 多站點分區 |
 | Smart Placement | `placement.mode: smart` | Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲 |
 | Pages | `cms-admin` | 管理後台 SPA，域名 `cms.cmermedical.com.hk` |
 | Service Binding | Pages `cms-admin` → Worker `rust-cms` | 零延遲內部通信，前端通過 `functions/api/v1/[[path]].ts` 代理 |
@@ -165,6 +166,7 @@ Cloudflarerustcms/
 - **錯誤處理**：service 返回 `Response`，`try/catch` 包裹外部調用
 - **類型**：嚴格 TS，禁止 `any`（用 `unknown` + 斷言）
 - **圖標**：全盤 emoji，禁止 SVG/字體圖標庫
+- **代碼一致性（不留手尾）**：重構/遷移/重命名時，必須同步更新所有牽連引用（數據庫、前端、遷移文件、版本文本、文檔）。子菜單 `mcode` 應與父菜單 `pcode` 分組前綴對齊（如 M500 系統管理下的子菜單應為 M50x，而非保留舊分組的 M308）。禁止「改了一處、留一處」造成日後維護時的認知負擔與疑問遐想空間
 
 ### 統一響應格式
 
@@ -253,6 +255,8 @@ Cloudflarerustcms/
 - v1.7.0 起：用 Cloudflare Workers Cache（聲明式邊緣緩存）取代原 KV API 響應緩存中間件
 - 公開 GET 請求自動邊緣緩存：配置類（`/company`、`/site`、`/nav`、`/sorts`）TTL 3600s，其他公開數據 TTL 300s，`stale-while-revalidate=60`
 - 管理接口（`/api/v1/admin/*`）因 Authorization 頭自動被 Workers Cache 繞過
+- **認證接口（`/api/v1/auth/*`）v1.7.6 新增排除**：`/auth/profile` 返回用戶專屬權限數據，嚴禁跨用戶快取。v1.7.6 前因 `Cache-Control: public` 導致邊緣快取以 URL+X-Site-Id 為 key（不含 Authorization），管理員 profile 被快取後普通用戶拿到管理員權限列表，側邊欄顯示全部菜單
+- `/auth/profile` 響應顯式設置 `Cache-Control: no-store`（防禦性雙保險）
 - 多站點通過 `Vary: X-Site-Id` 實現緩存分區，防止跨站污染
 - 搜索結果（`/api/v1/search`）不緩存（實時性要求高）
 - `clearContentCache` / `clearConfigCache` 保留用於清除 KV 中殘留的配置緩存條目（`config:all` 等）

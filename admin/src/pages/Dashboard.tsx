@@ -43,11 +43,18 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.6',
+    date: '2026-07-21 15:30:00',
+    icon: '🔒',
+    latest: true,
+    changes: '🔒 側邊欄權限過濾修復（根因：邊緣快取跨用戶污染）\n\n🐛 現象\n• 角色已設定有限權限，但用戶登錄後側邊欄仍顯示全部菜單\n• 點擊無權限菜單時後端正確返回 403「無權限訪問此功能」\n• 前端側邊欄與後端權限判斷不一致\n\n🔍 根因分析\n• Workers Cache 中間件僅排除 /api/v1/admin/*，未排除 /api/v1/auth/*\n• /auth/profile 響應被設為 Cache-Control: public, max-age=300\n• 邊緣快取以 URL + X-Site-Id 為 key，不含 Authorization 頭\n• 管理員（全部權限）的 profile 被快取後，普通用戶拿到管理員的權限列表\n• 前端據此渲染側邊欄 → 顯示全部菜單\n• 後端 reloadUserPermissions 每次從 D1 實時載入 → 正確返回 403\n\n🔧 修復\n• cache 中間件新增排除 /api/v1/auth/*（認證接口返回用戶專屬數據，嚴禁跨用戶快取）\n• /auth/profile 響應顯式設置 Cache-Control: no-store（防禦性雙保險）',
+  },
+  {
     version: 'v1.7.5',
     date: '2026-07-21 14:00:00',
     icon: '⚙️',
-    latest: true,
-    changes: '⚙️ 權限管理三處修復\n\n📋 多站點管理位置修正\n• 根因：數據庫 ay_menu 表中 M308（多站點管理）的 pcode 為 M300（多媒體），應為 M500（系統管理）\n• 修復：UPDATE ay_menu SET pcode=M500, sorting=580 WHERE mcode=M308\n• 影響：菜單管理頁面中多站點管理從「多媒體」分組移至「系統管理」分組\n\n🔐 角色代碼自動生成\n• 根因：前端 Roles.tsx 要求用戶手動填寫 rcode（如 R101），但後端 handleCreateRole 已自動生成 rcode（generateRcode），前端填寫的值被忽略\n• 修復：移除前端 rcode 輸入框，改為顯示「創建後自動生成（如 R101）」\n• 編輯時顯示已有 rcode（唯讀）\n\n👤 用戶創建站點權限丟失修復\n• 根因：handleCreateUser 返回 ok(用戶創建成功) 不含新用戶 ID，前端 userId 為 undefined，站點分配 POST 被跳過\n• 修復：改為 okData({ id: newId, ucode })，前端正確獲取 userId 後立即保存站點權限',
+    latest: false,
+    changes: '⚙️ 權限管理三處修復\n\n📋 多站點管理位置修正\n• 根因：數據庫 ay_menu 表中 M308（多站點管理）的 pcode 為 M300（多媒體），應為 M500（系統管理）\n• 修復：UPDATE ay_menu SET mcode=M508, pcode=M500, sorting=580 WHERE mcode=M308（mcode 對齊父分組前綴）\n• 影響：菜單管理頁面中多站點管理從「多媒體」分組移至「系統管理」分組\n\n🔐 角色代碼自動生成\n• 根因：前端 Roles.tsx 要求用戶手動填寫 rcode（如 R101），但後端 handleCreateRole 已自動生成 rcode（generateRcode），前端填寫的值被忽略\n• 修復：移除前端 rcode 輸入框，改為顯示「創建後自動生成（如 R101）」\n• 編輯時顯示已有 rcode（唯讀）\n\n👤 用戶創建站點權限丟失修復\n• 根因：handleCreateUser 返回 ok(用戶創建成功) 不含新用戶 ID，前端 userId 為 undefined，站點分配 POST 被跳過\n• 修復：改為 okData({ id: newId, ucode })，前端正確獲取 userId 後立即保存站點權限',
   },
   {
     version: 'v1.7.4',
@@ -117,7 +124,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-20 17:29:20',
     icon: '🌐',
     latest: false,
-    changes: '🌐 多站點架構 — 亞太三站點獨立數據庫 + 用戶站點權限分配\n\n🏗️ 架構設計\n• 主庫 endoscopy-cms：全局用戶/角色/菜單/站點註冊表\n• 站點庫 smile-cms / vision-cms：各站點獨立內容/配置\n• SITE_REGISTRY 環境變量映射 siteId → D1 binding\n• X-Site-Id header 中間件路由至對應站點數據庫\n• siteDB(c) / primaryDB(c) 雙軌數據庫訪問模式\n\n🗄️ 數據庫（全部 APAC 地區）\n• endoscopy-cms（主站，現有數據）\n• smile-cms（結構 + 初始數據）\n• vision-cms（結構 + 初始數據）\n• 遷移 0006：ay_site_registry + ay_user_site 關聯表\n• 遷移 0007：M308 多站點管理菜單 + R101 權限\n\n👥 用戶站點權限分配\n• 全局用戶 + 站點分配模式（用戶/角色/菜單在主庫）\n• 非超管用戶必須至少分配一個站點（前端驗證 + 後端檢查）\n• 超級管理員自動擁有所有站點權限\n• 用戶編輯對話框新增站點勾選 UI（全選/清空）\n• GET /admin/users/:id/sites + POST /admin/users/:id/sites\n\n🎨 前端多站點體驗\n• 側邊欄頂部站點選擇下拉（替代固定標題）\n• 切換站點自動刷新頁面載入新站點數據\n• Login.tsx 登入後緩存站點列表 + 設置默認站點\n• 多站點管理頁（/sites）：站點列表 + 創建嚮導 + 編輯\n\n🔌 API 端點\n• GET /admin/sites — 列出用戶可訪問的站點\n• GET /admin/sites/current — 當前站點信息\n• POST /admin/sites/create — 一鍵創建新站點（REST API）\n• PUT /admin/sites/:siteId — 更新站點信息\n• GET /admin/users/:id/sites — 用戶已分配站點\n• POST /admin/users/:id/sites — 設置用戶站點分配',
+    changes: '🌐 多站點架構 — 亞太三站點獨立數據庫 + 用戶站點權限分配\n\n🏗️ 架構設計\n• 主庫 endoscopy-cms：全局用戶/角色/菜單/站點註冊表\n• 站點庫 smile-cms / vision-cms：各站點獨立內容/配置\n• SITE_REGISTRY 環境變量映射 siteId → D1 binding\n• X-Site-Id header 中間件路由至對應站點數據庫\n• siteDB(c) / primaryDB(c) 雙軌數據庫訪問模式\n\n🗄️ 數據庫（全部 APAC 地區）\n• endoscopy-cms（主站，現有數據）\n• smile-cms（結構 + 初始數據）\n• vision-cms（結構 + 初始數據）\n• 遷移 0006：ay_site_registry + ay_user_site 關聯表\n• 遷移 0007：M508 多站點管理菜單 + R101 權限\n\n👥 用戶站點權限分配\n• 全局用戶 + 站點分配模式（用戶/角色/菜單在主庫）\n• 非超管用戶必須至少分配一個站點（前端驗證 + 後端檢查）\n• 超級管理員自動擁有所有站點權限\n• 用戶編輯對話框新增站點勾選 UI（全選/清空）\n• GET /admin/users/:id/sites + POST /admin/users/:id/sites\n\n🎨 前端多站點體驗\n• 側邊欄頂部站點選擇下拉（替代固定標題）\n• 切換站點自動刷新頁面載入新站點數據\n• Login.tsx 登入後緩存站點列表 + 設置默認站點\n• 多站點管理頁（/sites）：站點列表 + 創建嚮導 + 編輯\n\n🔌 API 端點\n• GET /admin/sites — 列出用戶可訪問的站點\n• GET /admin/sites/current — 當前站點信息\n• POST /admin/sites/create — 一鍵創建新站點（REST API）\n• PUT /admin/sites/:siteId — 更新站點信息\n• GET /admin/users/:id/sites — 用戶已分配站點\n• POST /admin/users/:id/sites — 設置用戶站點分配',
   },
   {
     version: 'v1.5.9',
@@ -317,7 +324,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   // 認證
   { method: 'POST', path: '/api/v1/auth/login', desc: '登錄 (5次/分/IP)', auth: false },
   { method: 'GET', path: '/api/v1/auth/turnstile-config', desc: 'Turnstile 人機驗證配置', auth: false },
-  { method: 'GET', path: '/api/v1/auth/profile', desc: '個人信息', auth: true },
+  { method: 'GET', path: '/api/v1/auth/profile', desc: '個人信息（no-store，不緩存）', auth: true },
   // 公開接口 (60次/分/IP)
   { method: 'GET', path: '/api/v1/site', desc: '站點信息', auth: false },
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
@@ -1164,7 +1171,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                       </td>
                       <td className="px-4 py-3">
                         <code className="font-mono text-foreground text-xs">cache.enabled</code>
-                        <span className="text-muted-foreground mx-2 text-xs">聲明式邊緣緩存（配置 3600s / 內容 300s）</span>
+                        <span className="text-muted-foreground mx-2 text-xs">聲明式邊緣緩存（配置 3600s / 內容 300s），排除 /admin/* 及 /auth/*</span>
                       </td>
                     </tr>
                     <tr className="hover:bg-secondary/50 transition-colors">
