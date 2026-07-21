@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.9',
+    date: '2026-07-21 15:20:00',
+    icon: '🔗',
+    latest: true,
+    changes: '🔗 公開 API 支持 slug 查詢 + 靜態打包批量端點\n\n📋 新增功能\n• GET /api/v1/contents/:idOrSlug — 詳情 API 支持數字 ID 或 slug (urlname)\n  - /api/v1/contents/27 → 按 ID 查詢\n  - /api/v1/contents/colon-polyps-cancer-causes → 按 slug 查詢\n• GET /api/v1/contents/all — 批量列表端點，pagesize 最大 500（靜態打包專用）\n  - 一般列表 API pagesize 上限 100，此端點放寬至 500\n  - 專供 Nuxt 靜態生成時批量拉取文章列表\n\n🔧 實現細節\n• 參數為純數字 → 按 id 查詢（原有邏輯）\n• 參數為非數字 → 按 urlname 查詢（新增，利用 idx_content_urlname 索引）\n• prev/next 查詢返回 urlname 字段，前端可用於生成上一篇/下一篇連結\n• /contents/all 路由在 /:idOrSlug 之前註冊（Hono 路由順序約束）\n\n💡 前端使用指南\n• 1. 調用 /contents/all?scode=xxx&pagesize=500 獲取所有文章列表（含 id+urlname）\n• 2. 根據 meta.total 判斷是否需要翻頁\n• 3. 逐一調用 /contents/{urlname或id} 獲取正文\n• 4. Nuxt generate 時遍歷所有文章生成靜態頁面',
+  },
+  {
     version: 'v1.7.8',
     date: '2026-07-21 15:05:16',
     icon: '🕐',
-    latest: true,
+    latest: false,
     changes: '🕐 版本日誌時間戳修正 + 幻燈片默認分組\n\n📋 版本時間修正\n• 問題：26 個版本的 date 字段全為手動估算，非真實推送時間\n• 最嚴重：v1.6.4 寫了 14:00:00（與 v1.7.5 重複），實際 git commit 為 08:53:17，導致順序倒置\n• 修復：全部改用 git log --format="%ci" 真實時間戳（Asia/Hong_Kong UTC+8）\n• AGENTS.md 新增強制規則：版本時間必須使用 git commit 時間戳，禁止手動估算\n\n🗂️ 幻燈片默認分組\n• 問題：默認展示「全部」幻燈片，視覺凌亂\n• 修復：默認打開 gid 1（首頁輪播）分組 tab',
   },
   {
@@ -344,8 +351,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
-  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:id', desc: '內容詳情', auth: false },
+  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (支持數字ID或slug, v1.7.9+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },

@@ -77,35 +77,98 @@ export async function handleListContents(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
-/** 內容詳情 (公開接口) */
+/** 內容詳情 (公開接口，支持數字 ID 或 slug/urlname 查詢)
+ *  v1.7.9+：前端 Nuxt 靜態打包需要通過 slug 查詢文章詳情
+ *  - 參數為純數字 → 按 id 查詢
+ *  - 參數為非數字字符串 → 按 urlname (slug) 查詢
+ */
 export async function handleContentDetail(
   db: D1Database,
-  id: number,
+  idOrSlug: string,
   track: boolean,
 ): Promise<Response> {
-  const stmt = db.prepare(
-    "SELECT * FROM ay_content WHERE id = ? AND status = '1'",
-  ).bind(id);
-  const content = await stmt.first<Record<string, unknown> & { visits?: number }>();
+  const isNumericId = /^\d+$/.test(idOrSlug);
+  let content: Record<string, unknown> & { visits?: number; id?: number } | null;
+
+  if (isNumericId) {
+    content = await db.prepare(
+      "SELECT * FROM ay_content WHERE id = ? AND status = '1'",
+    ).bind(Number(idOrSlug)).first();
+  } else {
+    // slug 查詢（urlname 字段，已有索引 idx_content_urlname）
+    content = await db.prepare(
+      "SELECT * FROM ay_content WHERE urlname = ? AND status = '1'",
+    ).bind(idOrSlug).first();
+  }
 
   if (!content) return notFound('內容不存在');
 
+  const contentId = content.id as number;
+
   // 累加訪問量
   if (track) {
-    await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(id).run();
+    await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(contentId).run();
     content.visits = (content.visits || 0) + 1;
   }
 
-  // 查詢上一篇/下一篇
+  // 查詢上一篇/下一篇（基於已找到的文章 ID）
   const prev = await db.prepare(
-    "SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' ORDER BY id DESC LIMIT 1",
-  ).bind(id).first();
+    "SELECT id, title, filename, urlname, date FROM ay_content WHERE id < ? AND status = '1' ORDER BY id DESC LIMIT 1",
+  ).bind(contentId).first();
 
   const next = await db.prepare(
-    "SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' ORDER BY id ASC LIMIT 1",
-  ).bind(id).first();
+    "SELECT id, title, filename, urlname, date FROM ay_content WHERE id > ? AND status = '1' ORDER BY id ASC LIMIT 1",
+  ).bind(contentId).first();
 
   return okData({ content, prev, next }, '成功');
+}
+
+/** 批量獲取內容列表（靜態打包專用，pagesize 最大 500）
+ *  與 handleListContents 區別：放寬 pagesize 上限，專供 Nuxt 靜態生成時批量拉取
+ *  前端使用：先調用此端點獲取所有文章 ID/slug 列表，再逐一調用詳情 API 獲取正文
+ */
+export async function handleListAllContents(
+  db: D1Database,
+  params: URLSearchParams,
+): Promise<Response> {
+  const page = Math.max(1, parseInt(params.get('page') || '1', 10) || 1);
+  const pagesize = Math.min(500, Math.max(1, parseInt(params.get('pagesize') || '200', 10) || 200));
+  const scode = params.get('scode') || '';
+  const order = params.get('order') || 'date';
+
+  // 摘要字段（同列表 API，排除 content 正文）
+  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
+
+  const conditions: string[] = ["c.status = '1'", "c.scode != ''"];
+  const binds: (string | number)[] = [];
+
+  // 欄目篩選 (含子孫欄目)
+  if (scode) {
+    const scodes = await getDescendantScodes(db, scode);
+    if (scodes.length === 0) {
+      return okList([], createMeta(page, pagesize, 0), '成功');
+    }
+    const placeholders = scodes.map(() => '?').join(',');
+    conditions.push(`c.scode IN (${placeholders})`);
+    binds.push(...scodes);
+  }
+
+  // 排序
+  const orderClause = order === 'visits' ? 'c.visits DESC, c.id DESC'
+    : order === 'sorting' ? 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.id DESC'
+    : 'c.istop DESC, c.isrecommend DESC, c.isheadline DESC, c.sorting ASC, c.date DESC, c.id DESC';
+
+  const whereClause = conditions.join(' AND ');
+  const off = (page - 1) * pagesize;
+
+  const listSql = `SELECT ${summaryFields} FROM ay_content c WHERE ${whereClause} ORDER BY ${orderClause} LIMIT ? OFFSET ?`;
+  const listResult = await db.prepare(listSql).bind(...binds, pagesize, off).all();
+
+  const countSql = `SELECT COUNT(*) as total FROM ay_content c WHERE ${whereClause}`;
+  const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+
+  return okList(listResult.results, createMeta(page, pagesize, total), '成功');
 }
 
 /** 後台內容詳情（無 status 過濾、無訪問量追蹤、不被 Workers Cache 緩存）

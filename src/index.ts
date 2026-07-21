@@ -340,10 +340,20 @@ app.get('/api/v1/contents', publicRateLimit(), async (c) => {
   return contentService.handleListContents(siteDB(c), params);
 });
 
-app.get('/api/v1/contents/:id', async (c) => {
-  const id = Number(c.req.param('id')) || 0;
+// 批量獲取內容列表（靜態打包專用，pagesize 最大 500）
+// ⚠️ 必須在 /:id 路由之前註冊，否則 "all" 會被當作 :id 匹配
+app.get('/api/v1/contents/all', publicRateLimit(), async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  return contentService.handleListAllContents(siteDB(c), params);
+});
+
+// 內容詳情：支持數字 ID 或 slug (urlname)
+// - /api/v1/contents/27 → 按 ID 查詢
+// - /api/v1/contents/colon-polyps-cancer-causes → 按 slug 查詢
+app.get('/api/v1/contents/:idOrSlug', async (c) => {
+  const idOrSlug = c.req.param('idOrSlug');
   const track = c.req.query('track') === '1';
-  return contentService.handleContentDetail(siteDB(c), id, track);
+  return contentService.handleContentDetail(siteDB(c), idOrSlug, track);
 });
 
 // ===== 前台公開接口 - 擴展模塊 =====
