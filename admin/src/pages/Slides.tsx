@@ -70,7 +70,7 @@ export default function Slides() {
   const [actionError, setActionError] = useState('')
 
   // 分組狀態
-  const [activeGroup, setActiveGroup] = useState<string>('all')
+  const [activeGroup, setActiveGroup] = useState<string>('1')
   const [groups, setGroups] = useState<SlideGroup[]>([])
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null)
   const [groupNameInput, setGroupNameInput] = useState('')

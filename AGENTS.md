@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.7**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.8**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.7.8 | 2026-07-21 | 版本日誌時間戳修正（26 個版本改用 git commit 真實時間戳，修復 v1.6.4 順序倒置問題）、AGENTS.md 新增版本時間戳強制規則、幻燈片默認打開 gid 1 分組 tab |
 | v1.7.7 | 2026-07-21 | 幻燈片分組名稱持久化（新建 ay_slide_group 表，取代 localStorage 方案，所有賬號共享分組名稱）、新增 4 個分組管理 API 端點、種子數據 gid 1=首頁輪播/2=費用一覽/3=大腸鏡檢查、site.ts 新站點同步建表 |
 | v1.7.6 | 2026-07-21 | 側邊欄權限過濾修復（根因：Workers Cache 邊緣快取 /auth/profile 跨用戶污染，管理員 profile 被快取後普通用戶拿到全部權限）、cache 中間件新增排除 /api/v1/auth/*、/auth/profile 響應顯式 no-store |
 | v1.7.5 | 2026-07-21 | 權限管理三處修復：多站點管理位置修正（mcode M308→M508 對齊 M500 父分組、pcode M300→M500）、角色代碼自動生成（前端移除 rcode 輸入框，後端已自動生成）、用戶創建站點權限丟失修復（handleCreateUser 返回新用戶 ID） |
@@ -356,6 +357,7 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 - 新增版本條目到 `VERSIONS` 數組頂部，設 `latest: true`，舊版本移除 `latest`
 - 格式：`{ version: 'vX.Y.Z', date: 'YYYY-MM-DD HH:mm:ss', icon: 'emoji', latest: true, changes: '簡述' }`
 - 版本號：主版本（架構變更）/ 次版本（功能新增）/ 修訂號（Bug 修復）
+- **時間戳規則（強制）**：`date` 字段必須使用 `git log` 中對應 commit 的真實時間戳（`git log --format='%ci'`），時區為 Asia/Hong_Kong（UTC+8）。禁止手動估算或編造時間。獲取方式：`git log --all --pretty=format:'%h|%ci|%s' | grep 'vX.Y.Z'`。無 git commit 記錄的歷史版本，時間需確保版本順序遞減（新版 > 舊版）
 
 ### API 開發手冊 Tab
 
