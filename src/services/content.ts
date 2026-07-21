@@ -106,11 +106,50 @@ export async function handleContentDetail(
   if (!content) return notFound('內容不存在');
 
   const contentId = content.id as number;
+  const contentScode = (content.scode as string) || '';
 
   // 累加訪問量
   if (track) {
     await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(contentId).run();
     content.visits = (content.visits || 0) + 1;
+  }
+
+  // 查詢歸屬欄目信息（名稱、mcode 等，供前端顯示欄目名稱如「疾病知識」）
+  let sortInfo: Record<string, unknown> | null = null;
+  if (contentScode) {
+    sortInfo = await db.prepare(
+      'SELECT scode, name, subname, mcode, pcode, filename, ico, pic FROM ay_content_sort WHERE scode = ? LIMIT 1',
+    ).bind(contentScode).first();
+  }
+
+  // 查詢自定義擴展字段值（ay_content_ext 表，通過 contentid 關聯）
+  let extValues: Record<string, unknown> | null = null;
+  const extRow = await db.prepare(
+    'SELECT * FROM ay_content_ext WHERE contentid = ? LIMIT 1',
+  ).bind(contentId).first<Record<string, unknown>>();
+  if (extRow) {
+    // 只保留 ext_ 前綴的字段（PbootCMS 約定，擴展字段列名以 ext_ 開頭）
+    extValues = {};
+    for (const [key, value] of Object.entries(extRow)) {
+      if (key.startsWith('ext_')) {
+        extValues[key] = value;
+      }
+    }
+  }
+
+  // 查詢擴展字段定義（ay_extfield 表，通過欄目 mcode 關聯，讓前端知道字段名稱和類型）
+  let extFieldDefs: unknown[] = [];
+  if (sortInfo && sortInfo.mcode) {
+    const extDefsResult = await db.prepare(
+      "SELECT id, mcode, name, field, type, description, value, scode, required, sorting, status FROM ay_extfield WHERE mcode = ? AND status = '1' ORDER BY sorting ASC, id ASC",
+    ).bind(sortInfo.mcode as string).all();
+    // 過濾適用當前欄目的字段（scode 為空 = 適用所有欄目）
+    extFieldDefs = (extDefsResult.results as Array<Record<string, unknown>>).filter((row) => {
+      const fieldScode = typeof row.scode === 'string' ? row.scode : '';
+      if (!fieldScode) return true;
+      const scodeList = fieldScode.split(',').map((s) => s.trim()).filter(Boolean);
+      return scodeList.includes(contentScode);
+    });
   }
 
   // 查詢上一篇/下一篇（基於已找到的文章 ID，返回 filename 供前端生成連結）
@@ -122,7 +161,7 @@ export async function handleContentDetail(
     "SELECT id, title, filename, urlname, date FROM ay_content WHERE id > ? AND status = '1' ORDER BY id ASC LIMIT 1",
   ).bind(contentId).first();
 
-  return okData({ content, prev, next }, '成功');
+  return okData({ content, sort: sortInfo, extFields: extFieldDefs, extValues, prev, next }, '成功');
 }
 
 /** 批量獲取內容列表（靜態打包專用，pagesize 最大 500）

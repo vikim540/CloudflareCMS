@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.0',
+    date: '2026-07-21 15:45:00',
+    icon: '📝',
+    latest: true,
+    changes: '📝 文章詳情 API 補充欄目名稱+自定義字段 + 欄目下拉權限修復\n\n📋 新增功能\n• GET /contents/:idOrSlug 響應新增 sort 字段（欄目名稱、mcode 等）\n  - 前端可直接獲取歸屬欄目名稱（如「疾病知識」），無需二次查詢\n• GET /contents/:idOrSlug 響應新增 extFields + extValues\n  - extFields：擴展字段定義（ay_extfield，含字段名稱、類型、描述）\n  - extValues：擴展字段值（ay_content_ext，ext_ 前綴字段）\n  - 解決「了解更多 WhatsApp」連結等自定義字段缺失問題\n• 新增 GET /admin/sorts/all 端點（無需 M202 權限，所有登錄用戶可訪問）\n\n🐛 Bug 修復\n• 非授權用戶欄目下拉為空\n  - 根因：ContentEdit/Contents 調用 /admin/sorts（需 M202 權限），非授權用戶被 403 攔截\n  - 修復：改用 /admin/sorts/all（在 PUBLIC_READ_PATHS 白名單中）\n• endoscopyeditor 編輯文章無權限\n  - 根因：同上，欄目下拉載入失敗導致無法選擇欄目',
+  },
+  {
     version: 'v1.7.9',
     date: '2026-07-21 15:16:08',
     icon: '🔗',
-    latest: true,
+    latest: false,
     changes: '🔗 公開 API 支持 slug 查詢 + 靜態打包批量端點\n\n📋 新增功能\n• GET /api/v1/contents/:idOrSlug — 詳情 API 支持數字 ID 或 slug (filename)\n  - /api/v1/contents/27 → 按 ID 查詢\n  - /api/v1/contents/colon-polyps-cancer-causes → 按 slug 查詢\n• GET /api/v1/contents/all — 批量列表端點，pagesize 最大 500（靜態打包專用）\n  - 一般列表 API pagesize 上限 100，此端點放寬至 500\n  - 專供 Nuxt 靜態生成時批量拉取文章列表\n\n🔧 實現細節\n• 參數為純數字 → 按 id 查詢（原有邏輯）\n• 參數為非數字 → 按 filename 查詢（slug，利用 idx_content_filename 索引）\n• ⚠️ slug 對應 ay_content.filename 字段（PbootCMS 約定），非 urlname\n• prev/next 查詢返回 filename 字段，前端可用於生成上一篇/下一篇連結\n• /contents/all 路由在 /:idOrSlug 之前註冊（Hono 路由順序約束）\n\n💡 前端使用指南\n• 1. 調用 /contents/all?scode=xxx&pagesize=500 獲取所有文章列表（含 id+filename）\n• 2. 根據 meta.total 判斷是否需要翻頁\n• 3. 逐一調用 /contents/{filename或id} 獲取正文\n• 4. Nuxt generate 時遍歷所有文章生成靜態頁面',
   },
   {
@@ -353,7 +360,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (支持數字ID或slug/filename, v1.7.9+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (含欄目名稱sort+擴展字段extFields/extValues, v1.8.0+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
@@ -395,7 +402,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/slides/groups/:gid', desc: '更新幻燈片分組名稱 (v1.7.7+)', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/slides/groups/:gid', desc: '刪除幻燈片分組 (v1.7.7+)', auth: true },
   // 欄目管理 + 擴展字段 (v1.6.1+)
-  { method: 'GET', path: '/api/v1/admin/sorts', desc: '欄目樹 (?mcode=)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/sorts/all', desc: '欄目列表-下拉用 (無需M202權限, v1.8.0+)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/sorts', desc: '欄目樹 (需M202權限)', auth: true },
   { method: 'POST', path: '/api/v1/admin/sorts', desc: '新增欄目', auth: true },
   { method: 'PUT', path: '/api/v1/admin/sorts/:id', desc: '更新欄目', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/sorts/:id', desc: '刪除欄目 (級聯刪除子欄目+內容)', auth: true },

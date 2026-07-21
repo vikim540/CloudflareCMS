@@ -956,10 +956,10 @@ export default function ContentEdit() {
     callback: (urls: (string | null)[]) => void
   } | null>(null)
 
-  /** 載入欄目樹 (支持按 mcode 過濾) */
+  /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
     try {
-      const url = mcode ? `/admin/sorts?mcode=${encodeURIComponent(mcode)}` : '/admin/sorts'
+      const url = mcode ? `/admin/sorts/all?mcode=${encodeURIComponent(mcode)}` : '/admin/sorts/all'
       const res = await api.get<Category[]>(url)
       const cats = res.data ?? []
       setCategories(cats)

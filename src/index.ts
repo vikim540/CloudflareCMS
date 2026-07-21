@@ -610,6 +610,16 @@ app.delete('/api/v1/admin/contents/:id/permanent', async (c) => {
 });
 
 // ===== 後台管理接口 - 欄目管理 =====
+// ⚠️ /all 子路徑路由必須在 /:id 路由之前註冊（遵循 Hono 路由順序約束）
+// /all 在 PUBLIC_READ_PATHS 白名單中，所有登錄用戶可訪問（無需 M202 權限）
+// 專供 ContentEdit/Contents 頁面的欄目下拉使用，避免非授權用戶無法選擇欄目
+app.get('/api/v1/admin/sorts/all', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const mcode = c.req.query('mcode') || undefined;
+  return sortService.handleSortTreeAll(siteDB(c), mcode);
+});
+
 app.get('/api/v1/admin/sorts', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

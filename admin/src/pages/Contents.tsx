@@ -177,11 +177,11 @@ export default function Contents() {
       .catch(() => {})
   }, [])
 
-  // 載入欄目樹（依當前 mcode 過濾，只顯示該模型下的欄目）
+  // 載入欄目樹（依當前 mcode 過濾，使用 /all 端點無需 M202 權限）
   useEffect(() => {
     const path = mcode
-      ? `/admin/sorts?mcode=${encodeURIComponent(mcode)}`
-      : '/admin/sorts'
+      ? `/admin/sorts/all?mcode=${encodeURIComponent(mcode)}`
+      : '/admin/sorts/all'
     api
       .get<Category[]>(path)
       .then((res) => setCategories(res.data ?? []))
