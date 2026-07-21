@@ -44,7 +44,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.7.8',
-    date: '2026-07-21 15:02:54',
+    date: '2026-07-21 15:05:16',
     icon: '🕐',
     latest: true,
     changes: '🕐 版本日誌時間戳修正 + 幻燈片默認分組\n\n📋 版本時間修正\n• 問題：26 個版本的 date 字段全為手動估算，非真實推送時間\n• 最嚴重：v1.6.4 寫了 14:00:00（與 v1.7.5 重複），實際 git commit 為 08:53:17，導致順序倒置\n• 修復：全部改用 git log --format="%ci" 真實時間戳（Asia/Hong_Kong UTC+8）\n• AGENTS.md 新增強制規則：版本時間必須使用 git commit 時間戳，禁止手動估算\n\n🗂️ 幻燈片默認分組\n• 問題：默認展示「全部」幻燈片，視覺凌亂\n• 修復：默認打開 gid 1（首頁輪播）分組 tab',
