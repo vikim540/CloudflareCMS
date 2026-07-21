@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.0**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.7.1**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.7.1 | 2026-07-21 | 統一❌emoji關閉按鈕、tab切換編輯器內容丟失修復、壓縮卡0%修復、編輯器圖片上傳三合一優化（直開媒體庫+粘貼批量壓縮）、wrangler warning修復 |
 | v1.7.0 | 2026-07-21 | Secrets Store 遷移、Flagship 真混合模式、Workers Cache 邊緣緩存、Smart Placement、acode/時區清理、全局錯誤 Toast、代碼清理 |
 | v1.6.4 | 2026-07-21 | 前端狀態組件統一化（LoadingState/EmptyState/ErrorState），19 個頁面全部組件化 |
 | v1.6.3 | 2026-07-21 | 標題顏色選擇器、操作者自動記錄、AGENTS.md 新增 Rust 優先約束 |
@@ -45,7 +46,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.112.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用） |
+| wrangler | 4.112.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用）。**注意**：4.112.0 在 Windows 上 Pages 部署有 `.wrangler/tmp` 寫入權限 bug（`Access is denied`），Pages 部署請使用本地 `node node_modules/wrangler/bin/wrangler.js`（4.111.0） |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
@@ -92,6 +93,7 @@ Cloudflarerustcms/
 │   │   ├── lib/                # api.ts（HTTP 客戶端）/ imageCompress.ts / utils.ts
 │   │   └── pages/              # 24 個頁面組件
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
+│   ├── wrangler.jsonc          # Pages 部署配置（pages_build_output_dir: deploy）
 │   └── package.json
 ├── migrations/                 # D1 遷移（冪等語法，當前 0001-0011）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
@@ -298,7 +300,9 @@ cd admin; npx vite dev
 cd admin; npx vite build
 
 # 3. Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
-cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy deploy --project-name=cms-admin
+cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy deploy --project-name=cms-admin --commit-dirty=true
+# 若 wrangler 4.112.0 遇到 Windows .wrangler/tmp 寫入權限 bug，改用本地版本：
+# cd admin; node '../node_modules/wrangler/bin/wrangler.js' pages deploy deploy --project-name=cms-admin --commit-dirty=true
 
 # ===== 數據庫 =====
 # 遷移（主庫 endoscopy-cms）

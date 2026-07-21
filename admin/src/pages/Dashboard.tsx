@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.7.1',
+    date: '2026-07-21 11:31:19',
+    icon: '🎨',
+    latest: true,
+    changes: '🎨 前端細節優化：統一 emoji + 編輯器修復 + 圖片上傳體驗升級\n\n❌ 統一關閉按鈕為 emoji\n• 全站 10 處 ✕ 符號統一替換為 ❌ emoji（Modal/Dialog/TagInput/Toast/顏色清除等）\n• 尺寸顯示的 × 乘號保持不變（語義不同）\n\n📝 編輯器 tab 切換內容丟失修復\n• 根因：條件渲染卸載編輯器 DOM，切回時 Quill 實例不會重新初始化\n• 修復：改用 CSS display:none/block 切換 tab，編輯器 DOM 始終保持掛載\n\n🖼️ 編輯器圖片上傳三合一優化\n• 移除 window.prompt URL 輸入框，點擊圖片圖標直開媒體庫選擇彈窗\n• MediaPickerModal 增強為三合一：媒體庫網格 + ⬆️上傳圖片 + 🔗外鏈URL\n• 上傳後自動刷新列表，單張圖片自動選中插入\n\n📋 粘貼批量圖片壓縮\n• 監聽 Quill paste 事件，攔截剪貼板圖片（截圖/複製帶圖富文本）\n• 阻止默認 base64 插入，走 ImageCompressDialog 批量壓縮上傳\n• 修復批量上傳只取第一張的問題（pendingImageUpload 改為多文件）\n\n🐛 媒體庫壓縮卡 0% 修復\n• 根因：壓縮觸發 useEffect 依賴缺少 files，首次上傳時 runCompress 從未執行\n• 修復：添加 previewsRef 同步鏡像避免閉包陳舊，依賴加入 files\n\n🔧 wrangler 部署 warning 修復\n• 創建 admin/wrangler.jsonc 指定 pages_build_output_dir，消除配置警告',
+  },
+  {
     version: 'v1.7.0',
     date: '2026-07-21 10:35:00',
     icon: '🔐',
-    latest: true,
+    latest: false,
     changes: '🔐 架構級優化：密鑰管理 + 邊緣緩存 + 功能開關 + 代碼清理\n\n🔐 Secrets Store 密鑰遷移\n• JWT_SECRET 和 CF_API_TOKEN 從 wrangler secret 遷移至 Cloudflare Secrets Store\n• 異步綁定（await env.X.get()），帳號級別跨 Worker 共享\n• Store ID: aef7c32e26c84aedb4b2a5938128ca23\n\n🚀 Workers Cache 邊緣緩存\n• 取代失敗的 KV API 響應緩存中間件，聲明式邊緣緩存\n• 公開 GET 自動緩存（配置 3600s / 內容 300s），管理接口自動繞過\n• Vary: X-Site-Id 多站點緩存分區\n\n🎯 Flagship 真混合模式\n• getFlagEnabled 優先調用 Flagship getBooleanValue，失敗回退 D1\n• Flagship 模式下開關只讀保護，d1FlagCache 按站點隔離\n\n📍 Smart Placement\n• Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲\n\n🧹 代碼清理\n• 移除 acode=cn 硬編碼（vectorize.ts 兩處）\n• 移除多餘 +08:00/Z 時區後綴（scheduler.ts，依賴 TZ=Asia/Hong_Kong）\n• 清理 apiCache/getCached/setCached 死代碼\n• 刪除過時文檔（docs/00-06）+ 廢棄 Rust 原型 + lucide-react/radix-ui 依賴\n\n🐛 全局錯誤追蹤\n• ErrorBoundary + GlobalErrorToast（左下角固定彈框，手動關閉）\n• 非開發者用戶可直觀看到 bug 信息\n\n🔧 autoRouteProtection 順序修復\n• 功能開關中間件從路由後移至路由前，確保攔截生效',
   },
   {
@@ -313,7 +320,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/menus', desc: '菜單樹', auth: true },
   { method: 'GET', path: '/api/v1/admin/logs', desc: '系統日誌 (?level=admin|content|security|error|notify)', auth: true },
   { method: 'GET', path: '/api/v1/admin/flags', desc: '查詢功能開關狀態', auth: true },
-  { method: 'PUT', path: '/api/v1/admin/flags', desc: '切換功能開關 (D1回退模式)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/flags', desc: '切換功能開關 (Flagship 混合模式，Flagship 模式下只讀)', auth: true },
   { method: 'GET', path: '/api/v1/admin/scheduler/list', desc: '定時發布列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/scheduler/schedule', desc: '設定文章發布時間', auth: true },
   { method: 'POST', path: '/api/v1/admin/vectorize/reindex', desc: '重建向量索引', auth: true },
