@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.3**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.4**（2026-07-21）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.4 | 2026-07-21 | 緊急修復 v1.8.3 回歸 bug：CSP connect-src 缺少 challenges.cloudflare.com 導致 Turnstile API 調用被阻擋、err() 函數 code>=2000 一律返回 401 導致 Turnstile 失敗(2007)/密碼錯誤(2001)被前端誤判為「登錄已過期」。修復：_headers connect-src 加入 Turnstile 域名、response.ts err() 改用 AUTH_ERROR_CODES 白名單（僅 2002/2003/2004/2006 返回 401） |
 | v1.8.3 | 2026-07-21 | 安全加固 P0-P3：安全 HTTP 響應頭（CSP/HSTS/X-Frame-Options 等通用標準，Worker 中間件+Pages _headers）、HTML 淨化防 XSS（sanitize.ts 純函數，整合到內容 CRUD）、輸入長度校驗+2MB 請求體限制、文件上傳 MIME 白名單 |
 | v1.8.2 | 2026-07-21 | 清理 ay_content_ext 幽靈字段（13個無定義 ext_* 列刪除，三庫同步）、媒體庫 WebP blob bug 修復（跳過二次壓縮+後端擴展名推斷）、操作日誌分類重組（7類互斥+新增爬蟲tab）、ImagePreviewWithRemove 統一組件抽象（取代3處重複按鈕） |
 | v1.8.1 | 2026-07-21 | 文章詳情 API 重構：參考 PbootCMS ParserModel.getContent() 平鋪模式，欄目名稱(sortname)+擴展字段(ext_*)直接合併到 content 對象，移除 sort/extFields/extValues 獨立對象，null 字段不返回，prev/next 改為同欄目樹範圍查詢（getSubScodes 邏輯） |
@@ -204,11 +205,13 @@ Cloudflarerustcms/
 
 ### HTTP 狀態碼語義
 
+> **v1.8.4 修復**：`err()` 函數原邏輯 `code >= 2000 ? 401 : 400` 導致 2001（密碼錯誤）和 2007（Turnstile 失敗）也返回 401，前端誤判為「登錄已過期」。現改用 `AUTH_ERROR_CODES` 白名單，僅 2002/2003/2004/2006 返回 401。
+
 | 狀態碼 | code | 含義 | 前端行為 |
 |--------|------|------|----------|
 | 401 | 2002/2003/2004/2006 | 未認證/Token 過期/已登出/用戶禁用 | 重定向 login |
 | 403 | 2005 | 權限拒絕 | 彈出 toast 提示（**不重定向**） |
-| 400 | 2007 | Turnstile 人機驗證失敗 | 登錄頁提示重試 |
+| 400 | 2001/2007 | 密碼錯誤/Turnstile 人機驗證失敗 | 登錄頁提示重試 |
 
 ### 回收站路由特殊處理
 
@@ -299,7 +302,7 @@ Cloudflarerustcms/
 
 > **P0-P3 防禦縱深**，通用 HTTP 安全標準（非 Cloudflare 特有）。
 
-- **P0 安全 HTTP 響應頭**：`src/index.ts` 中間件統一設置 6 個頭（X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Permissions-Policy / HSTS / CSP）。API 的 CSP 為 `default-src 'none'`（最嚴格，只返回 JSON）。前端 SPA 通過 `admin/public/_headers` 設置獨立 CSP（允許 Turnstile 腳本+iframe、允許 https 圖片源）
+- **P0 安全 HTTP 響應頭**：`src/index.ts` 中間件統一設置 6 個頭（X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Permissions-Policy / HSTS / CSP）。API 的 CSP 為 `default-src 'none'`（最嚴格，只返回 JSON）。前端 SPA 通過 `admin/public/_headers` 設置獨立 CSP（允許 Turnstile 腳本+iframe+connect-src、允許 https 圖片源）。**v1.8.4 修復**：`connect-src` 必須包含 `https://challenges.cloudflare.com`，否則 Turnstile JS 無法發起 API 調用獲取 token。`src/utils/response.ts` 的 `err()` 函數僅對 `AUTH_ERROR_CODES`（2002/2003/2004/2006）返回 HTTP 401，其他錯誤（如 2001 密碼錯誤、2007 Turnstile 失敗）返回 400，避免前端誤判為「登錄已過期」
 - **P1 HTML 淨化**：`src/utils/sanitize.ts` 提供 `sanitizeHtml()`（保留富文本標籤，移除 `<script>`/危險標籤/`on*` 事件/`javascript:` 協議）和 `stripHtmlTags()`（剝離所有標籤）。整合到 `handleCreateContent` + `handleUpdateContent`，content 字段用 sanitizeHtml，description/keywords 用 stripHtmlTags
 - **P2 輸入長度校驗**：`FIELD_LENGTH_LIMITS` 常量定義 18 個字段最大長度（新聞網站場景，略寬），`validateFieldLengths()` 超長返回明確錯誤。請求體大小限制 2MB（排除 `multipart/form-data` 文件上傳）
 - **P3 文件上傳 MIME 白名單**：`src/services/storage.ts` 的 `ALLOWED_MIME_TYPES` Set，僅允許圖片/視頻/音頻/PDF/文本/ZIP，非白名單返回 1001 錯誤

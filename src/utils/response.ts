@@ -36,9 +36,12 @@ export function okList<T>(data: T, meta: Meta, msg = '成功'): Response {
   return Response.json({ code: 0, msg, data, meta } satisfies ApiResponse<T>);
 }
 
+/** 認證專用錯誤碼：僅這些碼觸發 HTTP 401（前端拦截器會清除 Token 並跳轉登錄頁） */
+const AUTH_ERROR_CODES = new Set([2002, 2003, 2004, 2006]);
+
 /** 失敗響應 */
 export function err(msg: string, code = 1): Response {
-  const status = code >= 2000 ? 401 : 400;
+  const status = AUTH_ERROR_CODES.has(code) ? 401 : 400;
   return Response.json({ code, msg } satisfies ApiResponse, { status });
 }
 

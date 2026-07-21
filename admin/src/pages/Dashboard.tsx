@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.4',
+    date: '2026-07-21 18:48:50',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 緊急修復：v1.8.3 安全加固導致所有賬號無法登錄\n\n📋 根因分析（兩個問題疊加）\n• 問題 1：CSP connect-src 缺少 challenges.cloudflare.com\n  - v1.8.3 的 _headers 設置 connect-src \'self\'\n  - Turnstile JS 需向 challenges.cloudflare.com 發起 API 調用\n  - CSP 阻擋 → Turnstile 無法獲取 token → 登錄失敗\n• 問題 2：err() 函數 HTTP 狀態碼映射錯誤\n  - 原邏輯：code >= 2000 ? 401 : 400\n  - Turnstile 失敗(2007)和密碼錯誤(2001)都返回 HTTP 401\n  - 前端攔截 401 → 顯示「登錄已過期」而非實際錯誤\n\n📋 修復內容\n• _headers：connect-src 加入 https://challenges.cloudflare.com\n• response.ts：err() 改用 AUTH_ERROR_CODES 白名單（2002/2003/2004/2006）\n  - 僅認證過期類錯誤返回 401，其他錯誤返回 400\n  - 前端正確顯示實際錯誤消息（如「人機驗證失敗，請重試」）',
+  },
+  {
     version: 'v1.8.3',
     date: '2026-07-21 18:01:35',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: '🔒 安全加固 P0-P3（防禦縱深，通用 HTTP 標準）\n\n📋 P0：安全 HTTP 響應頭\n• Worker 中間件統一設置 6 個安全頭\n  - X-Content-Type-Options: nosniff（防 MIME 嗅探）\n  - X-Frame-Options: DENY（防點擊劫持）\n  - Referrer-Policy: strict-origin-when-cross-origin\n  - Permissions-Policy: camera/microphone/geolocation/payment 全禁\n  - Strict-Transport-Security: HSTS 預載入\n  - Content-Security-Policy: default-src \'none\'（API 只返回 JSON，最嚴格策略）\n• Pages 新增 _headers 文件（前端 SPA 安全頭，CSP 允許 Turnstile）\n• 這些是通用 HTTP 安全標準，非 Cloudflare 特有\n\n📋 P1：HTML 淨化（XSS 防禦）\n• 新增 src/utils/sanitize.ts（輕量級純函數，無 DOM 依賴）\n• sanitizeHtml()：移除 <script>、危險標籤、on* 事件、javascript: 協議\n• stripHtmlTags()：剝離所有 HTML 標籤（用於 description/keywords）\n• 整合到 handleCreateContent + handleUpdateContent\n\n📋 P2：輸入長度校驗 + 請求體限制\n• FIELD_LENGTH_LIMITS 常量定義 18 個字段最大長度（新聞網站場景）\n• validateFieldLengths() 校驗函數，超長返回明確錯誤消息\n• 請求體大小限制 2MB（排除文件上傳 multipart/form-data）\n\n📋 P3：文件上傳 MIME 白名單\n• ALLOWED_MIME_TYPES 白名單（圖片/視頻/音頻/PDF/文本/ZIP）\n• 非白名單類型返回 1001 錯誤，拒絕可執行文件上傳',
   },
   {
@@ -450,12 +457,13 @@ const ERROR_CODES: { code: number; desc: string; color: string }[] = [
   { code: 1001, desc: '參數錯誤', color: 'yellow' },
   { code: 1004, desc: '未找到', color: 'yellow' },
   { code: 1005, desc: '操作失敗', color: 'orange' },
-  { code: 2002, desc: '未授權', color: 'red' },
-  { code: 2003, desc: 'Token 已過期', color: 'red' },
-  { code: 2004, desc: 'Token 已登出', color: 'red' },
-  { code: 2005, desc: '無權限訪問此功能', color: 'red' },
-  { code: 2006, desc: '用戶已被禁用或不存在', color: 'red' },
-  { code: 2007, desc: '人機驗證失敗（Turnstile）', color: 'red' },
+  { code: 2001, desc: '用戶名或密碼錯誤', color: 'orange' },
+  { code: 2002, desc: '未授權（HTTP 401，觸發登出）', color: 'red' },
+  { code: 2003, desc: 'Token 已過期（HTTP 401，觸發登出）', color: 'red' },
+  { code: 2004, desc: 'Token 已登出（HTTP 401，觸發登出）', color: 'red' },
+  { code: 2005, desc: '無權限訪問此功能（HTTP 403）', color: 'red' },
+  { code: 2006, desc: '用戶已被禁用或不存在（HTTP 401，觸發登出）', color: 'red' },
+  { code: 2007, desc: '人機驗證失敗（Turnstile）', color: 'orange' },
   { code: 4290, desc: '請求過於頻繁 (Rate Limited)', color: 'red' },
 ]
 
