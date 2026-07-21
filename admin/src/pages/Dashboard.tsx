@@ -44,7 +44,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.8.2',
-    date: '2026-07-21 17:10:00',
+    date: '2026-07-21 17:37:10',
     icon: '🧹',
     latest: true,
     changes: '🧹 數據庫清理 + 媒體庫 bug 修復 + 日誌分類重組 + 組件抽象\n\n📋 數據庫\n• 清理 ay_content_ext 幽靈字段（13 個無定義的 ext_* 刪除）\n  - 保留：extid, contentid, ext_price, ext_type, ext_color（PbootCMS 原版）, ext_content_whatsapp\n  - 三個數據庫（endoscopy/smile/vision）同步清理\n\n🐛 Bug 修復\n• 媒體庫上傳 WebP 變成 blob 文件\n  - 根因：browser-image-compression 對 WebP 二次壓縮時 Blob name 異常\n  - 修復：WebP 跳過壓縮直接上傳 + 後端 generateKey 從 Content-Type 推斷擴展名\n\n📋 日誌分類重組（7 類完全互斥）\n• 新增 🕷️ 爬蟲日誌 tab（spider）\n• 「系統日誌」重命名為「管理操作」（更準確）\n• 「內容日誌」重命名為「內容操作」\n• 頁面標題從「系統日誌」改為「操作日誌」\n\n🔧 組件抽象\n• 新增 ImagePreviewWithRemove 統一組件\n  - 取代 ContentEdit 中 3 處重複的圖片預覽+移除按鈕\n  - 統一圓形按鈕樣式，消除樣式不一致',
