@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.4**（2026-07-21）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.8.5**（2026-07-22）
 
 ---
 
@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.5 | 2026-07-22 | 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄。verifyTurnstile() 在 secret key 為空時返回 false 拒絕所有登錄，改為放行（return true）與網絡異常邏輯一致。臨時停用 Turnstile（turnstile_enabled=0） |
 | v1.8.4 | 2026-07-21 | 緊急修復 v1.8.3 回歸 bug：CSP connect-src 缺少 challenges.cloudflare.com 導致 Turnstile API 調用被阻擋、err() 函數 code>=2000 一律返回 401 導致 Turnstile 失敗(2007)/密碼錯誤(2001)被前端誤判為「登錄已過期」。修復：_headers connect-src 加入 Turnstile 域名、response.ts err() 改用 AUTH_ERROR_CODES 白名單（僅 2002/2003/2004/2006 返回 401） |
 | v1.8.3 | 2026-07-21 | 安全加固 P0-P3：安全 HTTP 響應頭（CSP/HSTS/X-Frame-Options 等通用標準，Worker 中間件+Pages _headers）、HTML 淨化防 XSS（sanitize.ts 純函數，整合到內容 CRUD）、輸入長度校驗+2MB 請求體限制、文件上傳 MIME 白名單 |
 | v1.8.2 | 2026-07-21 | 清理 ay_content_ext 幽靈字段（13個無定義 ext_* 列刪除，三庫同步）、媒體庫 WebP blob bug 修復（跳過二次壓縮+後端擴展名推斷）、操作日誌分類重組（7類互斥+新增爬蟲tab）、ImagePreviewWithRemove 統一組件抽象（取代3處重複按鈕） |

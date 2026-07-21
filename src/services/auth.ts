@@ -66,7 +66,9 @@ async function verifyTurnstile(
   token: string,
   remoteip?: string,
 ): Promise<boolean> {
-  if (!secretKey || !token) return false;
+  // secret key 未配置時放行（避免配置丟失導致所有用戶被鎖死）
+  if (!secretKey) return true;
+  if (!token) return false;
 
   const params = new URLSearchParams();
   params.append('secret', secretKey);

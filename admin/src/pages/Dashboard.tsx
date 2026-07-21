@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.5',
+    date: '2026-07-22 07:53:09',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄\n\n📋 根因\n• 數據庫 ay_config 中 turnstile_secret_key 為空字串\n• verifyTurnstile() 在 secret key 為空時返回 false（拒絕所有登錄）\n• 即使 Turnstile widget 正常渲染並生成 token，後端也無法驗證\n• 疊加 v1.8.3 的 err() bug（code 2007 返回 401），前端顯示「登錄已過期」\n\n📋 修復\n• 臨時停用 Turnstile（turnstile_enabled = 0）恢復登錄\n• verifyTurnstile() 防禦性修復：secret key 為空時放行（return true）\n  - 與網絡異常放行邏輯一致，避免配置丟失鎖死所有用戶\n  - 僅 token 為空時才拒絕（return false）',
+  },
+  {
     version: 'v1.8.4',
     date: '2026-07-21 18:48:50',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 緊急修復：v1.8.3 安全加固導致所有賬號無法登錄\n\n📋 根因分析（兩個問題疊加）\n• 問題 1：CSP connect-src 缺少 challenges.cloudflare.com\n  - v1.8.3 的 _headers 設置 connect-src \'self\'\n  - Turnstile JS 需向 challenges.cloudflare.com 發起 API 調用\n  - CSP 阻擋 → Turnstile 無法獲取 token → 登錄失敗\n• 問題 2：err() 函數 HTTP 狀態碼映射錯誤\n  - 原邏輯：code >= 2000 ? 401 : 400\n  - Turnstile 失敗(2007)和密碼錯誤(2001)都返回 HTTP 401\n  - 前端攔截 401 → 顯示「登錄已過期」而非實際錯誤\n\n📋 修復內容\n• _headers：connect-src 加入 https://challenges.cloudflare.com\n• response.ts：err() 改用 AUTH_ERROR_CODES 白名單（2002/2003/2004/2006）\n  - 僅認證過期類錯誤返回 401，其他錯誤返回 400\n  - 前端正確顯示實際錯誤消息（如「人機驗證失敗，請重試」）',
   },
   {
