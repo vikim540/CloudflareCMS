@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.12',
+    date: '2026-07-22 17:45:30',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 iframe 保存修復 + 標籤輸入字段類型\n\n📋 iframe 保存問題修復\n• sanitizeHtml 不再將 iframe 列為危險標籤\n• 新增 YouTube 域名白名單驗證（youtube.com / youtube-nocookie.com）\n• 非白名單域名 iframe src 替換為 #（阻斷惡意嵌入）\n• Quill CustomVideoBlot 覆蓋內建 video blot，保留完整 iframe 屬性\n• clipboard matcher 同時處理 FAQ 和 iframe 元素\n\n📋 新增擴展字段類型 type=11「標籤輸入（帶歷史）」\n• 與文章標籤輸入完全相同的 TagInput 組件（多值氣泡標籤）\n• 支援 Enter/逗號添加標籤、退格刪除、批量導入\n• 歷史標籤快速補充（點擊添加，從已有內容查詢 DISTINCT 值）\n• 後端新增 GET /admin/extfields/:id/history API\n• 適用場景：風險警告、檢查類型等重複性文字內容',
+  },
+  {
     version: 'v1.9.11',
     date: '2026-07-22 17:28:46',
     icon: '❓',
-    latest: true,
+    latest: false,
     changes: '❓ FAQ 結構化數據功能（SEO 優化）\n\n📋 編輯器 FAQ 面板\n• 新增 ❓ FAQ 按鈕到 Quill 工具列\n• FaqPickerModal 支援多組問答輸入 + 即時預覽\n• 生成 <details class="faq-item"><summary>Q</summary><div>A</div></details> HTML\n• 問題轉義 HTML（純文字），答案允許基本 HTML 標籤\n\n📋 Quill 自定義 Blot\n• 註冊 FaqBlock BlockEmbed blot（tagName=DETAILS, className=faq-item）\n• clipboard matcher 確保載入已有內容時 FAQ 塊不被丟棄\n• 編輯器內 FAQ 區塊自定義樣式（邊框、圓角、箭頭動畫）\n\n📋 後端 JSON-LD 生成\n• extractFaqJson 函數解析 <details class="faq-item"> 塊\n• 生成符合 Google FAQPage 規範的 JSON-LD 結構化數據\n• API 響應新增 faqJson 欄位（null 或 JSON-LD 字符串）\n• Nuxt 前端讀取 faqJson 注入 <head> 做 SEO 優化',
   },
   {
@@ -562,6 +569,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/extfields/:id', desc: '更新擴展字段', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/extfields/:id', desc: '徹底刪除擴展字段 (DROP COLUMN)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/extfields/batch-sorting', desc: '批量更新擴展字段排序', auth: true },
+  { method: 'GET', path: '/api/v1/admin/extfields/:id/history', desc: '獲取擴展字段歷史值 (type=11 標籤輸入)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/batch-sorting', desc: '批量更新幻燈片排序', auth: true },
   // 多站點管理 (v1.6.0+)
   { method: 'GET', path: '/api/v1/admin/sites', desc: '列出用戶可訪問的站點', auth: true },

@@ -72,6 +72,7 @@ const TYPE_OPTIONS = [
   { value: '8', label: '編輯器' },
   { value: '9', label: '下拉' },
   { value: '10', label: '多圖' },
+  { value: '11', label: '標籤輸入（帶歷史）' },
 ]
 
 /** 需要選項值的類型（3=單選, 4=多選, 9=下拉） */

@@ -1297,6 +1297,13 @@ app.delete('/api/v1/admin/extfields/:id', async (c) => {
   return modelService.handleDeleteExtField(siteDB(c), id);
 });
 
+app.get('/api/v1/admin/extfields/:id/history', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return modelService.handleGetExtFieldHistory(siteDB(c), id);
+});
+
 // ===== 後台管理接口 - 用戶管理 =====
 app.get('/api/v1/admin/users', async (c) => {
   const claims = await requireAuth(c);

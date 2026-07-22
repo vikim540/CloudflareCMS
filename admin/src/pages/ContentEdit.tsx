@@ -249,6 +249,15 @@ function ExtFieldInput({
   const [uploading, setUploading] = useState(false)
   const [urlInput, setUrlInput] = useState('') // 外鏈 URL 輸入框值
   const [mediaPickerOpen, setMediaPickerOpen] = useState(false) // 媒體庫選擇器開關
+  const [historyTags, setHistoryTags] = useState<string[]>([]) // 歷史標籤列表（type=11 用）
+
+  // type=11 載入歷史標籤
+  useEffect(() => {
+    if (field.type !== '11' || !field.id) return
+    api.get<string[]>(`/admin/extfields/${field.id}/history`).then((res) => {
+      setHistoryTags(res.data ?? [])
+    }).catch(() => { /* 不影響編輯功能 */ })
+  }, [field.type, field.id])
 
   // 解析選項值（單選/多選/下拉）
   const options = field.value
@@ -606,6 +615,41 @@ function ExtFieldInput({
               return urls
             }}
           />
+        </div>
+      )
+    case '11': // 標籤輸入（帶歷史）
+      const currentTags = value ? value.split(',').map((t) => t.trim()).filter(Boolean) : []
+      return (
+        <div className="w-full space-y-2">
+          <TagInput
+            values={currentTags}
+            onChange={(tags) => onChange(tags.join(','))}
+            placeholder={`輸入${field.name}後按 Enter 添加`}
+          />
+          {historyTags.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">📋 歷史標籤（點擊添加）</p>
+              <div className="flex flex-wrap gap-1.5">
+                {historyTags
+                  .filter((t) => !currentTags.includes(t))
+                  .slice(0, 30)
+                  .map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        if (!currentTags.includes(tag)) {
+                          onChange([...currentTags, tag].join(','))
+                        }
+                      }}
+                      className="px-2 py-0.5 text-xs border border-border text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors"
+                    >
+                      {tag}
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )
     default:
@@ -1083,10 +1127,72 @@ export default function ContentEdit() {
 
         window.Quill.register(FaqBlock, true)
 
-        // clipboard matcher：解析 HTML 中的 <details class="faq-item"> 為 faq-block embed
-        // 確保 dangerouslyPasteHTML 載入已有內容時，FAQ 塊不被丟棄
+        // ─── 覆蓋內建 video blot，保留 iframe 完整屬性 ───
+        // Quill 內建 video blot 僅保留 src，其他屬性（title/allow/referrerpolicy 等）丟失
+        // 自定義 blot 接受 string（URL）或 object（含所有屬性）兩種值
+        // clipboard matcher 將 iframe 轉為帶完整屬性的 video embed
+        const VideoBlot = window.Quill.import('formats/video') as unknown as {
+          new (): { domNode: HTMLElement }
+          blotName: string
+          tagName: string
+          className: string
+        }
+
+        type VideoEmbedValue = {
+          src: string
+          title?: string
+          allow?: string
+          referrerpolicy?: string
+          width?: string
+          height?: string
+        }
+
+        class CustomVideoBlot extends VideoBlot {
+          static blotName = 'video'
+
+          static create(value: string | VideoEmbedValue): HTMLElement {
+            const src = typeof value === 'string' ? value : value.src
+            const node = document.createElement('iframe')
+            node.setAttribute('class', 'ql-video')
+            node.setAttribute('frameborder', '0')
+            node.setAttribute('allowfullscreen', 'true')
+            node.setAttribute('src', src)
+
+            // 保留額外屬性（僅 object 值時）
+            if (typeof value !== 'string') {
+              if (value.title) node.setAttribute('title', value.title)
+              if (value.allow) node.setAttribute('allow', value.allow)
+              if (value.referrerpolicy) node.setAttribute('referrerpolicy', value.referrerpolicy)
+              if (value.width) node.setAttribute('width', value.width)
+              if (value.height) node.setAttribute('height', value.height)
+            }
+            return node
+          }
+
+          static value(node: HTMLElement): string | VideoEmbedValue {
+            const src = node.getAttribute('src') || ''
+            const title = node.getAttribute('title')
+            const allow = node.getAttribute('allow')
+            const referrerpolicy = node.getAttribute('referrerpolicy')
+            const width = node.getAttribute('width')
+            const height = node.getAttribute('height')
+
+            // 有額外屬性時返回 object，否則返回 string（向後兼容）
+            if (title || allow || referrerpolicy || width || height) {
+              return { src, title, allow, referrerpolicy, width, height }
+            }
+            return src
+          }
+        }
+
+        window.Quill.register(CustomVideoBlot, true)
+
+        // clipboard matcher：解析 HTML 中的 <details class="faq-item"> 和 <iframe> 為對應 embed
+        // 確保 dangerouslyPasteHTML 載入已有內容時，FAQ 塊和視頻 iframe 不被丟棄或丟失屬性
         quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node: Node, delta: unknown) => {
           const el = node as HTMLElement
+
+          // FAQ 問答塊
           if (el.tagName === 'DETAILS' && el.classList.contains('faq-item')) {
             const summary = el.querySelector('summary')
             const div = el.querySelector('div')
@@ -1101,6 +1207,28 @@ export default function ContentEdit() {
               { insert: '\n' },
             ])
           }
+
+          // 視頻 iframe — 保留完整屬性（title/allow/referrerpolicy 等）
+          if (el.tagName === 'IFRAME') {
+            const src = el.getAttribute('src') || ''
+            if (src) {
+              const Delta = window.Quill.import('delta') as unknown as {
+                new (ops?: unknown[]): unknown
+              }
+              return new Delta([
+                { insert: { video: {
+                  src,
+                  title: el.getAttribute('title') || undefined,
+                  allow: el.getAttribute('allow') || undefined,
+                  referrerpolicy: el.getAttribute('referrerpolicy') || undefined,
+                  width: el.getAttribute('width') || undefined,
+                  height: el.getAttribute('height') || undefined,
+                } } },
+                { insert: '\n' },
+              ])
+            }
+          }
+
           return delta
         })
 

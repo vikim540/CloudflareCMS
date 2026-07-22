@@ -366,6 +366,42 @@ export async function handleBatchUpdateExtFieldSorting(
   return ok(`批量更新 ${items.length} 項排序成功`);
 }
 
+/**
+ * 獲取擴展字段的歷史填寫值（用於「標籤輸入帶歷史」類型 type=11）
+ * 從 ay_content_ext 查詢該字段的 DISTINCT 非空值，按最近使用排序
+ */
+export async function handleGetExtFieldHistory(
+  db: D1Database,
+  fieldId: number,
+): Promise<Response> {
+  // 查詢字段定義，獲取列名
+  const field = await db.prepare('SELECT field FROM ay_extfield WHERE id = ?')
+    .bind(fieldId).first<{ field: string }>();
+  if (!field) return notFound('擴展字段不存在');
+
+  const columnName = field.field;
+  if (!isValidExtColumn(columnName)) {
+    return err('字段名不合法', 1001);
+  }
+
+  // 查詢 DISTINCT 非空值，按最近使用排序（GROUP BY 取 MAX(update_time)）
+  const result = await db.prepare(
+    `SELECT ce.${columnName} as val, MAX(c.update_time) as latest
+     FROM ay_content_ext ce
+     LEFT JOIN ay_content c ON c.id = ce.contentid
+     WHERE ce.${columnName} IS NOT NULL AND ce.${columnName} != ''
+     GROUP BY ce.${columnName}
+     ORDER BY latest DESC
+     LIMIT 50`,
+  ).all();
+
+  const values = result.results
+    .map((r: unknown) => (r as { val?: string }).val)
+    .filter((v): v is string => !!v);
+
+  return okData(values, '成功');
+}
+
 // ============================================================================
 // 模塊 3: 內容自定義字段集成 (ay_content_ext + ay_extfield)
 // ============================================================================
