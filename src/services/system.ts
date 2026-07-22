@@ -239,11 +239,12 @@ export async function handleUpdateUser(
     binds.push(body.rcodes);
   }
 
-  // status - 超級管理員不允許修改 status
+  // status - 超級管理員不允許被禁用（status="0"），但允許保持啟用
   if (body.status !== undefined && typeof body.status === 'string') {
-    if (isSuperAdmin) {
-      return err('不允許修改超級管理員狀態', 1003);
+    if (isSuperAdmin && body.status === '0') {
+      return err('不允許禁用超級管理員', 1003);
     }
+    // 超級管理員 status="1" 或非超級管理員，正常更新
     sets.push('status = ?');
     binds.push(body.status);
   }
