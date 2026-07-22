@@ -409,7 +409,7 @@ CREATE TABLE IF NOT EXISTS ay_content_sort (
   gnote TEXT DEFAULT '', urlname TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_content_ext (
-  extid INTEGER PRIMARY KEY AUTOINCREMENT, contentid INTEGER, ext_price TEXT, ext_type TEXT, ext_color TEXT
+  extid INTEGER PRIMARY KEY AUTOINCREMENT, contentid INTEGER, ext_price TEXT, ext_type TEXT, ext_color TEXT, ext_content_whatsapp TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_extfield (
   id INTEGER PRIMARY KEY AUTOINCREMENT, mcode TEXT, name TEXT, field TEXT, type TEXT,
@@ -436,7 +436,7 @@ CREATE TABLE IF NOT EXISTS ay_site (
 CREATE TABLE IF NOT EXISTS ay_company (
   id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', name TEXT, address TEXT, postcode TEXT,
   contact TEXT, mobile TEXT, phone TEXT, fax TEXT, email TEXT, qq TEXT, weixin TEXT, icp TEXT,
-  blicense TEXT, other TEXT, legal TEXT, business TEXT
+  blicense TEXT, other TEXT, legal TEXT, business TEXT, whatsapp TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS ay_message (
   id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', contacts TEXT, mobile TEXT, content TEXT,
@@ -484,7 +484,7 @@ CREATE TABLE IF NOT EXISTS ay_syslog (
   create_user TEXT, create_time TEXT, username TEXT, url TEXT, content TEXT, ip TEXT, createtime TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_media_mark (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, file_key TEXT NOT NULL UNIQUE, marked_at TEXT DEFAULT (datetime('now', '+8 hours'))
+  id INTEGER PRIMARY KEY AUTOINCREMENT, path TEXT, create_time TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_301_redirect (
   id INTEGER PRIMARY KEY AUTOINCREMENT, old_url TEXT, new_url TEXT, match_type TEXT DEFAULT 'exact',

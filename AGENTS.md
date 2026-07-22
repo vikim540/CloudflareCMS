@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.8.7 | 2026-07-22 | S3 憑證遷移 Secrets Store（s3_access_key/s3_secret_key）、遷移文件合併（15→1 冪等）、MIME 白名單安全修復（移除 SVG+空值繞過）、sanitize.ts regex 繞過修復、site.ts schema drift 修復、刪除移動端殘留、sorting 衝突修復、TypeScript 9 個預存編譯錯誤修復（ExportedHandler 泛型/js-md5 導入/ArrayBuffer/類型推斷） |
 | v1.8.6 | 2026-07-22 | Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留）。遷移 0010 清空了 D1 中 turnstile_secret_key 但代碼未同步更新，auth.ts 改為從 TURNSTILE_SECRET_STORE 讀取。wrangler.jsonc 新增綁定，重新啟用 Turnstile |
 | v1.8.5 | 2026-07-22 | 緊急修復：Turnstile secret key 為空導致所有賬號無法登錄。verifyTurnstile() 在 secret key 為空時返回 false 拒絕所有登錄，改為放行（return true）與網絡異常邏輯一致。臨時停用 Turnstile（turnstile_enabled=0） |
 | v1.8.4 | 2026-07-21 | 緊急修復 v1.8.3 回歸 bug：CSP connect-src 缺少 challenges.cloudflare.com 導致 Turnstile API 調用被阻擋、err() 函數 code>=2000 一律返回 401 導致 Turnstile 失敗(2007)/密碼錯誤(2001)被前端誤判為「登錄已過期」。修復：_headers connect-src 加入 Turnstile 域名、response.ts err() 改用 AUTH_ERROR_CODES 白名單（僅 2002/2003/2004/2006 返回 401） |
@@ -61,7 +62,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.112.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用）。**注意**：4.112.0 在 Windows 上 Pages 部署有 `.wrangler/tmp` 寫入權限 bug（`Access is denied`），Pages 部署請使用本地 `node node_modules/wrangler/bin/wrangler.js`（4.111.0） |
+| wrangler | 4.113.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用）。**注意**：4.112.0+ 在 Windows 上 Worker/Pages 部署有 `.wrangler/tmp` 寫入權限 bug（`Access is denied`），部署請使用本地 `node node_modules/wrangler/bin/wrangler.js`（4.111.0） |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
@@ -132,7 +133,7 @@ Cloudflarerustcms/
 | Workers AI | `@cf/baai/bge-base-en-v1.5` | XLM-RoBERTa 嵌入模型，支持中文 |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min) / `ADMIN_API_LIMIT`(300/min) / `LOGIN_LIMIT`(5/min) / `FORM_LIMIT`(1/10s) | 零網絡開銷 |
 | Flagship | `Flagship-service`（app: `Rustcms-service`） | 真混合模式：Flagship 優先（`getBooleanValue`），失敗回退 D1；Flagship 模式下開關只讀 |
-| Secrets Store | `default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`） | 異步綁定（`await env.X.get()`），存儲 JWT_SECRET + CF_API_TOKEN |
+| Secrets Store | `default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`） | 異步綁定（`await env.X.get()`），存儲 JWT_SECRET + CF_API_TOKEN + TURNSTILE_SECRET_KEY + S3_ACCESS_KEY + S3_SECRET_KEY |
 | Workers Cache | `cache.enabled: true` | 聲明式邊緣緩存，公開 GET 自動緩存（配置 3600s / 內容 300s），排除 /admin/* 及 /auth/*，Vary: X-Site-Id 多站點分區 |
 | Smart Placement | `placement.mode: smart` | Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲 |
 | Pages | `cms-admin` | 管理後台 SPA，域名 `cms.cmermedical.com.hk` |
@@ -287,12 +288,13 @@ Cloudflarerustcms/
 - **前端**：`Login.tsx` 動態載入 Turnstile 腳本（explicit 模式），掛載時拉取 `/auth/turnstile-config` 判斷是否啟用，登錄失敗自動 reset widget
 - **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不返回）
 
-### Secrets Store 密鑰管理（v1.7.0，v1.8.6 擴展）
+### Secrets Store 密鑰管理（v1.7.0，v1.8.6/v1.8.7 擴展）
 
-- **架構**：JWT_SECRET、CF_API_TOKEN、TURNSTILE_SECRET_KEY 存儲在 Cloudflare Secrets Store（帳號級別，跨 Worker 共享）
+- **架構**：JWT_SECRET、CF_API_TOKEN、TURNSTILE_SECRET_KEY、S3_ACCESS_KEY、S3_SECRET_KEY 存儲在 Cloudflare Secrets Store（帳號級別，跨 Worker 共享）
 - **綁定**：wrangler.jsonc `secrets_store_secrets` 配置，異步訪問（`await env.JWT_SECRET_STORE.get()`），與原同步 `env.JWT_SECRET` 不兼容
 - **Store**：`default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`），CLI 管理 `wrangler secrets-store secret create <store-id> --name <name> --value <value> --scopes workers --remote`
-- **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()` / `await c.env.TURNSTILE_SECRET_STORE.get()`
+- **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()` / `await c.env.TURNSTILE_SECRET_STORE.get()`；S3 憑證通過 `S3Secrets` 參數傳遞（`S3_ACCESS_KEY_STORE` / `S3_SECRET_KEY_STORE`），`config.ts` 注入虛擬配置項（`***` 遮罩），寫入路由至 Secrets Store（`put()`）
+- **SecretsStoreSecretWritable**：`@cloudflare/workers-types` v5 僅聲明 `get()`，運行時亦支持 `put()`，`storage.ts` 導出 `SecretsStoreSecretWritable` 接口補充類型聲明
 
 ### 全局錯誤追蹤（v1.7.0）
 

@@ -15,7 +15,7 @@ import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { okData, ok, err, okList, createMeta, notFound } from '../utils/response';
 import { fromQuery, offset } from '../utils/pagination';
 import { hashPassword } from '../utils/password';
-import { getS3Config } from './storage';
+import { getS3Config, type S3Secrets } from './storage';
 import { s3PutObject, s3GetObject, s3DeleteObject, s3ListObjects } from '../utils/s3sig';
 import { nowStr } from '../utils/datetime';
 
@@ -922,8 +922,9 @@ const BACKUP_TABLES = [
 export async function handleListBackups(
   db: D1Database,
   kv: KVNamespace,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return okData([], '存儲未配置');
   }
@@ -961,8 +962,9 @@ export async function handleListBackups(
 export async function handleCreateBackup(
   db: D1Database,
   kv: KVNamespace,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
@@ -1074,13 +1076,14 @@ export async function handleDownloadBackup(
   db: D1Database,
   kv: KVNamespace,
   filename: string,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
   const safeFilename = sanitizeBackupFilename(filename);
   if (!safeFilename) {
     return err('無效的文件名', 1001);
   }
 
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -1107,13 +1110,14 @@ export async function handleDeleteBackup(
   db: D1Database,
   kv: KVNamespace,
   filename: string,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
   const safeFilename = sanitizeBackupFilename(filename);
   if (!safeFilename) {
     return err('無效的文件名', 1001);
   }
 
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }

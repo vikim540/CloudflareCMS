@@ -16,6 +16,18 @@ import { okData, ok, err, createMeta } from '../utils/response';
 import { type S3Config, type S3Object, s3PutObject, s3GetObject, s3DeleteObject, s3PresignedUrl, s3ListObjects } from '../utils/s3sig';
 import { getAllConfigs, clearConfigCache } from './config';
 
+/** SecretsStoreSecret 擴展：@cloudflare/workers-types v5 僅聲明 get()，
+ *  運行時 Secrets Store 綁定亦支持 put() 寫入，此處補充類型聲明。 */
+export interface SecretsStoreSecretWritable extends SecretsStoreSecret {
+  put(value: string): Promise<void>;
+}
+
+/** S3 憑證的 Secrets Store 綁定（v1.8.7：從 D1 遷移至 Secrets Store） */
+export interface S3Secrets {
+  accessKeyStore: SecretsStoreSecretWritable;
+  secretKeyStore: SecretsStoreSecretWritable;
+}
+
 // ============================================================================
 // 媒體庫引用追蹤 (受 Go 版 MediaController 啟發)
 // ============================================================================
@@ -43,16 +55,17 @@ const FILE_REFS: FileRefTable[] = [
   { table: 'ay_company', idCol: 'id', nameCol: 'name', columns: [{ col: 'weixin', label: 'WeChat 二維碼' }, { col: 'whatsapp', label: 'WhatsApp 二維碼' }, { col: 'blicense', label: '商業登記證' }] },
 ];
 
-/** ay_media_mark 建表 SQL (冪等) */
+/** ay_media_mark 建表 SQL (冪等，與 0001_init.sql 保持一致) */
 const MEDIA_MARK_TABLE_SQL = `CREATE TABLE IF NOT EXISTS ay_media_mark (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  path TEXT UNIQUE NOT NULL,
-  create_time TEXT NOT NULL DEFAULT (datetime('now'))
-);`;
+  path TEXT,
+  create_time TEXT
+)`;
 
 /** 確保 ay_media_mark 表存在 (冪等執行) */
 async function ensureMediaMarkTable(db: D1Database): Promise<void> {
   await db.prepare(MEDIA_MARK_TABLE_SQL).run().catch(() => {});
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_media_mark_path ON ay_media_mark(path)').run().catch(() => {});
 }
 
 /** 標準化文件路徑: 將 URL 或路徑統一為無前導斜線的相對路徑格式。
@@ -295,12 +308,18 @@ async function getMarkedPaths(db: D1Database): Promise<Set<string>> {
   return marked;
 }
 
-/** 從配置中獲取 S3 配置 */
-export async function getS3Config(db: D1Database, kv: KVNamespace): Promise<S3Config | null> {
+/** 從配置中獲取 S3 配置。
+ *  v1.8.7：s3_access_key / s3_secret_key 優先從 Secrets Store 讀取，
+ *  若未提供 s3Secrets 則回退到 D1（向後相容）。 */
+export async function getS3Config(
+  db: D1Database,
+  kv: KVNamespace,
+  s3Secrets?: S3Secrets,
+): Promise<S3Config | null> {
   const configs = await getAllConfigs(db, kv);
   const endpoint = configs['s3_endpoint'];
-  const accessKey = configs['s3_access_key'];
-  const secretKey = configs['s3_secret_key'];
+  const accessKey = s3Secrets ? (await s3Secrets.accessKeyStore.get()) ?? '' : configs['s3_access_key'];
+  const secretKey = s3Secrets ? (await s3Secrets.secretKeyStore.get()) ?? '' : configs['s3_secret_key'];
   const bucket = configs['s3_bucket'];
   const region = configs['s3_region'] || 'auto';
   const publicUrl = configs['s3_public_url'] || '';
@@ -312,17 +331,32 @@ export async function getS3Config(db: D1Database, kv: KVNamespace): Promise<S3Co
   return { endpoint, accessKey, secretKey, bucket, region, publicUrl };
 }
 
-/** 從文件名推斷 Content-Type（當 file.type 為空時的兜底方案） */
+/** 文件上傳 MIME 白名單（模塊級常量，避免每次請求重建） */
+const ALLOWED_MIME_TYPES = new Set([
+  // 圖片（不含 SVG — SVG 可內嵌 <script>，是已知 XSS 向量）
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'image/avif', 'image/bmp', 'image/x-icon',
+  // 視頻
+  'video/mp4', 'video/webm', 'video/quicktime',
+  // 音頻
+  'audio/mpeg', 'audio/wav',
+  // 文檔
+  'application/pdf',
+  // 文本
+  'text/plain', 'text/csv',
+  // 壓縮包
+  'application/zip',
+]);
+
+/** 從文件名推斷 Content-Type（當 file.type 為空時的兜底方案，僅映射白名單內類型） */
 function guessContentType(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   const mimeMap: Record<string, string> = {
     jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif',
-    webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp', svg: 'image/svg+xml',
+    webp: 'image/webp', avif: 'image/avif', bmp: 'image/bmp',
     ico: 'image/x-icon', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
     mp3: 'audio/mpeg', wav: 'audio/wav', pdf: 'application/pdf',
-    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    txt: 'text/plain', csv: 'text/csv', json: 'application/json', zip: 'application/zip',
+    txt: 'text/plain', csv: 'text/csv', zip: 'application/zip',
   };
   return mimeMap[ext] || 'application/octet-stream';
 }
@@ -332,11 +366,11 @@ function extFromContentType(contentType: string): string {
   const mimeToExt: Record<string, string> = {
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
     'image/webp': 'webp', 'image/avif': 'avif', 'image/bmp': 'bmp',
-    'image/svg+xml': 'svg', 'image/x-icon': 'ico',
+    'image/x-icon': 'ico',
     'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
     'audio/mpeg': 'mp3', 'audio/wav': 'wav',
     'application/pdf': 'pdf',
-    'text/plain': 'txt', 'text/csv': 'csv', 'application/json': 'json',
+    'text/plain': 'txt', 'text/csv': 'csv',
     'application/zip': 'zip',
   };
   return mimeToExt[contentType] || '';
@@ -364,6 +398,7 @@ export async function handleUpload(
   db: D1Database,
   kv: KVNamespace,
   request: Request,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
   const formData = await request.formData();
   const file = formData.get('file');
@@ -377,28 +412,13 @@ export async function handleUpload(
     return err('文件大小超過 10MB 限制', 1001);
   }
 
-  // P3: 文件類型白名單校驗（防上傳可執行文件）
+  // P3: 文件類型白名單校驗（防上傳可執行文件，空類型也拒絕）
   const detectedType = file.type || guessContentType(file.name);
-  const ALLOWED_MIME_TYPES = new Set([
-    // 圖片
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'image/avif', 'image/bmp', 'image/svg+xml', 'image/x-icon',
-    // 視頻
-    'video/mp4', 'video/webm', 'video/quicktime',
-    // 音頻
-    'audio/mpeg', 'audio/wav',
-    // 文檔
-    'application/pdf',
-    // 文本
-    'text/plain', 'text/csv',
-    // 壓縮包
-    'application/zip',
-  ]);
-  if (detectedType && !ALLOWED_MIME_TYPES.has(detectedType)) {
+  if (!ALLOWED_MIME_TYPES.has(detectedType)) {
     return err(`不支援的文件類型: ${detectedType || '未知'}，僅允許圖片/視頻/音頻/PDF/文本/ZIP`, 1001);
   }
 
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請在系統設置中配置存儲參數', 1005);
   }
@@ -424,8 +444,9 @@ export async function handleDownload(
   db: D1Database,
   kv: KVNamespace,
   key: string,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -449,8 +470,9 @@ export async function handleDelete(
   db: D1Database,
   kv: KVNamespace,
   key: string,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -470,8 +492,9 @@ export async function handlePresignedUrl(
   kv: KVNamespace,
   key: string,
   expires: number,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -489,8 +512,9 @@ export async function handlePresignedUrl(
 export async function handleTestStorage(
   db: D1Database,
   kv: KVNamespace,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先填寫所有必填項', 1001);
   }
@@ -499,7 +523,7 @@ export async function handleTestStorage(
     // 嘗試上傳一個測試文件
     const testKey = '_test/connection_test.txt';
     const testData = new TextEncoder().encode('Cloudflare CMS storage test - ' + new Date().toISOString());
-    const url = await s3PutObject(s3Config, testKey, testData.buffer, 'text/plain');
+    const url = await s3PutObject(s3Config, testKey, testData.buffer as ArrayBuffer, 'text/plain');
 
     // 清理測試文件
     await s3DeleteObject(s3Config, testKey).catch(() => {});
@@ -520,13 +544,17 @@ export async function handleTestStorage(
 export async function handleGetStorageConfig(
   db: D1Database,
   kv: KVNamespace,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
   const configs = await getAllConfigs(db, kv);
+  // v1.8.7：密鑰從 Secrets Store 讀取，僅返回 *** 或空字符串（不暴露明文）
+  const accessKeyVal = s3Secrets ? (await s3Secrets.accessKeyStore.get()) ?? '' : '';
+  const secretKeyVal = s3Secrets ? (await s3Secrets.secretKeyStore.get()) ?? '' : '';
   const storageConfig = {
     storage_type: configs['storage_type'] || 's3',
     s3_endpoint: configs['s3_endpoint'] || '',
-    s3_access_key: configs['s3_access_key'] ? '***' : '',
-    s3_secret_key: configs['s3_secret_key'] ? '***' : '',
+    s3_access_key: accessKeyVal ? '***' : '',
+    s3_secret_key: secretKeyVal ? '***' : '',
     s3_bucket: configs['s3_bucket'] || '',
     s3_region: configs['s3_region'] || 'auto',
     s3_public_url: configs['s3_public_url'] || '',
@@ -554,18 +582,15 @@ export async function handleUpdateStorageConfig(
   db: D1Database,
   kv: KVNamespace,
   body: Record<string, string>,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
+  // v1.8.7：s3_access_key / s3_secret_key 寫入 Secrets Store，其餘字段寫入 D1
   const fields = [
-    'storage_type', 's3_endpoint', 's3_access_key', 's3_secret_key',
-    's3_bucket', 's3_region', 's3_public_url',
+    'storage_type', 's3_endpoint', 's3_bucket', 's3_region', 's3_public_url',
   ];
 
   for (const field of fields) {
     if (body[field] !== undefined) {
-      // 密鑰字段如果是 *** 則不更新
-      if (field === 's3_secret_key' && body[field] === '***') {
-        continue;
-      }
       // ay_config 表結構: id, name, value, type, sorting, description
       const existing = await db.prepare(
         'SELECT id FROM ay_config WHERE name = ?',
@@ -583,6 +608,16 @@ export async function handleUpdateStorageConfig(
     }
   }
 
+  // 密鑰字段寫入 Secrets Store（值為 *** 時跳過，表示不修改）
+  if (s3Secrets) {
+    if (body['s3_access_key'] !== undefined && body['s3_access_key'] !== '***') {
+      await s3Secrets.accessKeyStore.put(body['s3_access_key']);
+    }
+    if (body['s3_secret_key'] !== undefined && body['s3_secret_key'] !== '***') {
+      await s3Secrets.secretKeyStore.put(body['s3_secret_key']);
+    }
+  }
+
   // 清除配置緩存
   await clearConfigCache(kv);
 
@@ -594,8 +629,9 @@ export async function handleListMedia(
   db: D1Database,
   kv: KVNamespace,
   params: URLSearchParams,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
@@ -638,8 +674,9 @@ export async function handleDeleteMedia(
   kv: KVNamespace,
   key: string,
   force = false,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -677,8 +714,9 @@ export async function handleMediaDetail(
   db: D1Database,
   kv: KVNamespace,
   key: string,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
@@ -770,8 +808,9 @@ export async function handleCleanUnused(
   db: D1Database,
   kv: KVNamespace,
   force = false,
+  s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }

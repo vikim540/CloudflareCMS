@@ -56,7 +56,7 @@ export async function reloadUserPermissions(db: D1Database, userId: number): Pro
  * Cloudflare Turnstile 人機驗證
  * 文檔：https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
  *
- * @param secretKey Turnstile 密鑰（從 D1 配置讀取）
+ * @param secretKey Turnstile 密鑰（從 Secrets Store 讀取）
  * @param token 前端 Turnstile widget 返回的 token
  * @param remoteip 用戶 IP（可選，用於增強驗證）
  * @returns 驗證成功返回 true，失敗返回 false

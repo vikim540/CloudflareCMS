@@ -3,7 +3,7 @@
  * PbootCMS 使用 md5(md5(password)) 存儲密碼
  * Web Crypto API 不支持 MD5,使用 js-md5 純 JS 實現
  */
-import md5 from 'js-md5';
+import { md5 } from 'js-md5';
 
 /** 對密碼進行雙 MD5 加密 */
 export function hashPassword(password: string): string {

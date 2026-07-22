@@ -25,6 +25,7 @@ import * as configService from './services/config';
 import * as sortService from './services/sort';
 import * as contentService from './services/content';
 import * as storageService from './services/storage';
+import type { SecretsStoreSecretWritable } from './services/storage';
 import * as extraService from './services/extra';
 import * as modelService from './services/model';
 import * as systemService from './services/system';
@@ -34,6 +35,7 @@ import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from '
 import { clearContentCache, clearConfigCache } from './services/cache';
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
+import type { PublishMessage } from './services/scheduler';
 import { getAllFlags, setFlagEnabled, autoRouteProtection } from './services/flags';
 import { nowStr, todayStr } from './utils/datetime';
 
@@ -53,7 +55,9 @@ export interface Env {
   CF_ACCOUNT_ID: string;             // Cloudflare Account ID（D1 REST API 創建動態站點用）
   CF_API_TOKEN_STORE: SecretsStoreSecret;  // Cloudflare API Token（Secrets Store 異步綁定，D1 REST API 用）
   TURNSTILE_SECRET_STORE: SecretsStoreSecret;  // Cloudflare Turnstile 密鑰（Secrets Store 異步綁定）
-  PUBLISH_QUEUE: Queue<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>;
+  S3_ACCESS_KEY_STORE: SecretsStoreSecretWritable;  // S3 Access Key（Secrets Store 異步綁定，v1.8.7 遷移）
+  S3_SECRET_KEY_STORE: SecretsStoreSecretWritable;  // S3 Secret Key（Secrets Store 異步綁定，v1.8.7 遷移）
+  PUBLISH_QUEUE: Queue<PublishMessage>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
   PUBLIC_API_LIMIT: RateLimit;
@@ -406,7 +410,7 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body, currentSiteId(c));
+  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body, currentSiteId(c));
 });
 
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
@@ -687,14 +691,20 @@ app.delete('/api/v1/admin/sorts/:id', async (c) => {
 app.get('/api/v1/admin/configs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return configService.handleListConfigs(siteDB(c), c.env.CONFIG_CACHE);
+  return configService.handleListConfigs(siteDB(c), c.env.CONFIG_CACHE, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE,
+    secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.put('/api/v1/admin/configs', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  const result = await configService.handleUpdateConfig(siteDB(c), c.env.CONFIG_CACHE, body);
+  const result = await configService.handleUpdateConfig(siteDB(c), c.env.CONFIG_CACHE, body, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE,
+    secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
   // 清除 API 響應緩存
   await clearConfigCache(c.env.API_CACHE);
   return result;
@@ -724,43 +734,56 @@ app.get('/api/v1/admin/stats', async (c) => {
 });
 
 // ===== 後台管理接口 - 存儲管理 =====
+// v1.8.7: S3 憑證已遷移至 Secrets Store，所有存儲操作傳遞 S3Secrets 綁定
 app.get('/api/v1/admin/storage/config', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleGetStorageConfig(siteDB(c), c.env.CONFIG_CACHE);
+  return storageService.handleGetStorageConfig(siteDB(c), c.env.CONFIG_CACHE, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.put('/api/v1/admin/storage/config', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json<Record<string, string>>();
-  return storageService.handleUpdateStorageConfig(siteDB(c), c.env.CONFIG_CACHE, body);
+  return storageService.handleUpdateStorageConfig(siteDB(c), c.env.CONFIG_CACHE, body, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.post('/api/v1/admin/storage/test', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleTestStorage(siteDB(c), c.env.CONFIG_CACHE);
+  return storageService.handleTestStorage(siteDB(c), c.env.CONFIG_CACHE, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.post('/api/v1/admin/storage/upload', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw);
+  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.get('/api/v1/admin/storage/download/:key{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
-  return storageService.handleDownload(siteDB(c), c.env.CONFIG_CACHE, key);
+  return storageService.handleDownload(siteDB(c), c.env.CONFIG_CACHE, key, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.delete('/api/v1/admin/storage/:key{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
-  return storageService.handleDelete(siteDB(c), c.env.CONFIG_CACHE, key);
+  return storageService.handleDelete(siteDB(c), c.env.CONFIG_CACHE, key, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.get('/api/v1/admin/storage/presigned/:key{.+}', async (c) => {
@@ -768,7 +791,9 @@ app.get('/api/v1/admin/storage/presigned/:key{.+}', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
   const expires = parseInt(c.req.query('expires') || '3600', 10);
-  return storageService.handlePresignedUrl(siteDB(c), c.env.CONFIG_CACHE, key, expires);
+  return storageService.handlePresignedUrl(siteDB(c), c.env.CONFIG_CACHE, key, expires, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // ===== 後台管理接口 - 媒體庫 =====
@@ -784,7 +809,9 @@ app.get('/api/v1/admin/media', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
-  return storageService.handleListMedia(siteDB(c), c.env.CONFIG_CACHE, params);
+  return storageService.handleListMedia(siteDB(c), c.env.CONFIG_CACHE, params, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // 文件詳情 (含使用狀態和標記狀態)
@@ -793,7 +820,9 @@ app.get('/api/v1/admin/media/detail', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.query('key') || '';
   if (!key) return err('缺少 key 參數', 1001);
-  return storageService.handleMediaDetail(siteDB(c), c.env.CONFIG_CACHE, key);
+  return storageService.handleMediaDetail(siteDB(c), c.env.CONFIG_CACHE, key, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // 切換文件標記 (標記保護/取消標記)
@@ -812,7 +841,9 @@ app.post('/api/v1/admin/media/clean', async (c) => {
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json().catch(() => ({}));
   const force = body.force === true || body.force === 1 || body.force === '1';
-  return storageService.handleCleanUnused(siteDB(c), c.env.CONFIG_CACHE, force);
+  return storageService.handleCleanUnused(siteDB(c), c.env.CONFIG_CACHE, force, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
@@ -820,14 +851,18 @@ app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
   if (!claims) return err('未授權', 2002);
   const key = c.req.param('key');
   const force = c.req.query('force') === '1';
-  return storageService.handleDeleteMedia(siteDB(c), c.env.CONFIG_CACHE, key, force);
+  return storageService.handleDeleteMedia(siteDB(c), c.env.CONFIG_CACHE, key, force, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // 通用上傳端點 (供編輯器圖片上傳使用)
 app.post('/api/v1/admin/upload', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw);
+  return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // ===== 後台管理接口 - 單頁管理 =====
@@ -1313,27 +1348,35 @@ app.post('/api/v1/admin/logs/clear', async (c) => {
 app.get('/api/v1/admin/database/backups', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListBackups(siteDB(c), c.env.CONFIG_CACHE);
+  return systemService.handleListBackups(siteDB(c), c.env.CONFIG_CACHE, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE);
+  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.get('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDownloadBackup(siteDB(c), c.env.CONFIG_CACHE, filename);
+  return systemService.handleDownloadBackup(siteDB(c), c.env.CONFIG_CACHE, filename, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 app.delete('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDeleteBackup(siteDB(c), c.env.CONFIG_CACHE, filename);
+  return systemService.handleDeleteBackup(siteDB(c), c.env.CONFIG_CACHE, filename, {
+    accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
+  });
 });
 
 // ===== 語義搜索 (Vectorize + Workers AI) =====
@@ -1479,7 +1522,7 @@ app.onError((e, c) => {
 // ===== Queues 消費者 (定時發布) =====
 export default {
   fetch: app.fetch,
-  async queue(batch: MessageBatch<{ articleId: number; action: string; scheduledAt: string; siteId?: string }>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<PublishMessage>, env: Env): Promise<void> {
     for (const msg of batch.messages) {
       try {
         // 多站點：根據 siteId 路由到正確的數據庫
@@ -1496,7 +1539,7 @@ export default {
       }
     }
   },
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     // 多站點：遍歷所有已註冊站點數據庫
     const sites = listRegisteredSites(env.SITE_REGISTRY ?? '{}');
     for (const site of sites) {
@@ -1511,4 +1554,4 @@ export default {
       ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE, 'endoscopy'));
     }
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env, PublishMessage>;

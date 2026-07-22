@@ -73,6 +73,16 @@
       "binding": "TURNSTILE_SECRET_STORE",
       "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
       "secret_name": "TURNSTILE_SECRET_KEY"
+    },
+    {
+      "binding": "S3_ACCESS_KEY_STORE",
+      "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
+      "secret_name": "S3_ACCESS_KEY"
+    },
+    {
+      "binding": "S3_SECRET_KEY_STORE",
+      "store_id": "aef7c32e26c84aedb4b2a5938128ca23",
+      "secret_name": "S3_SECRET_KEY"
     }
   ],
 

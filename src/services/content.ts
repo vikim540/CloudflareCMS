@@ -335,9 +335,9 @@ export async function handleCreateContent(
   const date = body.date || now;
 
   // P1: HTML 淨化（content 用 sanitizeHtml 保留富文本，description/keywords 剝離標籤）
-  const safeContent = sanitizeHtml(body.content || '');
-  const safeDescription = stripHtmlTags(body.description || '');
-  const safeKeywords = stripHtmlTags(body.keywords || '');
+  const safeContent = sanitizeHtml(typeof body.content === 'string' ? body.content : '');
+  const safeDescription = stripHtmlTags(typeof body.description === 'string' ? body.description : '');
+  const safeKeywords = stripHtmlTags(typeof body.keywords === 'string' ? body.keywords : '');
 
   // 全字段 INSERT（與前端表單字段一一對應，避免創建時丟失 author/source/ico/filename 等）
   const result = await db.prepare(
@@ -406,13 +406,14 @@ export async function handleUpdateContent(
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        let val = body[field];
+        const rawVal = body[field];
         // sorting 為整數類型，其餘為字串
-        if (field === 'sorting' && typeof val === 'number') {
+        if (field === 'sorting' && typeof rawVal === 'number') {
           sets.push(`${field} = ?`);
-          binds.push(String(val));
-        } else if (typeof val === 'string') {
+          binds.push(String(rawVal));
+        } else if (typeof rawVal === 'string') {
           // P1: HTML 淨化（content 保留富文本標籤，description/keywords 剝離標籤）
+          let val = rawVal;
           if (field === 'content') {
             val = sanitizeHtml(val);
           } else if (field === 'description' || field === 'keywords') {

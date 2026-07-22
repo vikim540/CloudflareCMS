@@ -17,8 +17,9 @@ const SCRIPT_TAG_PATTERN = /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script\s*>
 /** 移除危險標籤（iframe/object/embed/applet/base/form 等） */
 const DANGEROUS_TAGS = /<\/?(iframe|object|embed|applet|base|form|input|textarea|select|button|meta|link|style)\b[^>]*>/gi;
 
-/** 移除所有 on* 事件處理屬性（onclick/onload/onerror 等） */
-const EVENT_HANDLER_ATTRS = /\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
+/** 移除所有 on* 事件處理屬性（onclick/onload/onerror 等）
+ *  注意：HTML 允許 / 作屬性分隔符（如 <img/onerror=alert(1)>），不能用 \s+ 限定 */
+const EVENT_HANDLER_ATTRS = /[\s/"]+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
 
 /** 移除 javascript: 協議的 href/src */
 const JS_PROTOCOL_PATTERN = /(\b(?:href|src)\s*=\s*)("javascript:[^"]*"|'javascript:[^']*'|javascript:[^\s>]+)/gi;

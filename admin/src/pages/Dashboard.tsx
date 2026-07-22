@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.8.7',
+    date: '2026-07-22 09:23:28',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 S3 憑證遷移 Secrets Store + 安全修復 + TS 編譯修復\n\n📋 S3 憑證遷移\n• s3_access_key / s3_secret_key 從 D1 遷移至 Cloudflare Secrets Store\n• wrangler.jsonc 新增 S3_ACCESS_KEY_STORE / S3_SECRET_KEY_STORE 綁定\n• storage.ts / config.ts / system.ts 全鏈路重構（S3Secrets 參數傳遞）\n• SecretsStoreSecretWritable 接口（補充 @cloudflare/workers-types 未聲明的 put()）\n• config.ts 虛擬配置注入（前端讀取 *** 遮罩，寫入路由至 Secrets Store）\n• 18 條 index.ts 路由同步更新\n\n📋 安全修復\n• MIME 白名單：移除 SVG（XSS 向量）、修復空值繞過\n• sanitize.ts：修復 regex 繞過（[/"]+ 分隔符屬性注入）\n• site.ts getSiteInitSql：3 處 schema drift 修復\n\n📋 清理與修復\n• 遷移文件合併（15 個 → 1 個冪等 0001_init.sql）\n• 刪除 open_wap / wap_domain / wap_site_dir 移動端殘留\n• ay_config sorting 衝突修復（水印→200-206、URL→210-216、webhook 去重）\n• TypeScript 9 個預存編譯錯誤修復（ExecutionContext/Queue/Scheduled handler 類型、js-md5 導入、ArrayBuffer、content.ts 類型推斷）',
+  },
+  {
     version: 'v1.8.6',
     date: '2026-07-22 08:05:05',
     icon: '🔐',
-    latest: true,
+    latest: false,
     changes: '🔐 Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留問題）\n\n📋 根因\n• v1.7.0 遷移 0010_clear_sensitive_passwords.sql 清空了 D1 中的 turnstile_secret_key\n• 意圖是遷移到 Secrets Store，但代碼未同步更新（auth.ts 仍從 D1 讀取）\n• 導致 verifyTurnstile() 始終拿到空字串，所有登錄被人機驗證擋住\n• 這是「改了一處、留一處」的代碼一致性問題\n\n📋 修復\n• Turnstile secret key 存入 Cloudflare Secrets Store（TURNSTILE_SECRET_KEY）\n• wrangler.jsonc 新增 TURNSTILE_SECRET_STORE 綁定\n• auth.ts handleLogin() 改為接收 turnstileSecret 參數（從 Secrets Store 讀取）\n• index.ts login 路由傳入 await c.env.TURNSTILE_SECRET_STORE.get()\n• 重新啟用 Turnstile（turnstile_enabled = 1）\n• 瀏覽器驗證：Turnstile widget 正常渲染+驗證，登錄流程正常',
   },
   {
