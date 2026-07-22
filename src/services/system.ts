@@ -908,6 +908,7 @@ const BACKUP_TABLES = [
   'ay_message',
   'ay_form',
   'ay_form_field',
+  'ay_form_submission',
   'ay_link',
   'ay_slide',
   'ay_tags',

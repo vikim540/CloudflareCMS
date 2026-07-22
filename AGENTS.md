@@ -10,6 +10,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.0 | 2026-07-22 | 統一表單系統（取代留言管理）。新增 ay_form_submission 表（動態 JSON 存儲）、公開端點 POST /api/v1/forms/submit（接收任意 JSON 結構表單）、管理端 CRUD + 統計、釘釘 ActionCard 推送到客服群（form_webhook_url 配置，與系統更新 webhook 分離）、前端瀑布流網格佈局（auto-fill minmax 響應式）+ 週分隔 HR + 搜索/狀態/排序、菜單 M204 統一為自定義表單、M205 舊佔位禁用 |
 | v1.8.8 | 2026-07-22 | Quill 編輯器載入修復（CSP script-src 缺少 cdnjs.cloudflare.com 導致腳本被阻擋）、全局錯誤通知一鍵複製重構（api.ts buildTechReport 捕獲調用堆疊/文件位置/行號/請求響應體，UI 保持簡短但複製內容包含完整技術診斷信息） |
 | v1.8.7 | 2026-07-22 | S3 憑證遷移 Secrets Store（s3_access_key/s3_secret_key）、遷移文件合併（15→1 冪等）、MIME 白名單安全修復（移除 SVG+空值繞過）、sanitize.ts regex 繞過修復、site.ts schema drift 修復、刪除移動端殘留、sorting 衝突修復、TypeScript 9 個預存編譯錯誤修復（ExportedHandler 泛型/js-md5 導入/ArrayBuffer/類型推斷） |
 | v1.8.6 | 2026-07-22 | Turnstile 密鑰遷移至 Secrets Store（修復 v1.7.0 遺留）。遷移 0010 清空了 D1 中 turnstile_secret_key 但代碼未同步更新，auth.ts 改為從 TURNSTILE_SECRET_STORE 讀取。wrangler.jsonc 新增綁定，重新啟用 Turnstile |

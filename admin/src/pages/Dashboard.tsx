@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.0',
+    date: '2026-07-22 10:33:37',
+    icon: '📝',
+    latest: true,
+    changes: '📝 統一表單系統（取代留言管理）\n\n📋 新功能\n• 新增 ay_form_submission 表（動態 JSON 存儲，支持任意字段結構）\n• 公開端點 POST /api/v1/forms/submit（接收表單提交，Form Rate Limit）\n• 管理端 CRUD：列表/詳情/狀態更新/刪除/統計\n• 釘魯 ActionCard 推送到客服群（form_webhook_url 配置）\n• 前端瀑布流網格佈局（響應式 auto-fill minmax）\n• 按週分隔 HR 橫線（週一至週日）\n• 搜索（姓名/電話/郵箱）+ 狀態篩選 + 排序\n• 詳情彈窗（點擊卡片展開全部字段）\n• 自動標記已讀（待處理 → 已處理）\n• 統計卡片（待處理/已處理/已封存計數）\n\n📋 菜單統一\n• M204 留言管理 → 自定義表單（URL: /admin/forms/submissions）\n• M205 舊自定義表單佔位項禁用\n• 側邊欄圖標 💬 → 📝',
+  },
+  {
     version: 'v1.8.8',
     date: '2026-07-22 09:31:40',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 Quill 編輯器載入修復 + 全局錯誤通知一鍵複製重構\n\n📋 Quill 編輯器修復\n• CSP script-src 缺少 cdnjs.cloudflare.com 導致 Quill 腳本被瀏覽器阻擋\n• _headers CSP 新增 cdnjs.cloudflare.com 到 script-src 和 style-src\n\n📋 全局錯誤通知重構\n• api.ts 新增 buildTechReport() 函數，捕獲完整技術診斷信息\n• 一鍵複製內容：請求方法/URL/Headers(脫敏)/Body + 響應狀態/Body/錯誤碼 + 調用堆疊（文件位置+行號）\n• UI 展示保持簡短（標題+簡述），複製內容包含精準調試信息',
   },
   {
@@ -424,6 +431,11 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
   { method: 'GET', path: '/api/v1/tags', desc: '標籤列表', auth: false },
   { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
+  { method: 'POST', path: '/api/v1/forms/submit', desc: '提交表單（統一表單系統，1次/10秒/IP）', auth: false },
+  { method: 'GET', path: '/api/v1/admin/forms/submissions', desc: '表單列表（分頁+搜索+篩選）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/forms/submissions/:id', desc: '表單詳情', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/forms/submissions/:id', desc: '更新表單狀態', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/forms/submissions/:id', desc: '刪除表單記錄', auth: true },
   // 管理接口 (300次/分/用戶)
   { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?scode=&mcode=&page=)', auth: true },
   { method: 'GET', path: '/api/v1/admin/contents/:id', desc: '後台內容詳情（無緩存，編輯用）', auth: true },

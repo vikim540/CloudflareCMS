@@ -104,7 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
     icon: '📦',
     items: [
       { to: '/singles', label: '單頁管理', icon: '📄' },
-      { to: '/messages', label: '留言管理', icon: '💬' },
+      { to: '/forms/submissions', label: '自定義表單', icon: '📝' },
       { to: '/links', label: '友情連結', icon: '🔗' },
       { to: '/tags', label: '標籤管理', icon: '🏷️' },
     ],

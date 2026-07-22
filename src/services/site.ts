@@ -451,6 +451,11 @@ CREATE TABLE IF NOT EXISTS ay_form_field (
   id INTEGER PRIMARY KEY AUTOINCREMENT, fcode TEXT, name TEXT, length INTEGER, required TEXT DEFAULT '0',
   description TEXT, sorting INTEGER DEFAULT 255, create_user TEXT, update_user TEXT, create_time TEXT, update_time TEXT
 );
+CREATE TABLE IF NOT EXISTS ay_form_submission (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', form_key TEXT DEFAULT 'general',
+  data TEXT NOT NULL, name TEXT, tel TEXT, email TEXT, status TEXT DEFAULT '0',
+  user_ip TEXT, user_os TEXT, user_bs TEXT, source_url TEXT, create_time TEXT
+);
 CREATE TABLE IF NOT EXISTS ay_link (
   id INTEGER PRIMARY KEY AUTOINCREMENT, acode TEXT DEFAULT 'cn', gid TEXT DEFAULT '1', name TEXT,
   link TEXT, logo TEXT, sorting INTEGER DEFAULT 255, create_user TEXT, update_user TEXT,

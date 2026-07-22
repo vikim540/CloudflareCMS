@@ -31,6 +31,7 @@ import * as modelService from './services/model';
 import * as systemService from './services/system';
 import * as notifyService from './services/notify';
 import * as siteService from './services/site';
+import * as formsService from './services/forms';
 import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
 import { clearContentCache, clearConfigCache } from './services/cache';
 import * as vectorizeService from './services/vectorize';
@@ -413,6 +414,15 @@ app.post('/api/v1/messages', formRateLimit(), async (c) => {
   return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body, currentSiteId(c));
 });
 
+// ===== 公開表單提交端點（統一表單系統，取代舊留言接口）=====
+app.post('/api/v1/forms/submit', formRateLimit(), async (c) => {
+  const body = await c.req.json();
+  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
+  const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
+  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c));
+});
+
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
 // 在 requireMenuPermission 之前執行, 將驗證後的 claims 存入上下文
 // 未認證請求不放行 (由各 handler 中的 requireAuth 返回 401)
@@ -532,7 +542,8 @@ app.use('/api/v1/admin/contents/*', async (c, next) => {
 });
 app.use('/api/v1/admin/sorts/*', requireMenuPermission('/admin/content/sort'));         // M202 欄目管理
 app.use('/api/v1/admin/singles/*', requireMenuPermission('/admin/content/single'));     // M203 單頁管理
-app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理
+app.use('/api/v1/admin/messages/*', requireMenuPermission('/admin/content/message'));   // M204 留言管理（舊，保留兼容）
+app.use('/api/v1/admin/forms/*', requireMenuPermission('/admin/forms/submissions'));  // M204 自定義表單（統一）
 app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfield')); // M206 擴展字段
 app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M301 媒體庫
 app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));             // M401 友情連結
@@ -1060,6 +1071,42 @@ app.delete('/api/v1/admin/messages/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return extraService.handleDeleteMessage(siteDB(c), id);
+});
+
+// ===== 後台管理接口 - 自定義表單提交（統一表單系統）=====
+app.get('/api/v1/admin/forms/submissions', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const params = new URL(c.req.url).searchParams;
+  return formsService.handleListSubmissions(siteDB(c), params);
+});
+
+app.get('/api/v1/admin/forms/submissions/stats', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return formsService.handleSubmissionStats(siteDB(c));
+});
+
+app.get('/api/v1/admin/forms/submissions/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return formsService.handleGetSubmission(siteDB(c), id);
+});
+
+app.put('/api/v1/admin/forms/submissions/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return formsService.handleUpdateSubmissionStatus(siteDB(c), id, body.status);
+});
+
+app.delete('/api/v1/admin/forms/submissions/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return formsService.handleDeleteSubmission(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 通知測試 =====

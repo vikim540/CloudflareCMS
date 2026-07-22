@@ -324,6 +324,25 @@ CREATE TABLE IF NOT EXISTS ay_form_field (
     update_time TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ay_form_submission (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    acode TEXT DEFAULT 'cn',
+    form_key TEXT DEFAULT 'general',
+    data TEXT NOT NULL,
+    name TEXT,
+    tel TEXT,
+    email TEXT,
+    status TEXT DEFAULT '0',
+    user_ip TEXT,
+    user_os TEXT,
+    user_bs TEXT,
+    source_url TEXT,
+    create_time TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_form_sub_status ON ay_form_submission(status);
+CREATE INDEX IF NOT EXISTS idx_form_sub_create_time ON ay_form_submission(create_time);
+
 CREATE TABLE IF NOT EXISTS ay_label (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,

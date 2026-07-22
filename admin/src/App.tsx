@@ -13,6 +13,7 @@ import Links from './pages/Links'
 import Slides from './pages/Slides'
 import Tags from './pages/Tags'
 import Messages from './pages/Messages'
+import FormSubmissions from './pages/FormSubmissions'
 import SiteInfo from './pages/SiteInfo'
 import Company from './pages/Company'
 import Settings from './pages/Settings'
@@ -103,6 +104,7 @@ export default function App() {
             <Route path="slides" element={<RequirePermission mcode="M402"><Slides /></RequirePermission>} />
             <Route path="tags" element={<RequirePermission mcode="M403"><Tags /></RequirePermission>} />
             <Route path="messages" element={<RequirePermission mcode="M204"><Messages /></RequirePermission>} />
+            <Route path="forms/submissions" element={<RequirePermission mcode="M204"><FormSubmissions /></RequirePermission>} />
             <Route path="site" element={<RequirePermission mcode="M501"><SiteInfo /></RequirePermission>} />
             <Route path="company" element={<RequirePermission mcode="M502"><Company /></RequirePermission>} />
             <Route path="media" element={<RequirePermission mcode="M301"><MediaLibrary /></RequirePermission>} />
