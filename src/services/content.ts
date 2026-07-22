@@ -98,6 +98,61 @@ export async function handleListContents(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
+/**
+ * 從文章 HTML 中提取 FAQ 問答塊，生成 FAQPage JSON-LD 結構化數據
+ *
+ * 解析 <details class="faq-item"><summary>問題</summary><div>答案</div></details> 塊
+ * 生成符合 Google FAQPage 結構化數據規範的 JSON-LD
+ *
+ * 編輯器 FaqPickerModal 插入的 FAQ 塊帶有 class="faq-item" 標記，
+ * 後端以此識別並生成結構化數據，供 Nuxt 前端注入 <head> 做 SEO 優化
+ *
+ * @param htmlContent 文章正文 HTML
+ * @returns JSON-LD 字符串，或 null（無 FAQ 塊時）
+ */
+function extractFaqJson(htmlContent: string): string | null {
+  if (!htmlContent) return null
+
+  const faqBlocks: { question: string; answer: string }[] = []
+
+  // 匹配 <details class="faq-item">...</details> 塊（非貪婪，跨行）
+  const detailsRegex = /<details[^>]*class="[^"]*faq-item[^"]*"[^>]*>([\s\S]*?)<\/details>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = detailsRegex.exec(htmlContent)) !== null) {
+    const inner = match[1]
+
+    // 提取 <summary> 內容作為問題（剝離 HTML 標籤）
+    const summaryMatch = inner.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
+    const question = summaryMatch ? stripHtmlTags(summaryMatch[1]) : ''
+
+    // 提取 </summary> 之後的內容作為答案（剝離所有 HTML 標籤）
+    const afterSummary = inner.replace(/<summary[^>]*>[\s\S]*?<\/summary>/i, '')
+    const answer = stripHtmlTags(afterSummary)
+
+    if (question && answer) {
+      faqBlocks.push({ question, answer })
+    }
+  }
+
+  if (faqBlocks.length === 0) return null
+
+  const faqJson = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqBlocks.map(({ question, answer }) => ({
+      '@type': 'Question',
+      name: question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: answer,
+      },
+    })),
+  }
+
+  return JSON.stringify(faqJson)
+}
+
 /** 內容詳情 (公開接口，支持數字 ID 或 slug/filename 查詢)
  *  v1.7.9+：前端 Nuxt 靜態打包需要通過 slug 查詢文章詳情
  *  - 參數為純數字 → 按 id 查詢
@@ -186,7 +241,11 @@ export async function handleContentDetail(
     }
   }
 
-  return okData({ content, prev, next }, '成功');
+  // v1.9.11+: 提取 FAQ 結構化數據（FAQPage JSON-LD）
+  // 解析 content HTML 中的 <details class="faq-item"> 塊，生成 JSON-LD 供前端 SEO 使用
+  const faqJson = extractFaqJson((content.content as string) || '')
+
+  return okData({ content, prev, next, faqJson }, '成功');
 }
 
 /** 批量獲取內容列表（靜態打包專用，pagesize 最大 500）

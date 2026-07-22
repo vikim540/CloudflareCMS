@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.10**（2026-07-22）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.11**（2026-07-22）
 
 
 ## 版本更新記錄（憑證）
@@ -9,6 +9,7 @@
 
 | 版本 | 日期 | 摘要 |
 |------|------|------|
+| v1.9.11 | 2026-07-22 | FAQ 結構化數據功能。新增 FaqPickerModal 組件（多組問答輸入+預覽，生成 <details class="faq-item"> HTML）、Quill 自定義 FaqBlock BlockEmbed blot（clipboard matcher 確保載入已有內容時 FAQ 塊不丟失）、編輯器工具列新增 ❓ FAQ 按鈕、後端 extractFaqJson 函數解析 <details class="faq-item"> 生成 FAQPage JSON-LD、API 響應新增 faqJson 欄位供 Nuxt 前端注入 <head> SEO |
 | v1.9.10 | 2026-07-22 | 視頻面板修復 + CSP 安全頭 + 封面圖媒體庫。YouTube URL 解析雙重策略（正則 + URL API fallback，新增 shorts/live 格式支援）、iframe 生成 HTML 添加 referrerpolicy 屬性（匹配 YouTube 官方結構）、CSP frame-src 加入 YouTube 域名（解除 iframe 預覽阻擋）、修復 Slug pattern 屬性 v 模式正則錯誤（\- 改為字面量前綴）、VideoPickerModal 封面圖新增媒體庫選擇按鈕（複用 MediaPickerModal + useImageUpload） |
 | v1.9.9 | 2026-07-22 | 編輯器視頻插入面板 + 組件化架構 + 幻燈片媒體庫。新增 VideoPickerModal 組件（Tab: YouTube 嵌入 + 視頻連結，支援 URL 自動轉換、iframe 參數配置、實時預覽）、提取 MediaPickerModal 為獨立組件（跨頁面複用）、幻燈片新增/編輯加媒體庫選擇按鈕（桌面版+手機版） |
 | v1.9.7 | 2026-07-22 | 編輯器有序列表軟換行修復。顯式註冊 softBreak 鍵盤綁定確保 Shift+Enter 在有序列表內插入軟換行（實現「標題+縮進內容」排版）、懸掛縮進 CSS 確保續行與首行文字對齊、編輯器下方新增鍵盤快捷鍵提示 |

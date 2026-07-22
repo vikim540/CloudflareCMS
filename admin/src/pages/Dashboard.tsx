@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.11',
+    date: '2026-07-22 17:28:46',
+    icon: '❓',
+    latest: true,
+    changes: '❓ FAQ 結構化數據功能（SEO 優化）\n\n📋 編輯器 FAQ 面板\n• 新增 ❓ FAQ 按鈕到 Quill 工具列\n• FaqPickerModal 支援多組問答輸入 + 即時預覽\n• 生成 <details class="faq-item"><summary>Q</summary><div>A</div></details> HTML\n• 問題轉義 HTML（純文字），答案允許基本 HTML 標籤\n\n📋 Quill 自定義 Blot\n• 註冊 FaqBlock BlockEmbed blot（tagName=DETAILS, className=faq-item）\n• clipboard matcher 確保載入已有內容時 FAQ 塊不被丟棄\n• 編輯器內 FAQ 區塊自定義樣式（邊框、圓角、箭頭動畫）\n\n📋 後端 JSON-LD 生成\n• extractFaqJson 函數解析 <details class="faq-item"> 塊\n• 生成符合 Google FAQPage 規範的 JSON-LD 結構化數據\n• API 響應新增 faqJson 欄位（null 或 JSON-LD 字符串）\n• Nuxt 前端讀取 faqJson 注入 <head> 做 SEO 優化',
+  },
+  {
     version: 'v1.9.10',
     date: '2026-07-22 16:59:18',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 視頻面板修復 + CSP 安全頭 + 封面圖媒體庫\n\n📋 YouTube URL 解析修復\n• 雙重解析策略：正則優先 → URL API fallback\n• 新增 shorts/ 和 live/ 格式支援\n• videoId 嚴格格式驗證（11字符 [a-zA-Z0-9_-]）\n\n📋 iframe 結構修復\n• 生成 HTML 添加 referrerpolicy="strict-origin-when-cross-origin"\n• 預覽 iframe 同步添加 referrerPolicy 屬性\n• allow 屬性補全 web-share\n\n📋 CSP 安全頭\n• frame-src 加入 https://www.youtube.com 和 https://www.youtube-nocookie.com\n• 解除 YouTube iframe 預覽被瀏覽器阻擋問題\n\n📋 Slug pattern 修復\n• 修復 [a-zA-Z0-9\\-_/]+ 在 v 模式下的 Invalid character 錯誤\n• 改為 [-a-zA-Z0-9_/]+（hyphen 前綴避免轉義）\n\n📋 封面圖媒體庫\n• VideoPickerModal 封面圖欄位新增「🖼️ 媒體庫」按鈕\n• 複用 MediaPickerModal + useImageUpload 統一組件',
   },
   {
@@ -493,7 +500,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
   { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (content平鋪sortname+ext_*字段, prev/next同欄目樹, v1.8.1+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },

@@ -7,6 +7,7 @@ import UploadProgressOverlay from '../components/UploadProgressOverlay'
 import ImagePreviewWithRemove from '../components/ImagePreviewWithRemove'
 import MediaPickerModal from '../components/MediaPickerModal'
 import VideoPickerModal from '../components/VideoPickerModal'
+import FaqPickerModal from '../components/FaqPickerModal'
 import { TagInput } from '../components/TagInput'
 import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
@@ -16,6 +17,8 @@ declare global {
   interface Window {
     Quill?: {
       new (container: HTMLElement | string, options?: Record<string, unknown>): QuillInstance
+      import: (path: string) => unknown
+      register: (blot: unknown, register?: boolean) => void
     }
   }
 }
@@ -31,9 +34,12 @@ interface QuillInstance {
   setContents: (delta: unknown) => void
   getSelection: (focus?: boolean) => { index: number; length: number } | null
   getLength: () => number
-  insertEmbed: (index: number, type: string, value: string) => void
+  insertEmbed: (index: number, type: string, value: string | Record<string, string>) => void
   on: (event: string, callback: () => void) => void
-  clipboard: { dangerouslyPasteHTML: (html: string | number, index?: number, source?: string) => void }
+  clipboard: {
+    dangerouslyPasteHTML: (html: string | number, index?: number, source?: string) => void
+    addMatcher: (selector: number | string, callback: (node: Node, delta: unknown, source: string) => unknown) => void
+  }
 }
 
 /** Quill 本地載入狀態 */
@@ -634,6 +640,7 @@ export default function ContentEdit() {
   const [icoMediaPickerOpen, setIcoMediaPickerOpen] = useState(false) // 縮略圖媒體庫選擇器
   const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
   const [quillVideoPicker, setQuillVideoPicker] = useState(false) // Quill 編輯器視頻插入器
+  const [quillFaqPicker, setQuillFaqPicker] = useState(false) // Quill 編輯器 FAQ 插入器
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
   // 保存原始數據快照（用於保存時比對修改字段）
   const originalDataRef = useRef<Record<string, unknown> | null>(null)
@@ -985,7 +992,7 @@ export default function ContentEdit() {
                 [{ align: [] }],
                 ['blockquote', 'code-block'],
                 [{ list: 'ordered' }, { list: 'bullet' }],
-                ['link', 'image', 'video-picker'],
+                ['link', 'image', 'video-picker', 'faq-picker'],
                 ['clean'],
                 ['html-source'], // 自定義按鈕：HTML 源碼模式
               ],
@@ -996,6 +1003,9 @@ export default function ContentEdit() {
                 },
                 'video-picker': function () {
                   setQuillVideoPicker(true)
+                },
+                'faq-picker': function () {
+                  setQuillFaqPicker(true)
                 },
                 'html-source': function () {
                   // 切換 HTML 源碼模式
@@ -1030,7 +1040,71 @@ export default function ContentEdit() {
 
         quillRef.current = quill
 
-        // 注入自定義 CSS：懸掛縮進 + HTML 按鈕樣式
+        // ─── 註冊自定義 FAQ BlockEmbed blot ───
+        // <details class="faq-item"><summary>問題</summary><div>答案</div></details>
+        // 作為 BlockEmbed（不可行內編輯，整塊插入/刪除），保存時輸出原始 HTML
+        // 後端解析 class="faq-item" 生成 FAQPage JSON-LD 結構化數據
+        const BlockEmbed = window.Quill.import('blots/block/embed') as unknown as {
+          new (): { domNode: HTMLElement }
+          blotName: string
+          tagName: string
+          className: string
+        }
+
+        class FaqBlock extends BlockEmbed {
+          static blotName = 'faq-block'
+          static tagName = 'DETAILS'
+          static className = 'faq-item'
+
+          static create(value: { question: string; answer: string }): HTMLElement {
+            const node = document.createElement('details')
+            node.setAttribute('class', 'faq-item')
+
+            const summary = document.createElement('summary')
+            summary.textContent = value.question || ''
+
+            const answerDiv = document.createElement('div')
+            answerDiv.innerHTML = value.answer || ''
+
+            node.appendChild(summary)
+            node.appendChild(answerDiv)
+            return node
+          }
+
+          static value(node: HTMLElement): { question: string; answer: string } {
+            const summary = node.querySelector('summary')
+            const div = node.querySelector('div')
+            return {
+              question: summary ? summary.textContent || '' : '',
+              answer: div ? div.innerHTML : '',
+            }
+          }
+        }
+
+        window.Quill.register(FaqBlock, true)
+
+        // clipboard matcher：解析 HTML 中的 <details class="faq-item"> 為 faq-block embed
+        // 確保 dangerouslyPasteHTML 載入已有內容時，FAQ 塊不被丟棄
+        quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node: Node, delta: unknown) => {
+          const el = node as HTMLElement
+          if (el.tagName === 'DETAILS' && el.classList.contains('faq-item')) {
+            const summary = el.querySelector('summary')
+            const div = el.querySelector('div')
+            const Delta = window.Quill.import('delta') as unknown as {
+              new (ops?: unknown[]): unknown
+            }
+            return new Delta([
+              { insert: { 'faq-block': {
+                question: summary ? summary.textContent || '' : '',
+                answer: div ? div.innerHTML : '',
+              } } },
+              { insert: '\n' },
+            ])
+          }
+          return delta
+        })
+
+        // 注入自定義 CSS：懸掛縮進 + HTML 按鈕樣式 + FAQ 按鈕 + FAQ 區塊樣式
         const styleEl = document.createElement('style')
         styleEl.textContent = `
           /* 有序列表懸掛縮進：序號在外，標題和描述左對齊嚴絲合縫 */
@@ -1038,9 +1112,40 @@ export default function ContentEdit() {
           .ql-editor ol li { padding-left: 0.5em; }
           .ql-editor ol li::marker { font-weight: bold; }
 
-          /* HTML 源碼按鈕 */
+          /* HTML 源碼按鈕 + FAQ 按鈕 */
           .ql-toolbar .ql-video-picker::after { content: "🎥"; font-size: 14px; }
         .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
+        .ql-toolbar .ql-faq-picker::after { content: "❓"; font-size: 14px; }
+
+        /* FAQ 區塊樣式（編輯器內） */
+        .ql-editor details.faq-item {
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 12px 16px;
+          margin: 8px 0;
+          background: #f9fafb;
+        }
+        .ql-editor details.faq-item > summary {
+          cursor: pointer;
+          font-weight: 600;
+          color: #1f2937;
+          list-style: none;
+        }
+        .ql-editor details.faq-item > summary::-webkit-details-marker { display: none; }
+        .ql-editor details.faq-item > summary::before {
+          content: "▶";
+          display: inline-block;
+          margin-right: 6px;
+          font-size: 10px;
+          transition: transform 0.2s;
+        }
+        .ql-editor details.faq-item[open] > summary::before { transform: rotate(90deg); }
+        .ql-editor details.faq-item[open] > summary { margin-bottom: 8px; }
+        .ql-editor details.faq-item > div {
+          font-size: 14px;
+          line-height: 1.6;
+          color: #4b5563;
+        }
         `
         editorContainer.appendChild(styleEl)
 
@@ -1052,6 +1157,10 @@ export default function ContentEdit() {
         const videoBtn = editorContainer.querySelector('.ql-video-picker')
         if (videoBtn) {
           videoBtn.setAttribute('title', '插入視頻')
+        }
+        const faqBtn = editorContainer.querySelector('.ql-faq-picker')
+        if (faqBtn) {
+          faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
         }
 
         // 設置已有內容
@@ -1824,6 +1933,18 @@ export default function ContentEdit() {
       <VideoPickerModal
         open={quillVideoPicker}
         onClose={() => setQuillVideoPicker(false)}
+        onInsert={(html) => {
+          if (quillRef.current) {
+            const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
+            quillRef.current.clipboard.dangerouslyPasteHTML(range?.index ?? quillRef.current.getLength(), html, 'user')
+          }
+        }}
+      />
+
+      {/* Quill 編輯器 FAQ 問答插入器 */}
+      <FaqPickerModal
+        open={quillFaqPicker}
+        onClose={() => setQuillFaqPicker(false)}
         onInsert={(html) => {
           if (quillRef.current) {
             const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
