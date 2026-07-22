@@ -406,37 +406,17 @@ app.get('/api/v1/slides', async (c) => {
 
 app.get('/api/v1/tags', async (c) => extraService.handleListTags(siteDB(c)));
 
-app.post('/api/v1/messages', formRateLimit(), async (c) => {
+// ===== 公開表單提交端點（隱蔽化路徑，通過 submit_token 路由）=====
+// 路徑格式：POST /api/v1/f/{submit_token}
+// submit_token 為 16 位隨機字符串，每個表單獨立，不可猜測
+// 安全層級：隨機路徑 + Honeypot + Origin 校驗 + 可選 Turnstile + 速率限制
+app.post('/api/v1/f/:token', formRateLimit(), async (c) => {
+  const submitToken = c.req.param('token') || '';
   const body = await c.req.json();
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return extraService.handleSubmitMessage(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, c.env['Flagship-service'], userIp, userAgent, sourceUrl, body, currentSiteId(c));
-});
-
-// ===== 公開表單提交端點（統一表單系統，取代舊留言接口）=====
-app.post('/api/v1/forms/submit', formRateLimit(), async (c) => {
-  const body = await c.req.json();
-  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  const userAgent = c.req.header('User-Agent') || '';
-  const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c));
-});
-
-// 帶 formId 的表單提交（精準路由到具體表單）
-app.post('/api/v1/forms/submit/:formId', formRateLimit(), async (c) => {
-  const formId = Number(c.req.param('formId')) || 0;
-  if (formId <= 0) return err('無效的表單 ID', 1001);
-  const body = await c.req.json();
-  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
-  const userAgent = c.req.header('User-Agent') || '';
-  const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c), formId);
-});
-
-// 活躍表單列表（公開端點，供前端網站獲取可用表單列表）
-app.get('/api/v1/forms/active', async (c) => {
-  return formsService.handleListActiveForms(siteDB(c));
+  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c), submitToken);
 });
 
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====

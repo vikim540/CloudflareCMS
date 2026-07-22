@@ -12,6 +12,9 @@ interface FormConfig {
   sorting: number
   status: string
   webhook_url: string | null
+  submit_token: string
+  turnstile_enabled: string
+  allowed_origins: string | null
   create_time: string
   submission_count: number
 }
@@ -22,6 +25,7 @@ export default function FormManager() {
   const [error, setError] = useState('')
   const [editTarget, setEditTarget] = useState<FormConfig | null>(null)
   const [showCreate, setShowCreate] = useState(false)
+  const [copiedId, setCopiedId] = useState<number | null>(null)
 
   const fetchForms = useCallback(async () => {
     setLoading(true)
@@ -55,6 +59,24 @@ export default function FormManager() {
       setForms((prev) => prev.filter((f) => f.id !== id))
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除失敗')
+    }
+  }
+
+  const handleCopyApi = (form: FormConfig) => {
+    const apiUrl = `POST /api/v1/f/${form.submit_token}`
+    navigator.clipboard.writeText(apiUrl).then(() => {
+      setCopiedId(form.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    })
+  }
+
+  const handleRegenerateToken = async (form: FormConfig) => {
+    if (!confirm('重新生成提交端點後，舊的 API 路徑將失效，所有使用舊路徑的表單都需要更新。確認繼續？')) return
+    try {
+      await api.put(`/admin/forms/config/${form.id}`, { regenerate_token: true })
+      fetchForms()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '重新生成失敗')
     }
   }
 
@@ -94,9 +116,9 @@ export default function FormManager() {
               <thead>
                 <tr className="border-b bg-secondary/50">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">表單代碼</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">表單名稱</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">API 端點</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">提交端點（隱蔽化）</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">安全</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">展示</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">提交數</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
@@ -107,18 +129,49 @@ export default function FormManager() {
                   <tr key={form.id} className="border-b last:border-0 hover:bg-accent/50 transition-colors">
                     <td className="px-4 py-3 text-muted-foreground">{form.id}</td>
                     <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-secondary/50 rounded font-mono text-xs">{form.fcode}</span>
-                    </td>
-                    <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{form.form_name}</div>
-                      {form.description && (
-                        <div className="text-xs text-muted-foreground mt-0.5">{form.description}</div>
-                      )}
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        <span className="px-1.5 py-0.5 bg-secondary/50 rounded font-mono">{form.fcode}</span>
+                        {form.description && <span className="ml-2">{form.description}</span>}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
-                      <code className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                        POST /api/v1/forms/submit/{form.id}
-                      </code>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-mono">
+                          /api/v1/f/{form.submit_token}
+                        </code>
+                        <button
+                          onClick={() => handleCopyApi(form)}
+                          className="p-1 text-xs hover:bg-accent rounded transition-colors"
+                          title="複製 API 端點"
+                        >
+                          {copiedId === form.id ? '✅' : '📋'}
+                        </button>
+                        <button
+                          onClick={() => handleRegenerateToken(form)}
+                          className="p-1 text-xs text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                          title="重新生成端點（舊路徑將失效）"
+                        >
+                          🔄
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        {form.turnstile_enabled === '1' && (
+                          <span className="inline-flex items-center gap-0.5 text-xs text-green-600">
+                            <span>🛡️</span> Turnstile
+                          </span>
+                        )}
+                        {form.allowed_origins && (
+                          <span className="inline-flex items-center gap-0.5 text-xs text-blue-600">
+                            <span>🔒</span> 來源限制
+                          </span>
+                        )}
+                        {form.turnstile_enabled !== '1' && !form.allowed_origins && (
+                          <span className="text-xs text-muted-foreground">基本防護</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -185,6 +238,8 @@ function FormEditDialog({
   const [description, setDescription] = useState(target?.description || '')
   const [sorting, setSorting] = useState(target?.sorting || 255)
   const [webhookUrl, setWebhookUrl] = useState(target?.webhook_url || '')
+  const [turnstileEnabled, setTurnstileEnabled] = useState(target?.turnstile_enabled === '1')
+  const [allowedOrigins, setAllowedOrigins] = useState(target?.allowed_origins || '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -194,7 +249,15 @@ function FormEditDialog({
     setSaving(true)
     setError('')
     try {
-      const body = { fcode: fcode.trim(), form_name: formName.trim(), description, sorting, webhook_url: webhookUrl }
+      const body = {
+        fcode: fcode.trim(),
+        form_name: formName.trim(),
+        description,
+        sorting,
+        webhook_url: webhookUrl,
+        turnstile_enabled: turnstileEnabled ? '1' : '0',
+        allowed_origins: allowedOrigins,
+      }
       if (target) {
         await api.put(`/admin/forms/config/${target.id}`, body)
       } else {
@@ -210,8 +273,8 @@ function FormEditDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white z-10">
           <h2 className="text-lg font-semibold">{target ? '編輯表單' : '新增表單'}</h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground">❌</button>
         </div>
@@ -225,7 +288,7 @@ function FormEditDialog({
               disabled={!!target}
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted font-mono text-sm"
             />
-            <p className="text-xs text-muted-foreground mt-1">用於 API 標識，創建後不可修改</p>
+            <p className="text-xs text-muted-foreground mt-1">用於內部標識，創建後不可修改</p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">表單名稱 <span className="text-destructive">*</span></label>
@@ -262,12 +325,60 @@ function FormEditDialog({
               placeholder="留空則使用全局 webhook"
               className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm font-mono"
             />
+            <p className="text-xs text-muted-foreground mt-1">不同表單可推送到不同釘釘群組</p>
           </div>
+
+          {/* 安全配置 */}
+          <div className="pt-3 border-t">
+            <h3 className="text-sm font-semibold mb-3 flex items-center gap-1">
+              <span>🛡️</span> 安全配置
+            </h3>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={turnstileEnabled}
+                  onChange={(e) => setTurnstileEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="text-sm">啟用 Turnstile 人機驗證</span>
+              </label>
+              <p className="text-xs text-muted-foreground ml-6">開啟後每次提交需通過 Cloudflare 人機驗證</p>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5">允許來源域名（可選）</label>
+                <input
+                  value={allowedOrigins}
+                  onChange={(e) => setAllowedOrigins(e.target.value)}
+                  placeholder="如：https://cmermedical.com.hk,https://www.cmermedical.com.hk"
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm font-mono"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  逗號分隔。留空則不限制來源。配置後僅接受來自這些域名的提交
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {target && (
+            <div className="pt-3 border-t">
+              <div className="bg-secondary/30 rounded-md p-3">
+                <p className="text-xs text-muted-foreground mb-1">當前提交端點：</p>
+                <code className="text-xs text-blue-600 font-mono break-all">
+                  POST /api/v1/f/{target.submit_token}
+                </code>
+                <p className="text-xs text-muted-foreground mt-2">
+                  此端點路徑已隱蔽化，不可猜測。如需重置可在列表中點擊 🔄 按鈕。
+                </p>
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="px-4 py-2 text-sm text-destructive bg-destructive/10 rounded-md">{error}</div>
           )}
         </div>
-        <div className="flex justify-end gap-2 px-5 py-4 border-t">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
           <button onClick={onClose} className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors">取消</button>
           <button
             onClick={handleSave}

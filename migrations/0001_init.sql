@@ -309,8 +309,8 @@ CREATE TABLE IF NOT EXISTS ay_form (
     create_time TEXT,
     update_time TEXT
 );
--- 注意：ay_form 的 description/is_active/sorting/status/webhook_url 字段
--- 由 0003_form_management.sql ALTER TABLE 添加（冪等遷移）
+-- 注意：ay_form 的擴展字段（description/is_active/sorting/status/webhook_url/
+-- submit_token/turnstile_enabled/allowed_origins）由 0003/0004 遷移 ALTER TABLE 添加
 
 CREATE TABLE IF NOT EXISTS ay_form_field (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

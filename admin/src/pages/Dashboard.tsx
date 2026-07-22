@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.3',
+    date: '2026-07-22 14:01:06',
+    icon: '🔒',
+    latest: true,
+    changes: '🔒 表單提交 API 安全加固 + 路徑隱蔽化\n\n📋 API 簡化\n• 移除舊 POST /api/v1/messages（留言系統，已被統一表單取代）\n• 移除 POST /api/v1/forms/submit 和 /:formId（路徑太標準化）\n• 移除公開 GET /api/v1/forms/active（不需暴露表單結構）\n• 新增 POST /api/v1/f/:token — 16位隨機 token 隱蔽化端點\n\n🔒 安全層級\n• 1. submit_token 隨機路徑（62^16 種組合，不可猜測）\n• 2. Honeypot 蜜罐字段（_hp 字段被填 → 靜默丟棄）\n• 3. Origin/Referer 校驗（allowed_origins 配置時生效）\n• 4. 可選 Turnstile 人機驗證（每個表單可單獨開啟）\n• 5. 速率限制 1次/10秒/IP\n\n📋 新增字段\n• ay_form 新增 submit_token / turnstile_enabled / allowed_origins\n• FormManager 表格顯示隱蔽化端點 + 安全狀態徽章\n• 編輯對話框新增安全配置區域（Turnstile 開關 + 來源域名）\n• 表格新增 📋 複製端點 + 🔄 重新生成 token 按鈕',
+  },
+  {
     version: 'v1.9.2',
     date: '2026-07-22 11:59:05',
     icon: '📝',
-    latest: true,
+    latest: false,
     changes: '📝 表單管理系統 + Settings Tab 修正\n\n📋 新功能：表單管理\n• 新增表單管理頁面（基礎內容 → 表單管理，M210 權限）\n• 支持創建/編輯/刪除多個表單（每個表單有獨立 API 端點）\n• 新增 POST /api/v1/forms/submit/:formId 精準路由到具體表單\n• 每個表單可配置專屬 Webhook URL（獨立推送通道）\n• 表單啟用/停用開關（is_active 控制是否展示在擴展內容側邊欄）\n• 活躍表單自動注入側邊欄「擴展內容」分組（按表單名稱顯示）\n• 點擊側邊欄表單名 → 自動篩選對應表單的提交記錄\n• FormSubmissions 顯示表單名稱（取代原始 form_key）\n\n📋 Settings Tab 修正\n• WebAPI 獨立為單獨 Tab（不再混在基本配置中）\n• 修正「其他配置」在每個 Tab 重複出現的問題（僅在基本配置 Tab 顯示）\n\n📋 數據庫變更\n• ay_form 表新增 description / is_active / sorting / status / webhook_url 字段\n• 新增 M210 菜單項 + R101/R102/R103 角色權限分配',
   },
   {
@@ -444,11 +451,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/singles', desc: '單頁列表', auth: false },
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
   { method: 'GET', path: '/api/v1/tags', desc: '標籤列表', auth: false },
-  { method: 'POST', path: '/api/v1/messages', desc: '提交留言 (1次/10秒/IP)', auth: false },
-  { method: 'POST', path: '/api/v1/forms/submit', desc: '提交表單（統一表單系統，1次/10秒/IP）', auth: false },
-  { method: 'POST', path: '/api/v1/forms/submit/:formId', desc: '提交到指定表單（精準路由）', auth: false },
-  { method: 'GET', path: '/api/v1/forms/active', desc: '活躍表單列表（公開）', auth: false },
-  { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄）', auth: true },
+  { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
+  { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
   { method: 'POST', path: '/api/v1/admin/forms/config', desc: '新建表單', auth: true },
   { method: 'PUT', path: '/api/v1/admin/forms/config/:id', desc: '更新表單配置', auth: true },

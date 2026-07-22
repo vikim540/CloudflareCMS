@@ -113,10 +113,26 @@ type FormBody = Record<string, unknown>;
 
 // ===== 公開端點 =====
 
+/** 生成 16 位隨機 token（大小寫字母+數字） */
+export function generateSubmitToken(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 16; i++) {
+    token += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return token;
+}
+
 /**
  * 處理表單提交（公開端點，Form Rate Limit）
- * 接受任意 JSON 結構，存入 D1，推送釘釘客服群
- * @param formId 可選 — 指定表單 ID（POST /forms/submit/:formId）
+ * 通過 submit_token 查找表單，隱蔽化 API 路徑
+ * 
+ * 安全層級：
+ * 1. submit_token 隨機路徑（不可猜測）
+ * 2. Honeypot 蜜罐字段（_hp 字段被填則丟棄）
+ * 3. Origin/Referer 校驗（allowed_origins 配置時）
+ * 4. 可選 Turnstile 人機驗證（turnstile_enabled）
+ * 5. 速率限制 1次/10秒/IP
  */
 export async function handleSubmitForm(
   db: D1Database,
@@ -127,49 +143,55 @@ export async function handleSubmitForm(
   userAgent: string,
   sourceUrl: string,
   acode: string,
-  formId?: number,
+  submitToken: string,
 ): Promise<Response> {
-  // 如果指定了 formId，查找表單配置
-  let formKey = '1'; // 默認通用表單 ID
-  let formName = '通用表單';
-  let formWebhookUrl = ''; // 空 = 使用全局 webhook
+  // 1. 通過 submit_token 查找表單
+  if (!submitToken || submitToken.length < 8) {
+    return err('無效的表單端點', 1004);
+  }
 
-  if (formId) {
-    const form = await db.prepare(
-      'SELECT id, fcode, form_name, is_active, status, webhook_url FROM ay_form WHERE id = ?',
-    ).bind(formId).first<{ id: number; fcode: string; form_name: string; is_active: string; status: string; webhook_url: string | null }>();
+  const form = await db.prepare(
+    `SELECT id, fcode, form_name, is_active, status, webhook_url,
+            turnstile_enabled, allowed_origins
+     FROM ay_form WHERE submit_token = ?`,
+  ).bind(submitToken).first<{
+    id: number; fcode: string; form_name: string; is_active: string;
+    status: string; webhook_url: string | null;
+    turnstile_enabled: string; allowed_origins: string | null;
+  }>();
 
-    if (!form) {
-      return err('指定的表單不存在', 1004);
-    }
-    if (form.status !== '1' || form.is_active !== '1') {
-      return err('該表單已停用，不接受提交', 1003);
-    }
-    formKey = String(form.id);
-    formName = form.form_name;
-    formWebhookUrl = form.webhook_url || '';
-  } else {
-    // 無 formId 時，兼容舊的 _form_key 字段
-    const oldKey = typeof body._form_key === 'string' ? body._form_key : '';
-    delete body._form_key;
-    if (oldKey) {
-      // 嘗試按 fcode 查找
-      const form = await db.prepare(
-        'SELECT id, form_name FROM ay_form WHERE fcode = ? AND status = \'1\'',
-      ).bind(oldKey).first<{ id: number; form_name: string }>();
-      if (form) {
-        formKey = String(form.id);
-        formName = form.form_name;
+  if (!form) {
+    return err('無效的表單端點', 1004);
+  }
+  if (form.status !== '1' || form.is_active !== '1') {
+    return err('該表單已停用，不接受提交', 1003);
+  }
+
+  // 2. Honeypot 蜜罐字段檢測（機器人通常會填所有字段）
+  // _hp 是隱藏字段，人類不會填寫。如果填了 → 靜默丟棄（返回成功假象）
+  if (typeof body._hp === 'string' && body._hp.trim() !== '') {
+    return ok('表單提交成功'); // 假裝成功，實際丟棄
+  }
+  delete body._hp;
+
+  // 3. Origin/Referer 校驗（如果表單配置了 allowed_origins）
+  if (form.allowed_origins) {
+    const allowedList = form.allowed_origins.split(',').map((s) => s.trim()).filter(Boolean);
+    if (allowedList.length > 0) {
+      const origin = sourceUrl || '';
+      const isAllowed = allowedList.some((allowed) => origin.startsWith(allowed));
+      if (!isAllowed) {
+        return err('提交來源不被允許', 1007);
       }
     }
   }
 
-  // 驗證：至少有一些數據
+  // 4. 驗證：至少有一些數據
   if (Object.keys(body).length === 0) {
     return err('表單數據不能為空', 1001);
   }
 
-  // 簡易速率限制：同一 IP 60 秒內只能提交一次
+  // 5. 速率限制：同一 IP 10 秒內只能提交一次
   const RATE_KEY = `rate:form:${userIp}`;
   if (kv) {
     const last = await kv.get(RATE_KEY);
@@ -184,6 +206,9 @@ export async function handleSubmitForm(
   const { os, bs } = parseUserAgent(userAgent);
   const now = nowStr();
   const dataJson = JSON.stringify(body);
+  const formKey = String(form.id);
+  const formName = form.form_name;
+  const formWebhookUrl = form.webhook_url || '';
 
   const result = await db.prepare(
     `INSERT INTO ay_form_submission (acode, form_key, data, name, tel, email, status, user_ip, user_os, user_bs, source_url, create_time)
@@ -191,9 +216,9 @@ export async function handleSubmitForm(
   ).bind(acode, formKey, dataJson, name, tel, email, userIp || '', os, bs, sourceUrl || '', now).run();
 
   if (result.meta.changes > 0) {
-    // 速率限制寫入
+    // 速率限制寫入（10 秒 TTL）
     if (kv) {
-      await kv.put(RATE_KEY, '1', { expirationTtl: 60 });
+      await kv.put(RATE_KEY, '1', { expirationTtl: 10 });
     }
     // 異步推送釘釘通知（使用表單專屬 webhook 或全局 webhook）
     if (ctx) {
@@ -419,7 +444,8 @@ export async function handleListFormKeys(db: D1Database): Promise<Response> {
 export async function handleListForms(db: D1Database): Promise<Response> {
   const rows = await db.prepare(
     `SELECT f.id, f.fcode, f.form_name, f.description, f.is_active, f.sorting, f.status,
-            f.webhook_url, f.create_time, f.update_time,
+            f.webhook_url, f.submit_token, f.turnstile_enabled, f.allowed_origins,
+            f.create_time, f.update_time,
             (SELECT COUNT(*) FROM ay_form_submission s WHERE CAST(s.form_key AS INTEGER) = f.id) as submission_count
      FROM ay_form f
      ORDER BY f.sorting ASC, f.id ASC`,
@@ -430,7 +456,7 @@ export async function handleListForms(db: D1Database): Promise<Response> {
 /** 創建表單 */
 export async function handleCreateForm(
   db: D1Database,
-  body: { fcode?: string; form_name?: string; description?: string; is_active?: string; sorting?: number; webhook_url?: string },
+  body: { fcode?: string; form_name?: string; description?: string; is_active?: string; sorting?: number; webhook_url?: string; turnstile_enabled?: string; allowed_origins?: string },
 ): Promise<Response> {
   if (!body.form_name) return err('請填寫表單名稱', 1001);
   if (!body.fcode) return err('請填寫表單代碼', 1001);
@@ -440,16 +466,18 @@ export async function handleCreateForm(
   if (existing) return err('表單代碼已存在', 1003);
 
   const now = nowStr();
+  const submitToken = generateSubmitToken();
   const result = await db.prepare(
-    `INSERT INTO ay_form (fcode, form_name, description, is_active, sorting, status, webhook_url, create_time, update_time)
-     VALUES (?, ?, ?, ?, ?, '1', ?, ?, ?)`,
+    `INSERT INTO ay_form (fcode, form_name, description, is_active, sorting, status, webhook_url, submit_token, turnstile_enabled, allowed_origins, create_time, update_time)
+     VALUES (?, ?, ?, ?, ?, '1', ?, ?, ?, ?, ?, ?)`,
   ).bind(
     body.fcode, body.form_name, body.description || '',
-    body.is_active || '1', body.sorting || 255, body.webhook_url || '', now, now,
+    body.is_active || '1', body.sorting || 255, body.webhook_url || '',
+    submitToken, body.turnstile_enabled || '0', body.allowed_origins || '', now, now,
   ).run();
 
   if (result.meta.changes > 0) {
-    return okData({ id: result.meta.last_row_id });
+    return okData({ id: result.meta.last_row_id, submit_token: submitToken });
   }
   return err('創建失敗', 1005);
 }
@@ -458,7 +486,7 @@ export async function handleCreateForm(
 export async function handleUpdateForm(
   db: D1Database,
   id: number,
-  body: { fcode?: string; form_name?: string; description?: string; is_active?: string; sorting?: number; status?: string; webhook_url?: string },
+  body: { fcode?: string; form_name?: string; description?: string; is_active?: string; sorting?: number; status?: string; webhook_url?: string; turnstile_enabled?: string; allowed_origins?: string; regenerate_token?: boolean },
 ): Promise<Response> {
   const sets: string[] = [];
   const binds: (string | number)[] = [];
@@ -470,6 +498,10 @@ export async function handleUpdateForm(
   if (body.sorting !== undefined) { sets.push('sorting = ?'); binds.push(body.sorting); }
   if (body.status !== undefined) { sets.push('status = ?'); binds.push(body.status); }
   if (body.webhook_url !== undefined) { sets.push('webhook_url = ?'); binds.push(body.webhook_url); }
+  if (body.turnstile_enabled !== undefined) { sets.push('turnstile_enabled = ?'); binds.push(body.turnstile_enabled); }
+  if (body.allowed_origins !== undefined) { sets.push('allowed_origins = ?'); binds.push(body.allowed_origins); }
+  // 重新生成 submit_token
+  if (body.regenerate_token) { sets.push('submit_token = ?'); binds.push(generateSubmitToken()); }
 
   if (sets.length === 0) return err('沒有需要更新的字段', 1001);
 
