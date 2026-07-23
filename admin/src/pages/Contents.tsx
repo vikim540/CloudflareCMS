@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import type { FormEvent, ChangeEvent } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
-import { cn, formatDate } from '../lib/utils'
+import { cn, formatDate, type Category, flattenCategories, getPageNumbers } from '../lib/utils'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 內容狀態: '1'=已發布, '0'=草稿, '-1'=回收站 */
@@ -37,16 +37,6 @@ interface Content {
   outlink: string
 }
 
-/** 欄目（分類）樹節點 */
-interface Category {
-  id: number
-  name: string
-  scode: string
-  pcode: string
-  status: string
-  children?: Category[]
-}
-
 /** 欄目下拉選項（含層級） */
 interface CategoryOption {
   scode: string
@@ -71,12 +61,11 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100] as const
 /** 預設每頁條數 */
 const DEFAULT_PAGE_SIZE = 20
 
-/** 狀態標籤頁定義 */
+/** 狀態標籤頁定義（回收站為獨立頁面 /trash，不在此過濾） */
 const STATUS_TABS = [
   { key: 'all', label: '全部' },
   { key: '1', label: '已發布' },
   { key: '0', label: '草稿' },
-  { key: '-1', label: '回收站' },
 ] as const
 
 /** 根據狀態取得徽章樣式 */
@@ -91,20 +80,6 @@ function getStatusBadge(status: ContentStatus): { label: string; className: stri
     default:
       return { label: '未知', className: 'bg-gray-100 text-gray-600' }
   }
-}
-
-/** 將欄目樹扁平化為 scode -> name 的映射 */
-function flattenCategories(
-  categories: Category[],
-  map: Record<string, string> = {},
-): Record<string, string> {
-  for (const cat of categories) {
-    map[cat.scode] = cat.name
-    if (cat.children && cat.children.length > 0) {
-      flattenCategories(cat.children, map)
-    }
-  }
-  return map
 }
 
 /** 將欄目樹扁平化為下拉選項列表（含層級縮排） */
@@ -129,20 +104,6 @@ function parseTags(tags: string): string[] {
     .split(/[,，]/)
     .map((t) => t.trim())
     .filter((t) => t.length > 0)
-}
-
-/** 計算分頁頁碼（含省略號） */
-function getPageNumbers(current: number, total: number): (number | '...')[] {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1)
-  }
-  if (current <= 4) {
-    return [1, 2, 3, 4, 5, '...', total]
-  }
-  if (current >= total - 3) {
-    return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
-  }
-  return [1, '...', current - 1, current, current + 1, '...', total]
 }
 
 export default function Contents() {
@@ -305,33 +266,6 @@ export default function Contents() {
       await fetchContents()
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除失敗')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  // 從回收站還原
-  const handleRestore = async (id: number) => {
-    setActionLoading(id)
-    try {
-      await api.post(`/admin/contents/${id}/restore`)
-      await fetchContents()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '還原失敗')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  // 永久刪除
-  const handlePermanentDelete = async (id: number) => {
-    if (!confirm('永久刪除後無法恢復,確定要刪除嗎?')) return
-    setActionLoading(id)
-    try {
-      await api.del(`/admin/contents/${id}/permanent`)
-      await fetchContents()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '永久刪除失敗')
     } finally {
       setActionLoading(null)
     }
@@ -524,6 +458,15 @@ export default function Contents() {
             {tab.label}
           </button>
         ))}
+        {/* 回收站入口（獨立頁面，攜帶當前 mcode 篩選） */}
+        <Link
+          to={`/trash${mcode ? `?mcode=${mcode}` : ''}`}
+          className="ml-auto inline-flex items-center gap-1 px-3 py-2 text-sm text-muted-foreground hover:text-red-600 transition-colors"
+          title="前往回收站"
+        >
+          <span className="text-sm">🗑️</span>
+          回收站
+        </Link>
       </div>
 
       {/* 搜尋與欄目篩選欄 */}
@@ -635,7 +578,6 @@ export default function Contents() {
               ) : (
                 contents.map((item) => {
                   const badge = getStatusBadge(item.status)
-                  const isTrash = item.status === '-1'
                   const isSelected = selectedIds.has(item.id)
                   const tags = parseTags(item.tags)
                   const formattedDate = formatDate(item.date)
@@ -752,7 +694,7 @@ export default function Contents() {
                               setEditingSortId(item.id)
                               setSortValue(String(item.sorting ?? 0))
                             }}
-                            disabled={actionLoading === item.id || isTrash}
+                            disabled={actionLoading === item.id}
                             className={cn(
                               'px-2 py-1 rounded transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed',
                               item.sorting === 0
@@ -771,7 +713,7 @@ export default function Contents() {
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => handleToggleTop(item)}
-                          disabled={actionLoading === item.id || isTrash}
+                          disabled={actionLoading === item.id}
                           className={cn(
                             'inline-flex items-center justify-center p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
                             item.istop === '1'
@@ -787,7 +729,7 @@ export default function Contents() {
                       <td className="px-4 py-3 text-center">
                         <button
                           onClick={() => handleToggleRecommend(item)}
-                          disabled={actionLoading === item.id || isTrash}
+                          disabled={actionLoading === item.id}
                           className={cn(
                             'inline-flex items-center justify-center p-1.5 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
                             item.isrecommend === '1'
@@ -812,48 +754,23 @@ export default function Contents() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {isTrash ? (
-                            <>
-                              <button
-                                onClick={() => handleRestore(item.id)}
-                                disabled={actionLoading === item.id}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                                title="還原"
-                              >
-                                <span className="text-sm">🔄</span>
-                                還原
-                              </button>
-                              <button
-                                onClick={() => handlePermanentDelete(item.id)}
-                                disabled={actionLoading === item.id}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                title="永久刪除"
-                              >
-                                <span className="text-sm">🗑️</span>
-                                永久刪除
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <Link
-                                to={`/contents/${item.id}`}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                                title="編輯"
-                              >
-                                <span className="text-sm">✏️</span>
-                                編輯
-                              </Link>
-                              <button
-                                onClick={() => handleDelete(item.id)}
-                                disabled={actionLoading === item.id}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                                title="移至回收站"
-                              >
-                                <span className="text-sm">🗑️</span>
-                                刪除
-                              </button>
-                            </>
-                          )}
+                          <Link
+                            to={`/contents/${item.id}`}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                            title="編輯"
+                          >
+                            <span className="text-sm">✏️</span>
+                            編輯
+                          </Link>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={actionLoading === item.id}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="移至回收站"
+                          >
+                            <span className="text-sm">🗑️</span>
+                            刪除
+                          </button>
                         </div>
                       </td>
                     </tr>

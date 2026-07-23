@@ -71,7 +71,7 @@ export function registerVideoPlugin(): void {
 
       // 有額外屬性時返回 object，否則返回 string（向後兼容）
       if (title || allow || referrerpolicy || width || height) {
-        return { src, title, allow, referrerpolicy, width, height }
+        return { src, title: title ?? undefined, allow: allow ?? undefined, referrerpolicy: referrerpolicy ?? undefined, width: width ?? undefined, height: height ?? undefined }
       }
       return src
     }

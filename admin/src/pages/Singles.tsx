@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, type Category, flattenCategories } from '../lib/utils'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
 /** 單頁狀態: '1'=已發布, '0'=草稿 */
@@ -19,16 +19,6 @@ interface Single {
   sorting: number
 }
 
-/** 欄目（分類）樹節點 */
-interface Category {
-  id: number
-  name: string
-  scode: string
-  pcode: string
-  status: string
-  children?: Category[]
-}
-
 /** 根據狀態取得徽章樣式 */
 function getStatusBadge(status: SingleStatus): { label: string; className: string } {
   switch (status) {
@@ -39,20 +29,6 @@ function getStatusBadge(status: SingleStatus): { label: string; className: strin
     default:
       return { label: '未知', className: 'bg-gray-100 text-gray-600' }
   }
-}
-
-/** 將欄目樹扁平化為 scode -> name 的映射 */
-function flattenCategories(
-  categories: Category[],
-  map: Record<string, string> = {},
-): Record<string, string> {
-  for (const cat of categories) {
-    map[cat.scode] = cat.name
-    if (cat.children && cat.children.length > 0) {
-      flattenCategories(cat.children, map)
-    }
-  }
-  return map
 }
 
 export default function Singles() {

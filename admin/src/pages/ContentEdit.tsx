@@ -1103,7 +1103,7 @@ export default function ContentEdit() {
           // FAQ 群組 / 獨立 FAQ 項目（向後兼容）
           const faqOps = matchFaqElement(el)
           if (faqOps) {
-            const Delta = window.Quill.import('delta') as unknown as {
+            const Delta = window.Quill!.import('delta') as unknown as {
               new (ops?: unknown[]): unknown
             }
             return new Delta(faqOps)
@@ -1112,7 +1112,7 @@ export default function ContentEdit() {
           // 視頻 iframe（保留完整屬性）
           const videoOps = matchVideoIframe(el)
           if (videoOps) {
-            const Delta = window.Quill.import('delta') as unknown as {
+            const Delta = window.Quill!.import('delta') as unknown as {
               new (ops?: unknown[]): unknown
             }
             return new Delta(videoOps)
@@ -1907,7 +1907,10 @@ export default function ContentEdit() {
         onInsert={(html) => {
           if (quillRef.current) {
             const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
-            quillRef.current.clipboard.dangerouslyPasteHTML(range?.index ?? quillRef.current.getLength(), html, 'user')
+            const index = Number(range?.index ?? quillRef.current.getLength())
+            ;(quillRef.current.clipboard as unknown as {
+              dangerouslyPasteHTML: (index: number, html: string, source: string) => void
+            }).dangerouslyPasteHTML(index, html, 'user')
           }
         }}
       />
@@ -1919,7 +1922,10 @@ export default function ContentEdit() {
         onInsert={(html) => {
           if (quillRef.current) {
             const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
-            quillRef.current.clipboard.dangerouslyPasteHTML(range?.index ?? quillRef.current.getLength(), html, 'user')
+            const index = Number(range?.index ?? quillRef.current.getLength())
+            ;(quillRef.current.clipboard as unknown as {
+              dangerouslyPasteHTML: (index: number, html: string, source: string) => void
+            }).dangerouslyPasteHTML(index, html, 'user')
           }
         }}
       />

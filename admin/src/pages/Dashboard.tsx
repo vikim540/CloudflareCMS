@@ -43,10 +43,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.15',
+    date: '2026-07-23 09:35:45',
+    icon: '🔄',
+    latest: true,
+    changes: '🔄 回收站統一 + 共用工具函數提取 + 型別錯誤修復\n\n📋 回收站統一（消除重複造輪子）\n• Contents.tsx 的「回收站」tab 改為連結到 /trash 獨立頁面（攜帶 mcode 篩選）\n• 移除 Contents.tsx 中重複的 handleRestore/handlePermanentDelete/isTrash 邏輯\n• 前後端統一：所有永久刪除走 DeleteConfirmModal 組件\n\n📋 共用工具函數提取（DRY 原則）\n• Category 接口 + flattenCategories + getPageNumbers 提取到 lib/utils.ts\n• Trash.tsx、Contents.tsx、Singles.tsx、Logs.tsx 全部改為共用導入\n• 消除 4 個文件中的重複定義\n\n📋 DeleteConfirmModal 獨立組件\n• 從 Trash.tsx 抽取為 components/DeleteConfirmModal.tsx\n• 自包含邏輯：資源預覽 + 縮圖網格 + 共用檢查 + S3 清理\n• 可在任何永久刪除場景複用\n\n📋 後端 mcode 篩選\n• handleListTrashedContents 新增 mcode 參數（子查詢 ay_content_sort.mcode）\n• Trash.tsx 接受 ?mcode= 查詢參數，按模型過濾回收站\n\n📋 型別錯誤修復（v1.9.13 遺留）\n• videoPlugin.ts: getAttribute 返回 null → ?? undefined 轉換\n• ContentEdit.tsx: window.Quill 非空斷言 + dangerouslyPasteHTML 型別斷言',
+  },
+  {
     version: 'v1.9.14',
     date: '2026-07-23 09:11:25',
     icon: '🗑️',
-    latest: true,
+    latest: false,
     changes: '🗑️ 回收站永久刪除靜態資源清理\n\n📋 靜態資源綁定邏輯\n• 文章永久刪除時可選擇一併刪除關聯的 S3 圖片資源\n• 自動提取文章所有圖片：封面圖(ico)、多圖(pics)、正文HTML中的img、擴展字段(ext_*)\n• 共用圖片安全保護：被其他文章引用的圖片自動跳過不刪除\n• 清理 ay_media_mark 表中已刪除文件的標記記錄\n\n📋 前端縮圖確認 Modal\n• 取代原 window.confirm，改為自定義彈窗\n• 縮圖網格展示所有關聯圖片（含來源標籤：封面圖/正文圖片/多圖/擴展字段）\n• 共用圖片顯示琥珀色邊框 + 「共用」徽章 + 引用詳情\n• 統計摘要：總數/共用數/將刪除數\n• 「一併刪除靜態資源」勾選框（默認勾選）\n• 圖片載入失敗時顯示佔位符\n\n📋 後端新增\n• GET /admin/contents/:id/resources — 預覽文章關聯資源（含引用檢查）\n• DELETE /admin/contents/:id/permanent?delete_resources=true — 永久刪除並清理 S3\n• extractArticleImages() — 從 ico/pics/content/ext_* 提取所有圖片\n• handleCleanupContentResources() — S3 批量刪除（共用跳過）',
   },
   {

@@ -522,17 +522,25 @@ export async function handleSaveContentExt(
 // 注意: 回收站操作均帶 status 條件守衛, 確保僅操作回收站中的內容
 // ============================================================================
 
-/** 回收站內容列表 (status='-1', 支持 scode/keyword 篩選, ORDER BY update_time DESC, id DESC) */
+/** 回收站內容列表 (status='-1', 支持 mcode/scode/keyword 篩選, ORDER BY update_time DESC, id DESC)
+ *  v1.9.15: 新增 mcode 篩選（子查詢 ay_content_sort.mcode），與 Contents.tsx 的模型過濾一致 */
 export async function handleListTrashedContents(
   db: D1Database,
   params: URLSearchParams,
 ): Promise<Response> {
   const pagination = fromQuery(params);
+  const mcode = params.get('mcode') || '';
   const scode = params.get('scode') || '';
   const keyword = params.get('keyword') || '';
 
   const conditions: string[] = ["status = '-1'"];
   const binds: (string | number)[] = [];
+
+  // mcode 篩選：子查詢該模型下所有欄目 scode（與 handleListContents 一致）
+  if (mcode) {
+    conditions.push('scode IN (SELECT scode FROM ay_content_sort WHERE mcode = ?)');
+    binds.push(mcode);
+  }
 
   if (scode) {
     conditions.push('scode = ?');
