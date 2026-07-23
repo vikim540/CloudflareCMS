@@ -219,7 +219,7 @@ export default function Categories() {
   const [editForm, setEditForm] = useState<EditForm>({
     name: '',
     subname: '',
-    sorting: 0,
+    sorting: 1,
     status: '1',
     keywords: '',
     description: '',
@@ -341,7 +341,7 @@ export default function Categories() {
     setEditForm({
       name: node.name,
       subname: node.subname || '',
-      sorting: node.sorting ?? 0,
+      sorting: node.sorting ?? 1,
       status: node.status ?? '1',
       keywords: node.keywords || '',
       description: node.description || '',

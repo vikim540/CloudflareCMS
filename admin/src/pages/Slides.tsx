@@ -42,7 +42,7 @@ const EMPTY_FORM: SlideForm = {
   title: '',
   subtitle: '',
   button_text: '',
-  sorting: 0,
+  sorting: 1,
 }
 
 /** 幻燈片分組數據結構（後端 ay_slide_group 表） */
@@ -217,7 +217,7 @@ export default function Slides() {
     const list = activeGroup === 'all'
       ? slides
       : slides.filter((s) => (s.gid ?? '0') === activeGroup)
-    return [...list].sort((a, b) => (a.sorting ?? 0) - (b.sorting ?? 0))
+    return [...list].sort((a, b) => (a.sorting ?? 1) - (b.sorting ?? 1))
   }, [slides, activeGroup])
 
   // 保存分組名稱（調用後端 API，所有賬號共享）
@@ -257,7 +257,7 @@ export default function Slides() {
     // 計算該分組下的最大排序值 + 1（自增序號）
     const groupSlides = slides.filter((s) => (s.gid ?? '0') === defaultGid)
     const maxSorting = groupSlides.length > 0
-      ? Math.max(...groupSlides.map((s) => s.sorting ?? 0))
+      ? Math.max(...groupSlides.map((s) => s.sorting ?? 1))
       : 0
     setForm({
       ...EMPTY_FORM,
@@ -279,7 +279,7 @@ export default function Slides() {
       title: item.title ?? '',
       subtitle: item.subtitle ?? '',
       button_text: item.button_text ?? '',
-      sorting: item.sorting ?? 0,
+      sorting: item.sorting ?? 1,
     })
     setActionError('')
     setModalOpen(true)
@@ -683,9 +683,10 @@ export default function Slides() {
                     <td className="px-4 py-3">
                       <input
                         type="number"
-                        value={item.sorting ?? 0}
+                        min={1}
+                        value={item.sorting ?? 1}
                         onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0
+                          const val = parseInt(e.target.value) || 1
                           handleSortingInput(item.id, val)
                         }}
                         className={cn(
@@ -932,7 +933,7 @@ export default function Slides() {
                         // 動態計算新分組下的排序序號（最大值 + 1）
                         const groupSlides = slides.filter((s) => (s.gid ?? '0') === newGid)
                         const maxSorting = groupSlides.length > 0
-                          ? Math.max(...groupSlides.map((s) => s.sorting ?? 0))
+                          ? Math.max(...groupSlides.map((s) => s.sorting ?? 1))
                           : 0
                         setForm((f) => ({ ...f, gid: newGid, sorting: maxSorting + 1 }))
                       }

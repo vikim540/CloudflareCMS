@@ -307,7 +307,7 @@ export default function Contents() {
   // 內聯修改排序（數值越小越靠前，參考 PbootCMS sorting ASC 邏輯）
   const handleSortSave = async (id: number) => {
     const val = parseInt(sortValue, 10)
-    if (isNaN(val) || val < 0 || val > 9999) {
+    if (isNaN(val) || val < 1 || val > 9999) {
       setEditingSortId(null)
       return
     }
@@ -675,6 +675,7 @@ export default function Contents() {
                         {editingSortId === item.id ? (
                           <input
                             type="number"
+                            min={1}
                             value={sortValue}
                             onChange={(e) => setSortValue(e.target.value)}
                             onBlur={() => handleSortSave(item.id)}
@@ -692,18 +693,18 @@ export default function Contents() {
                           <button
                             onClick={() => {
                               setEditingSortId(item.id)
-                              setSortValue(String(item.sorting ?? 0))
+                              setSortValue(String(item.sorting ?? 1))
                             }}
                             disabled={actionLoading === item.id}
                             className={cn(
                               'px-2 py-1 rounded transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed',
-                              item.sorting === 0
+                              !item.sorting || item.sorting === 255
                                 ? 'text-amber-600 font-medium'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-accent',
                             )}
                             title="點擊修改排序（數值越小越靠前）"
                           >
-                            {item.sorting ?? 0}
+                            {item.sorting ?? 1}
                           </button>
                         )}
                       </td>

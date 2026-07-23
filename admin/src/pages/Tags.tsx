@@ -21,7 +21,7 @@ interface TagForm {
 const EMPTY_FORM: TagForm = {
   name: '',
   link: '',
-  sorting: 0,
+  sorting: 1,
 }
 
 export default function Tags() {
@@ -29,6 +29,7 @@ export default function Tags() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [sortSaving, setSortSaving] = useState<number | null>(null)
 
   // 對話框狀態
   const [modalOpen, setModalOpen] = useState(false)
@@ -69,7 +70,7 @@ export default function Tags() {
     setForm({
       name: item.name ?? '',
       link: item.link ?? '',
-      sorting: item.sorting ?? 0,
+      sorting: item.sorting ?? 1,
     })
     setActionError('')
     setModalOpen(true)
@@ -115,6 +116,19 @@ export default function Tags() {
       setError(err instanceof Error ? err.message : '刪除失敗')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  /** inline 修改排序（失焦或 Enter 時保存） */
+  const handleSortSave = async (id: number, value: number) => {
+    setSortSaving(id)
+    try {
+      await api.put(`/admin/tags/${id}`, { sorting: value })
+      await fetchTags()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '排序更新失敗')
+    } finally {
+      setSortSaving(null)
     }
   }
 
@@ -206,7 +220,23 @@ export default function Tags() {
                         <span className="text-muted-foreground text-xs">-</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.sorting ?? 0}</td>
+                    <td className="px-4 py-3">
+                      <input
+                        type="number"
+                        min={1}
+                        defaultValue={item.sorting ?? 1}
+                        disabled={sortSaving === item.id}
+                        onBlur={(e) => {
+                          const val = Number(e.target.value)
+                          if (val !== (item.sorting ?? 1)) handleSortSave(item.id, val)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') e.currentTarget.blur()
+                        }}
+                        className="w-16 px-2 py-1 border rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                        title="數字越小越靠前"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <button

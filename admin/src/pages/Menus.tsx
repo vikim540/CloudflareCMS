@@ -33,7 +33,7 @@ const EMPTY_FORM: MenuForm = {
   name: '',
   url: '',
   ico: '',
-  sorting: 255,
+  sorting: 1,
   status: '1',
   pcode: '0',
 }
@@ -243,7 +243,7 @@ export default function Menus() {
       name: node.name ?? '',
       url: node.url ?? '',
       ico: node.ico ?? '',
-      sorting: node.sorting ?? 255,
+      sorting: node.sorting ?? 1,
       status: node.status ?? '1',
       pcode: node.pcode ?? '0',
     })

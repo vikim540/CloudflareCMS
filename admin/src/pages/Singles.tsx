@@ -37,6 +37,7 @@ export default function Singles() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [sortSaving, setSortSaving] = useState<number | null>(null)
 
   /** 載入欄目樹（僅一次） */
   useEffect(() => {
@@ -78,6 +79,19 @@ export default function Singles() {
       setError(err instanceof Error ? err.message : '刪除失敗')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  /** inline 修改排序 */
+  const handleSortSave = async (id: number, value: number) => {
+    setSortSaving(id)
+    try {
+      await api.put(`/admin/singles/${id}`, { sorting: value })
+      await fetchSingles()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '排序更新失敗')
+    } finally {
+      setSortSaving(null)
     }
   }
 
@@ -155,7 +169,23 @@ export default function Singles() {
                       <td className="px-4 py-3 text-muted-foreground">
                         {categoryMap[item.scode] ?? item.scode ?? '-'}
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.sorting ?? 0}</td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number"
+                          min={1}
+                          defaultValue={item.sorting ?? 1}
+                          disabled={sortSaving === item.id}
+                          onBlur={(e) => {
+                            const val = Number(e.target.value)
+                            if (val !== (item.sorting ?? 1)) handleSortSave(item.id, val)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                          }}
+                          className="w-16 px-2 py-1 border rounded text-sm text-center focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                          title="數字越小越靠前"
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={cn(

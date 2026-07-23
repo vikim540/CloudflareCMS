@@ -1,30 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.17**（2026-07-23）
-
-
-## 版本更新記錄（憑證）
-
-> 每次正式版本更新必須記錄於此，作為開發憑證。日常瑣碎修改無需頻繁記錄。
-
-| 版本 | 日期 | 摘要 |
-|------|------|------|
-| v1.9.17 | 2026-07-23 | 文章內鏈功能實現 + 標籤管理更名 + 留言系統遺留清理。新建 `src/utils/tagLink.ts` 五步預佔位替換引擎（參考 PbootCMS Go 改進版：保護 HTML→去重→長詞優先→預佔位→還原），`handleContentDetail` 新增 kv 參數讀取 `content_tags_replace_num` 配置（默認 3）+ 查詢 `ay_tags` 按 `length(name) DESC` 排序，標籤 CRUD 後清除內容+標籤列表緩存（`clearContentCache` + `clearConfigCache`），前端「標籤管理」全面更名為「文章內鏈」（側邊欄/頁面/對話框/表頭），Settings 新增「SEO 內鏈配置」分組（sorting 210-219），刪除 Messages.tsx 頁面 + `/messages` 路由 + 4 條 messages API 路由 + extra.ts 中 6 個留言 handler + parseUserAgent 函數（保留 ay_message 表數據安全），URL 安全驗證阻斷 javascript: 協議，自動添加 target="_blank" + rel="noopener noreferrer" |
-| v1.9.15 | 2026-07-23 | 回收站統一 + 共用工具函數提取 + 型別錯誤修復。Contents.tsx 的回收站 tab 改為連結到 /trash（攜帶 mcode 篩選），移除重複的 handleRestore/handlePermanentDelete/isTrash 邏輯，Category 接口 + flattenCategories + getPageNumbers 提取到 lib/utils.ts（4 個文件共用），DeleteConfirmModal 抽取為獨立組件，後端 handleListTrashedContents 新增 mcode 子查詢篩選，修復 videoPlugin.ts（null→undefined）和 ContentEdit.tsx（window.Quill 非空斷言 + dangerouslyPasteHTML 型別斷言）v1.9.13 遺留型別錯誤 |
-| v1.9.13 | 2026-07-23 | FAQ 群組化 + 微數據 + 列表清理 + 編輯器插件化。FAQ 從獨立 `<details>` 改為整組 `<div class="faq-group" itemscope itemtype="...FAQPage">` 包裝為單一 BlockEmbed（修復多項間空 `<p><br/></p>`）、加入 Google microdata 屬性（itemprop=mainEntity/name/acceptedAnswer/text，雙重 SEO：microdata + JSON-LD）、保存時 cleanupQuillHtml 移除 Quill 專有屬性（data-list/ql-ui/contenteditable）、編輯器二次開發功能抽取到 `admin/src/lib/quill/` 獨立模組（faqPlugin/videoPlugin/listPlugin/htmlCleanup + README 文檔） |
-| v1.9.12 | 2026-07-22 | iframe 保存修復 + 標籤輸入字段類型。sanitizeHtml 移除 iframe 危險標籤列表改為 YouTube 域名白名單驗證（sanitizeIframeSrc 函數，非白名單 src 替換為 #）、Quill CustomVideoBlot 覆蓋內建 video blot 保留完整 iframe 屬性（title/allow/referrerpolicy/width/height）、clipboard matcher 同時處理 FAQ 和 iframe 元素、新增擴展字段類型 type=11「標籤輸入（帶歷史）」複用 TagInput 組件（多值氣泡標籤+批量導入+歷史標籤點擊補充）、後端新增 GET /admin/extfields/:id/history API（查詢 DISTINCT 歷史值按最近使用排序） |
-| v1.9.11 | 2026-07-22 | FAQ 結構化數據功能。新增 FaqPickerModal 組件（多組問答輸入+預覽，生成 <details class="faq-item"> HTML）、Quill 自定義 FaqBlock BlockEmbed blot（clipboard matcher 確保載入已有內容時 FAQ 塊不丟失）、編輯器工具列新增 ❓ FAQ 按鈕、後端 extractFaqJson 函數解析 <details class="faq-item"> 生成 FAQPage JSON-LD、API 響應新增 faqJson 欄位供 Nuxt 前端注入 <head> SEO |
-| v1.9.10 | 2026-07-22 | 視頻面板修復 + CSP 安全頭 + 封面圖媒體庫。YouTube URL 解析雙重策略（正則 + URL API fallback，新增 shorts/live 格式支援）、iframe 生成 HTML 添加 referrerpolicy 屬性（匹配 YouTube 官方結構）、CSP frame-src 加入 YouTube 域名（解除 iframe 預覽阻擋）、修復 Slug pattern 屬性 v 模式正則錯誤（\- 改為字面量前綴）、VideoPickerModal 封面圖新增媒體庫選擇按鈕（複用 MediaPickerModal + useImageUpload） |
-| v1.9.9 | 2026-07-22 | 編輯器視頻插入面板 + 組件化架構 + 幻燈片媒體庫。新增 VideoPickerModal 組件（Tab: YouTube 嵌入 + 視頻連結，支援 URL 自動轉換、iframe 參數配置、實時預覽）、提取 MediaPickerModal 為獨立組件（跨頁面複用）、幻燈片新增/編輯加媒體庫選擇按鈕（桌面版+手機版） |
-| v1.9.7 | 2026-07-22 | 編輯器有序列表軟換行修復。顯式註冊 softBreak 鍵盤綁定確保 Shift+Enter 在有序列表內插入軟換行（實現「標題+縮進內容」排版）、懸掛縮進 CSS 確保續行與首行文字對齊、編輯器下方新增鍵盤快捷鍵提示 |
-| v1.9.6 | 2026-07-22 | 保存提示 UI 優化。fixed 頂部中間定位（頁面較長時也可見）、5 秒自動隱藏、深色/藍色背景區分無修改/有修改 |
-| v1.9.5 | 2026-07-22 | 權限清理 + 媒體庫刪除狀態 + 編輯保存比對 + 編編輯器排版。徹底清除 M205 菜單 + 角色權限（M204 為現行啟用版本）、媒體庫刪除圖片時顯示 🔄 [文件名] 刪除中... 覆蓋層、文章編輯保存時自動比對修改字段（提示「此次修改了 N 處」，無修改不觸發後端）、編輯器有序列表懸掛縮進 CSS、新增 HTML 源碼按鈕（工具列 <> 圖標，textarea 模式直接編輯 HTML） |
-| v1.9.4 | 2026-07-22 | 權限歸類修正 + 幻燈片顯隱控制。修正 M210 pcode: M200→M610、幻燈片新增顯示/隱藏開關（status 字段，關閉後不返回到公開 API）、移除新增對話框中冗餘的分組 ID 文字輸入框、切換分組時自動計算排序序號 |
-| v1.9.3 | 2026-07-22 | 表單提交 API 安全加固。移除舊 POST /api/v1/messages、移除 /api/v1/forms/submit/:formId、移除公開 GET /api/v1/forms/active、新增 POST /api/v1/f/:token（16位隨機 token 隱蔽化端點）。五層安全防護：隨機路徑+Honeypot+Origin校驗+可選Turnstile+速率限制 |
-| v1.9.2 | 2026-07-22 | 表單管理系統 + Settings Tab 修正。新增表單管理頁面（M210 權限）、支持創建/編輯/刪除多個表單、每個表單可配置專屬 Webhook URL、is_active 開關控制側邊欄展示、活躍表單自動注入擴展內容側邊欄、FormSubmissions 顯示表單名稱 |
-| v1.9.1 | 2026-07-22 | FormSubmissions UI 統一、批量刪除+批量狀態更新、form_key 篩選下拉、Settings Tab 重構（5 Tab 導航） |
-| v1.9.0 | 2026-07-22 | 統一表單系統（取代留言管理）。新增 ay_form_submission 表、公開端點 POST /api/v1/forms/submit、管理端 CRUD + 統計、釘釘 ActionCard 推送、前端瀑布流網格佈局 |
-
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。
 
 ## 語言選擇優先級
 
@@ -309,7 +285,7 @@ Cloudflarerustcms/
 # 前端（Vite，端口 3000，代理 /api → 127.0.0.1:8787）
 cd admin; npx vite dev
 
-# ===== 部署（先 Worker 後 Pages）=====
+# ===== 部署（先使用Git本地備份使用commit時間對pages的儀表板 的三個tab 版本更新、API 開發手冊、系統信息查看以及更新，然後再部署 先Worker 後 Pages ， 最後提交推送遠程倉庫）=====
 # 1. Worker 部署
 & 'D:\AI\Cache\pnpm-home\wrangler.CMD' deploy
 
@@ -359,7 +335,7 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 
 ## 儀表盤同步更新規則（強制）
 
-> **每次修改代碼後，必須同步更新 `admin/src/pages/Dashboard.tsx` 中的三個 Tab。**
+> **每次git commit後，必須拿commit時間同步更新 `admin/src/pages/Dashboard.tsx` 中的三個 Tab。**
 
 ### 版本更新 Tab
 

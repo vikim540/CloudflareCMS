@@ -236,7 +236,7 @@ function FormEditDialog({
   const [fcode, setFcode] = useState(target?.fcode || '')
   const [formName, setFormName] = useState(target?.form_name || '')
   const [description, setDescription] = useState(target?.description || '')
-  const [sorting, setSorting] = useState(target?.sorting || 255)
+  const [sorting, setSorting] = useState(target?.sorting || 1)
   const [webhookUrl, setWebhookUrl] = useState(target?.webhook_url || '')
   const [turnstileEnabled, setTurnstileEnabled] = useState(target?.turnstile_enabled === '1')
   const [allowedOrigins, setAllowedOrigins] = useState(target?.allowed_origins || '')

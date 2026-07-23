@@ -57,7 +57,7 @@ const EMPTY_FORM: ExtFieldForm = {
   value: '',
   scode: [],
   required: '0',
-  sorting: 0,
+  sorting: 1,
 }
 
 /** 欄位類型選項 */
@@ -228,7 +228,7 @@ export default function ExtFields() {
       value: item.value ?? '',
       scode: item.scode ? item.scode.split(',').map((s) => s.trim()).filter(Boolean) : [],
       required: item.required ?? '0',
-      sorting: item.sorting ?? 0,
+      sorting: item.sorting ?? 1,
     })
     setActionError('')
     setModalOpen(true)
@@ -541,7 +541,7 @@ export default function ExtFields() {
                     </td>
                     <td className="px-4 py-3">
                       <SortInput
-                        value={item.sorting ?? 0}
+                        value={item.sorting ?? 1}
                         dirtyValue={getDirtyValue(item.id)}
                         isDirty={isDirty(item.id)}
                         onChange={(v) => markDirty(item.id, v)}

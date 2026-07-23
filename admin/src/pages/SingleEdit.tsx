@@ -38,7 +38,7 @@ const EMPTY_FORM: FormData = {
   keywords: '',
   description: '',
   status: '1',
-  sorting: 0,
+  sorting: 1,
 }
 
 export default function SingleEdit() {
@@ -67,7 +67,7 @@ export default function SingleEdit() {
           keywords: data.keywords ?? '',
           description: data.description ?? '',
           status: data.status === '1' ? '1' : '0',
-          sorting: data.sorting ?? 0,
+          sorting: data.sorting ?? 1,
         })
       }
     } catch (err) {

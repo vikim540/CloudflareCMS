@@ -98,7 +98,7 @@ export function SortInput({ value, dirtyValue, isDirty, onChange, disabled }: So
       value={displayValue}
       onChange={(e) => {
         const v = parseInt(e.target.value, 10)
-        if (!isNaN(v) && v >= 0) onChange(v)
+        if (!isNaN(v) && v >= 1) onChange(v)
       }}
       disabled={disabled}
       className={cn(

@@ -32,7 +32,7 @@ export default function Sites() {
 
   // 編輯站點相關狀態
   const [editingSite, setEditingSite] = useState<SiteInfo | null>(null)
-  const [editForm, setEditForm] = useState({ name: '', domain: '', sorting: 0, status: '1' })
+  const [editForm, setEditForm] = useState({ name: '', domain: '', sorting: 1, status: '1' })
   const [editError, setEditError] = useState('')
 
   // 成功提示（固定顯示直到用戶關閉）
@@ -117,7 +117,7 @@ export default function Sites() {
     setEditForm({
       name: site.name,
       domain: site.domain,
-      sorting: site.sorting,
+      sorting: site.sorting ?? 1,
       status: site.status,
     })
     setEditError('')
