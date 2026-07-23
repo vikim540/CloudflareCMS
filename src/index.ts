@@ -72,7 +72,8 @@ export interface Env {
 /** Hono 應用環境類型 (含 Bindings 和 Variables) */
 type AppEnv = { Bindings: Env; Variables: { claims?: JwtClaims; siteDb?: D1Database; siteId?: string; siteName?: string } };
 
-const app = new Hono<AppEnv>();
+// strict: false → /api/v1/tags 和 /api/v1/tags/ 都能匹配（兼容尾部斜杠）
+const app = new Hono<AppEnv>({ strict: false });
 
 // ===== CORS 中間件 (動態域名校驗, 根據 api_cors_origins 配置) =====
 app.use('*', async (c, next) => {
