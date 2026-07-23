@@ -572,6 +572,38 @@ app.get('/api/v1/admin/contents/all-tags', async (c) => {
   return contentService.handleAllContentTags(siteDB(c));
 });
 
+// AI 標籤建議 — 基於文章標題+內容，調用 Workers AI 生成標籤建議
+app.post('/api/v1/admin/contents/ai-tags', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  if (!c.env.AI) return err('AI 服務未配置', 1005);
+  const body = await c.req.json();
+  const title = (body.title || '').trim();
+  const content = (typeof body.content === 'string' ? body.content : '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  if (!title && !content) return err('標題和內容均為空', 1001);
+  try {
+    const prompt = `Based on the following article, suggest 5-8 relevant tags (single words or short phrases, comma-separated, no numbering). Article title: "${title}". Content excerpt: "${content.slice(0, 500)}". Tags:`;
+    const aiResult = await c.env.AI.run('@cf/mistral/mistral-7b-instruct-v0.1', {
+      messages: [
+        { role: 'system', content: 'You are a tag suggestion assistant. Respond ONLY with comma-separated tags, nothing else. Support both Chinese and English.' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 100,
+    }) as { response?: string };
+    const rawTags = (aiResult.response || '').trim();
+    // 解析 AI 返回的標籤（逗號分隔）
+    const tags = rawTags
+      .split(/[,，、\n]/)
+      .map((t: string) => t.trim().replace(/^["'\d+.\s]+|["'\s]+$/g, ''))
+      .filter((t: string) => t.length > 0 && t.length <= 20)
+      .slice(0, 10);
+    return okData(tags, `AI 建議 ${tags.length} 個標籤`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知錯誤';
+    return err(`AI 標籤建議失敗: ${msg}`, 1005);
+  }
+});
+
 // 回收站列表 - 必須在 :id 路由之前
 app.get('/api/v1/admin/contents/trash', async (c) => {
   const claims = await requireAuth(c);
@@ -596,6 +628,19 @@ app.post('/api/v1/admin/contents', async (c) => {
   const result = await contentService.handleCreateContent(siteDB(c), body, currentSiteId(c), operator);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
+  // 語義搜索索引：文章發布時自動索引到 Vectorize（非阻塞，失敗不影響創建）
+  if (c.env.ARTICLE_INDEX && c.env.AI) {
+    const newId = (result as unknown as { meta?: { last_row_id?: number } }).meta?.last_row_id
+      ?? (await siteDB(c).prepare('SELECT last_insert_rowid() as id').first<{ id: number }>())?.id;
+    if (newId && body.status !== '0') {
+      c.executionCtx.waitUntil(
+        vectorizeService.indexArticle(
+          c.env.AI, c.env.ARTICLE_INDEX, newId,
+          body.title || '', typeof body.content === 'string' ? body.content : '', body.scode || '',
+        ).catch((e: unknown) => console.error('Vectorize indexArticle failed:', e)),
+      );
+    }
+  }
   return result;
 });
 
@@ -608,6 +653,30 @@ app.put('/api/v1/admin/contents/:id', async (c) => {
   const result = await contentService.handleUpdateContent(siteDB(c), id, body, operator);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
+  // 語義搜索索引：文章更新時重新索引（非阻塞）
+  if (c.env.ARTICLE_INDEX && c.env.AI) {
+    // 查詢當前文章狀態和內容
+    const article = await siteDB(c).prepare(
+      'SELECT title, content, scode, status FROM ay_content WHERE id = ?',
+    ).bind(id).first<{ title: string; content: string; scode: string; status: string }>();
+    if (article) {
+      if (article.status === '1') {
+        // 已發布：重新索引
+        c.executionCtx.waitUntil(
+          vectorizeService.indexArticle(
+            c.env.AI, c.env.ARTICLE_INDEX, id,
+            article.title, article.content, article.scode,
+          ).catch((e: unknown) => console.error('Vectorize indexArticle failed:', e)),
+        );
+      } else {
+        // 草稿/回收站：刪除索引
+        c.executionCtx.waitUntil(
+          vectorizeService.deleteArticleVector(c.env.ARTICLE_INDEX, id)
+            .catch((e: unknown) => console.error('Vectorize deleteArticleVector failed:', e)),
+        );
+      }
+    }
+  }
   return result;
 });
 
@@ -618,6 +687,13 @@ app.delete('/api/v1/admin/contents/:id', async (c) => {
   const result = await contentService.handleDeleteContent(siteDB(c), id);
   // 清除內容緩存
   await clearContentCache(c.env.API_CACHE);
+  // 語義搜索索引：移入回收站時刪除向量（非阻塞）
+  if (c.env.ARTICLE_INDEX) {
+    c.executionCtx.waitUntil(
+      vectorizeService.deleteArticleVector(c.env.ARTICLE_INDEX, id)
+        .catch((e: unknown) => console.error('Vectorize deleteArticleVector failed:', e)),
+    );
+  }
   return result;
 });
 
@@ -634,7 +710,9 @@ app.post('/api/v1/admin/contents/:id/restore', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return modelService.handleRestoreContent(siteDB(c), id);
+  const result = await modelService.handleRestoreContent(siteDB(c), id);
+  // 語義搜索索引：恢復為草稿（status='0'），不索引；用戶需手動發布才會索引
+  return result;
 });
 
 // 永久刪除 (使用 modelService 版本, 包含 status 守衛)
@@ -657,7 +735,15 @@ app.delete('/api/v1/admin/contents/:id/permanent', async (c) => {
   }
 
   // 然後永久刪除 DB 記錄
-  return modelService.handlePermanentDeleteContent(siteDB(c), id);
+  const result = await modelService.handlePermanentDeleteContent(siteDB(c), id);
+  // 語義搜索索引：永久刪除時清理向量（非阻塞）
+  if (c.env.ARTICLE_INDEX) {
+    c.executionCtx.waitUntil(
+      vectorizeService.deleteArticleVector(c.env.ARTICLE_INDEX, id)
+        .catch((e: unknown) => console.error('Vectorize deleteArticleVector failed:', e)),
+    );
+  }
+  return result;
 });
 
 // 獲取文章關聯的靜態資源（永久刪除前預覽）
@@ -769,7 +855,7 @@ app.get('/api/v1/admin/stats', async (c) => {
     // Worker 版本元數據（Cloudflare version_metadata 綁定，僅管理後台可見）
     version: c.env.CF_VERSION_METADATA
       ? {
-          projectVersion: 'v1.9.18',
+          projectVersion: 'v1.9.19',
           workerId: c.env.CF_VERSION_METADATA.id,
           workerTag: c.env.CF_VERSION_METADATA.tag,
           workerTimestamp: c.env.CF_VERSION_METADATA.timestamp,

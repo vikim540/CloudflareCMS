@@ -20,6 +20,19 @@ interface Stats {
 /** 當前激活的分頁 */
 type TabKey = 'overview' | 'versions' | 'api' | 'system'
 
+/** 格式化定時發布時間（計算距離現在的剩餘時間） */
+function formatScheduleTime(dateStr: string): string {
+  if (!dateStr) return '—'
+  const target = new Date(dateStr.replace(' ', 'T') + '+08:00')
+  const now = new Date()
+  const diff = target.getTime() - now.getTime()
+  if (diff <= 0) return '已到期'
+  const hours = Math.floor(diff / 3600000)
+  const minutes = Math.floor((diff % 3600000) / 60000)
+  if (hours > 0) return `${hours}小時${minutes}分鐘後`
+  return `${minutes}分鐘後`
+}
+
 /** 版本更新條目 */
 interface VersionEntry {
   version: string
@@ -49,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.19',
+    date: '2026-07-23 17:30:00',
+    icon: '🔍',
+    latest: true,
+    changes: '🔍 語義搜索自動索引 + AI 標籤建議 + Checkbox 美化 + Queue 監控\n\n📋 語義搜索自動索引（修復死代碼）\n• indexArticle/deleteArticleVector 已實現但從未調用 — 現已接入內容 CRUD\n• POST /contents → 發布時 ctx.waitUntil(indexArticle)\n• PUT /contents/:id → 更新時重新索引（草稿則刪除向量）\n• DELETE /contents/:id → 移入回收站時刪除向量\n• 永久刪除 → 清理向量\n• 非阻塞執行，失敗不影響內容操作\n\n📋 AI 標籤建議\n• 新增 POST /admin/contents/ai-tags 端點（Workers AI mistral-7b）\n• ContentEdit 標籤區新增「🤖 AI 標籤建議」按鈕\n• 基於文章標題+內容生成 5-8 個標籤，自動去重合併\n\n📋 UI 優化\n• 標籤歷史按鈕改為單行不換行 + 橫向滾動\n• 置頂/推薦/頭條 checkbox 美化（自定義 peer-checked 樣式）\n• 置頂=藍色 / 推薦=綠色 / 頭條=琥珀色，hover 效果\n\n📋 Queue 監控\n• Dashboard 系統信息 Tab 新增「定時發布隊列」區塊\n• 顯示待發布任務列表 + 剩餘時間倒計算\n• publish-queue / publish-dlq 狀態指示燈',
+  },
+  {
     version: 'v1.9.18',
     date: '2026-07-23 16:08:46',
     icon: '🏷️',
-    latest: true,
+    latest: false,
     changes: '🏷️ Cloudflare version_metadata 綁定 + 統一列表排序 + 回收站批量操作\n\n📋 Version Metadata 綁定\n• wrangler.jsonc 新增 version_metadata 綁定（CF_VERSION_METADATA）\n• /admin/stats 響應合併 Worker 版本 ID/Tag/Timestamp（無公開 API）\n• Dashboard 系統信息 Tab 新增「部署版本」區塊（即時展示當前部署版本）\n• Env 類型新增 WorkerVersionMetadata 聲明\n\n📋 統一列表排序（純前端改動）\n• 所有列表頁面 sorting 默認值從 0/255 統一為 1\n• Tags/Links/Singles 新增 inline input 排序編輯（失焦/Enter 保存）\n• 所有 inline input 添加 min={1} 約束\n• SortInput 組件驗證 v>=0 改為 v>=1\n• Contents 排序驗證 val<0 改為 val<1\n• Menus/FormManager 默認 255→1\n\n📋 回收站批量操作\n• Trash.tsx 新增多選 checkbox（全選/單選/跨頁保留）\n• 批量還原（逐條 POST /restore）\n• 批量永久刪除（逐條 DELETE /permanent，二次確認）\n• 批量操作欄 + 選中行高亮 + 處理中狀態',
   },
   {
@@ -687,6 +707,7 @@ export default function Dashboard() {
     todayNew: 0,
     version: null,
   })
+  const [scheduledTasks, setScheduledTasks] = useState<{ id: number; title: string; date: string }[]>([])
 
   // 獲取儀表板統計 + Worker 版本元數據（version_metadata 綁定，合併在 stats 響應中）
   useEffect(() => {
@@ -702,6 +723,11 @@ export default function Dashboard() {
           version: d?.version ?? null,
         })
       })
+      .catch(() => {})
+    // 獲取定時發布任務列表（Queue 監控）
+    api
+      .get<{ id: number; title: string; date: string }[]>('/admin/scheduler/list')
+      .then((res) => setScheduledTasks((res.data as { id: number; title: string; date: string }[]) ?? []))
       .catch(() => {})
   }, [])
 
@@ -1235,6 +1261,51 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                     </code>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            {/* 定時發布隊列狀態 */}
+            <section>
+              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                <span>⏰</span>
+                <span>定時發布隊列</span>
+              </h3>
+              <div className="rounded-lg border border-border bg-white p-4">
+                <div className="flex items-center gap-6 mb-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-muted-foreground">publish-queue</span>
+                    <span className="font-medium text-foreground">{scheduledTasks.length}</span>
+                    <span className="text-muted-foreground">項待發布</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+                    <span className="text-muted-foreground">DLQ</span>
+                    <span className="font-medium text-foreground">publish-dlq</span>
+                  </div>
+                </div>
+                {scheduledTasks.length > 0 ? (
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {scheduledTasks.slice(0, 10).map((task) => (
+                      <div key={task.id} className="flex items-center gap-3 px-3 py-2 bg-secondary/30 rounded-md text-sm">
+                        <span className="text-muted-foreground shrink-0">#{task.id}</span>
+                        <span className="font-medium truncate flex-1">{task.title || '(無標題)'}</span>
+                        <span className="text-muted-foreground whitespace-nowrap text-xs">
+                          {formatScheduleTime(task.date)}
+                        </span>
+                      </div>
+                    ))}
+                    {scheduledTasks.length > 10 && (
+                      <div className="text-xs text-muted-foreground text-center py-1">
+                        還有 {scheduledTasks.length - 10} 項...
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-6 text-muted-foreground text-sm">
+                    <span>📭 目前沒有待發布的定時任務</span>
+                  </div>
+                )}
               </div>
             </section>
 

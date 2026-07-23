@@ -691,6 +691,7 @@ export default function ContentEdit() {
   const [quillVideoPicker, setQuillVideoPicker] = useState(false) // Quill 編輯器視頻插入器
   const [quillFaqPicker, setQuillFaqPicker] = useState(false) // Quill 編輯器 FAQ 插入器
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
+  const [aiTagLoading, setAiTagLoading] = useState(false) // AI 標籤建議載入狀態
   // 保存原始數據快照（用於保存時比對修改字段）
   const originalDataRef = useRef<Record<string, unknown> | null>(null)
   const [saveHint, setSaveHint] = useState<{ changedCount: number; fields: string[] } | null>(null)
@@ -1607,40 +1608,71 @@ export default function ContentEdit() {
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" />
             </div>
 
-            {/* 標籤（TagInput 組件 + 歷史標籤快速補充） */}
+            {/* 標籤（TagInput 組件 + AI 建議 + 歷史標籤快速補充） */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">標籤</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium">標籤</label>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setAiTagLoading(true)
+                    try {
+                      const res = await api.post<string[]>('/admin/contents/ai-tags', {
+                        title: form.title,
+                        content: form.content,
+                      })
+                      const suggestions = (res.data as string[]) || []
+                      if (suggestions.length > 0) {
+                        const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
+                        const merged = [...new Set([...current, ...suggestions])]
+                        updateField('tags', merged.join(','))
+                      }
+                    } catch { /* 靜默失敗 */ }
+                    finally { setAiTagLoading(false) }
+                  }}
+                  disabled={aiTagLoading || (!form.title && !form.content)}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-purple-600 border border-purple-200 rounded-full hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="基於文章標題和內容，AI 自動建議標籤"
+                >
+                  {aiTagLoading ? (
+                    <>
+                      <span className="inline-block animate-spin">🔄</span>
+                      AI 生成中...
+                    </>
+                  ) : (
+                    <>🤖 AI 標籤建議</>
+                  )}
+                </button>
+              </div>
               <TagInput
                 values={form.tags ? form.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : []}
                 onChange={(tags) => updateField('tags', tags.join(','))}
                 placeholder="輸入標籤後按 Enter 添加"
               />
               {allTags.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs text-muted-foreground mb-1">📋 歷史標籤（點擊添加）</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {allTags
-                      .filter((t) => {
-                        const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()) : []
-                        return !current.includes(t)
-                      })
-                      .slice(0, 30)
-                      .map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => {
-                            const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
-                            if (!current.includes(tag)) {
-                              updateField('tags', [...current, tag].join(','))
-                            }
-                          }}
-                          className="px-2 py-0.5 text-xs border border-border text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                  </div>
+                <div className="mt-2 flex items-center gap-2 flex-nowrap overflow-x-auto pb-1">
+                  <span className="text-xs text-muted-foreground shrink-0">📋 歷史標籤</span>
+                  {allTags
+                    .filter((t) => {
+                      const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()) : []
+                      return !current.includes(t)
+                    })
+                    .slice(0, 30)
+                    .map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
+                          if (!current.includes(tag)) {
+                            updateField('tags', [...current, tag].join(','))
+                          }
+                        }}
+                        className="shrink-0 px-2 py-0.5 text-xs border border-border text-muted-foreground rounded-full hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-colors whitespace-nowrap"
+                      >
+                        {tag}
+                      </button>
+                    ))}
                 </div>
               )}
             </div>
@@ -1736,33 +1768,42 @@ export default function ContentEdit() {
             </div>
 
             {/* 選項 */}
-            <div className="flex flex-wrap gap-6">
-              <label className="inline-flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.istop}
                   onChange={(e) => updateField('istop', e.target.checked)}
-                  className="w-4 h-4 rounded border-input"
+                  className="peer sr-only"
                 />
-                <span className="text-sm">置頂</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-blue-500 peer-checked:border-blue-500 group-hover:border-blue-400">
+                  {form.istop && <span className="text-white text-xs">✓</span>}
+                </span>
+                <span className="text-sm group-hover:text-blue-600 transition-colors">置頂</span>
               </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.isrecommend}
                   onChange={(e) => updateField('isrecommend', e.target.checked)}
-                  className="w-4 h-4 rounded border-input"
+                  className="peer sr-only"
                 />
-                <span className="text-sm">推薦</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover:border-emerald-400">
+                  {form.isrecommend && <span className="text-white text-xs">✓</span>}
+                </span>
+                <span className="text-sm group-hover:text-emerald-600 transition-colors">推薦</span>
               </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer">
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.isheadline}
                   onChange={(e) => updateField('isheadline', e.target.checked)}
-                  className="w-4 h-4 rounded border-input"
+                  className="peer sr-only"
                 />
-                <span className="text-sm">頭條</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-amber-500 peer-checked:border-amber-500 group-hover:border-amber-400">
+                  {form.isheadline && <span className="text-white text-xs">✓</span>}
+                </span>
+                <span className="text-sm group-hover:text-amber-600 transition-colors">頭條</span>
               </label>
             </div>
 
