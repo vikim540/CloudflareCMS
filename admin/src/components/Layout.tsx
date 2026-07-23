@@ -117,7 +117,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/singles', label: '單頁管理', icon: '📄' },
       { to: '/forms/submissions', label: '自定義表單', icon: '📝' },
       { to: '/links', label: '友情連結', icon: '🔗' },
-      { to: '/tags', label: '文章內鏈', icon: '🔗' },
+      { to: '/internallinks', label: '文章內鏈', icon: '🔗' },
     ],
   },
   {

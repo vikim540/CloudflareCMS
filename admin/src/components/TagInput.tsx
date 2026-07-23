@@ -12,9 +12,11 @@ interface TagInputProps {
   /** 是否剝離 http:// https:// 前綴（用於 CORS 域名） */
   stripProtocol?: boolean
   disabled?: boolean
+  /** 隱藏內置批量導入按鈕（由父組件自行渲染） */
+  hideBulk?: boolean
 }
 
-export function TagInput({ values, onChange, placeholder, stripProtocol, disabled }: TagInputProps) {
+export function TagInput({ values, onChange, placeholder, stripProtocol, disabled, hideBulk }: TagInputProps) {
   const [input, setInput] = useState('')
   const [showBulk, setShowBulk] = useState(false)
   const [bulkText, setBulkText] = useState('')
@@ -100,43 +102,47 @@ export function TagInput({ values, onChange, placeholder, stripProtocol, disable
           disabled={disabled}
         />
       </div>
-      {/* 批量導入 */}
-      <button
-        type="button"
-        onClick={() => setShowBulk(!showBulk)}
-        className="mt-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-      >
-        {showBulk ? '收起批量導入' : '📋 批量導入'}
-      </button>
-      {showBulk && (
-        <div className="mt-1.5">
-          <textarea
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder="每行一個或用逗號分隔，批量添加..."
-            className="w-full px-2 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-            rows={4}
-          />
-          <div className="flex justify-end gap-2 mt-1">
-            <button
-              type="button"
-              onClick={() => {
-                setBulkText('')
-                setShowBulk(false)
-              }}
-              className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              取消
-            </button>
-            <button
-              type="button"
-              onClick={handleBulkAdd}
-              className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:opacity-90"
-            >
-              添加全部
-            </button>
-          </div>
-        </div>
+      {/* 批量導入（可由父組件隱藏並自行渲染） */}
+      {!hideBulk && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowBulk(!showBulk)}
+            className="mt-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            {showBulk ? '收起批量導入' : '📋 批量導入'}
+          </button>
+          {showBulk && (
+            <div className="mt-1.5">
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder="每行一個或用逗號分隔，批量添加..."
+                className="w-full px-2 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                rows={4}
+              />
+              <div className="flex justify-end gap-2 mt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkText('')
+                    setShowBulk(false)
+                  }}
+                  className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkAdd}
+                  className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:opacity-90"
+                >
+                  添加全部
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

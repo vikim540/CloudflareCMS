@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.20',
+    date: '2026-07-23 17:48:19',
+    icon: '🏷️',
+    latest: true,
+    changes: '🏷️ 文章標籤搜索 API + 內鏈改名 internallinks + AI 標籤繁體中文 + UI 修正\n\n📋 文章標籤搜索 API（新增公開端點）\n• GET /api/v1/tags — 搜索已發布文章的標籤（ay_content.tags 字段）\n• 支持 ?q=關鍵詞 模糊搜索 + ?limit= 數量限制（最大 200）\n• 自動去重 + 繁體中文排序（localeCompare zh-Hant）\n• 公開無需認證，供前端網站標籤搜索使用\n\n📋 內鏈改名（tags → internallinks）\n• 公開 API：/api/v1/tags（內鏈）→ /api/v1/internallinks\n• 管理 API：/admin/tags → /admin/internallinks（全部 CRUD）\n• 前端頁面：Tags.tsx → InternalLinks.tsx\n• 路由：/tags → /internallinks（側邊欄 + App.tsx）\n• 「tag」命名讓給文章標籤使用，更語義化\n\n📋 AI 標籤建議改為繁體中文\n• mistral-7b system prompt 明確要求繁體中文輸出\n• 提供範例格式（醫療,健康,眼科,視力矯正）\n• 禁止英文/編號/解釋\n\n📋 ContentEdit UI 修正\n• 「📋 批量導入」按鈕移入歷史標籤行（同一行 flex-nowrap overflow-x-auto）\n• TagInput 新增 hideBulk prop，由父組件自行渲染批量導入',
+  },
+  {
     version: 'v1.9.19',
     date: '2026-07-23 17:20:23',
     icon: '🔍',
-    latest: true,
+    latest: false,
     changes: '🔍 語義搜索自動索引 + AI 標籤建議 + Checkbox 美化 + Queue 監控\n\n📋 語義搜索自動索引（修復死代碼）\n• indexArticle/deleteArticleVector 已實現但從未調用 — 現已接入內容 CRUD\n• POST /contents → 發布時 ctx.waitUntil(indexArticle)\n• PUT /contents/:id → 更新時重新索引（草稿則刪除向量）\n• DELETE /contents/:id → 移入回收站時刪除向量\n• 永久刪除 → 清理向量\n• 非阻塞執行，失敗不影響內容操作\n\n📋 AI 標籤建議\n• 新增 POST /admin/contents/ai-tags 端點（Workers AI mistral-7b）\n• ContentEdit 標籤區新增「🤖 AI 標籤建議」按鈕\n• 基於文章標題+內容生成 5-8 個標籤，自動去重合併\n\n📋 UI 優化\n• 標籤歷史按鈕改為單行不換行 + 橫向滾動\n• 置頂/推薦/頭條 checkbox 美化（自定義 peer-checked 樣式）\n• 置頂=藍色 / 推薦=綠色 / 頭條=琥珀色，hover 效果\n\n📋 Queue 監控\n• Dashboard 系統信息 Tab 新增「定時發布隊列」區塊\n• 顯示待發布任務列表 + 剩餘時間倒計算\n• publish-queue / publish-dlq 狀態指示燈',
   },
   {
@@ -581,7 +588,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/singles', desc: '單頁列表', auth: false },
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
-  { method: 'GET', path: '/api/v1/tags', desc: '內鏈標籤列表', auth: false },
+  { method: 'GET', path: '/api/v1/internallinks', desc: '內鏈關鍵詞列表（供前端 tagLink 自動連結）', auth: false },
+  { method: 'GET', path: '/api/v1/tags', desc: '文章標籤搜索（?q=關鍵詞&limit=50，搜索 ay_content.tags）', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
   { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },

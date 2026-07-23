@@ -692,6 +692,8 @@ export default function ContentEdit() {
   const [quillFaqPicker, setQuillFaqPicker] = useState(false) // Quill 編輯器 FAQ 插入器
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
   const [aiTagLoading, setAiTagLoading] = useState(false) // AI 標籤建議載入狀態
+  const [showBulkTags, setShowBulkTags] = useState(false) // 批量導入標籤展開狀態
+  const [bulkTagsText, setBulkTagsText] = useState('') // 批量導入標籤文本
   // 保存原始數據快照（用於保存時比對修改字段）
   const originalDataRef = useRef<Record<string, unknown> | null>(null)
   const [saveHint, setSaveHint] = useState<{ changedCount: number; fields: string[] } | null>(null)
@@ -1648,9 +1650,17 @@ export default function ContentEdit() {
                 values={form.tags ? form.tags.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : []}
                 onChange={(tags) => updateField('tags', tags.join(','))}
                 placeholder="輸入標籤後按 Enter 添加"
+                hideBulk
               />
               {allTags.length > 0 && (
                 <div className="mt-2 flex items-center gap-2 flex-nowrap overflow-x-auto pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkTags(!showBulkTags)}
+                    className="shrink-0 text-xs text-muted-foreground hover:text-primary transition-colors whitespace-nowrap"
+                  >
+                    {showBulkTags ? '收起' : '📋 批量導入'}
+                  </button>
                   <span className="text-xs text-muted-foreground shrink-0">📋 歷史標籤</span>
                   {allTags
                     .filter((t) => {
@@ -1673,6 +1683,40 @@ export default function ContentEdit() {
                         {tag}
                       </button>
                     ))}
+                </div>
+              )}
+              {showBulkTags && (
+                <div className="mt-1.5">
+                  <textarea
+                    value={bulkTagsText}
+                    onChange={(e) => setBulkTagsText(e.target.value)}
+                    placeholder="每行一個或用逗號分隔，批量添加標籤..."
+                    className="w-full px-2 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    rows={3}
+                  />
+                  <div className="flex justify-end gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => { setBulkTagsText(''); setShowBulkTags(false) }}
+                      className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lines = bulkTagsText.split(/[,，\n]/).map((s) => s.trim()).filter(Boolean)
+                        const current = form.tags ? form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
+                        const merged = [...new Set([...current, ...lines])]
+                        updateField('tags', merged.join(','))
+                        setBulkTagsText('')
+                        setShowBulkTags(false)
+                      }}
+                      className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:opacity-90"
+                    >
+                      添加全部
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

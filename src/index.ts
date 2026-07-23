@@ -405,7 +405,32 @@ app.get('/api/v1/slides', async (c) => {
   return extraService.handleListSlides(siteDB(c), params);
 });
 
-app.get('/api/v1/tags', async (c) => extraService.handleListTags(siteDB(c)));
+// 內鏈關鍵詞列表（供前端網站 tagLink 功能使用）
+app.get('/api/v1/internallinks', async (c) => extraService.handleListTags(siteDB(c)));
+
+// 文章標籤搜索（公開，搜索 ay_content.tags 字段）
+app.get('/api/v1/tags', async (c) => {
+  const q = (c.req.query('q') || '').trim();
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 200);
+  const db = siteDB(c);
+  // 從已發布文章中提取所有標籤（tags 字段為逗號分隔），去重 + 搜索過濾
+  const rows = await db.prepare(
+    `SELECT DISTINCT tags FROM ay_content WHERE status = '1' AND tags != '' AND tags IS NOT NULL`,
+  ).all<{ tags: string }>();
+  const tagSet = new Set<string>();
+  for (const row of rows.results) {
+    if (!row.tags) continue;
+    row.tags.split(/[,，]/).forEach((t) => {
+      const trimmed = t.trim();
+      if (trimmed) tagSet.add(trimmed);
+    });
+  }
+  let tags = Array.from(tagSet).sort((a, b) => a.localeCompare(b, 'zh-Hant'));
+  if (q) {
+    tags = tags.filter((t) => t.toLowerCase().includes(q.toLowerCase()));
+  }
+  return okData(tags.slice(0, limit), `找到 ${tags.length} 個標籤`);
+});
 
 // ===== 公開表單提交端點（隱蔽化路徑，通過 submit_token 路由）=====
 // 路徑格式：POST /api/v1/f/{submit_token}
@@ -544,7 +569,7 @@ app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfi
 app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M301 媒體庫
 app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));             // M401 友情連結
 app.use('/api/v1/admin/slides/*', requireMenuPermission('/admin/seo/slide'));           // M402 幻燈片
-app.use('/api/v1/admin/tags/*', requireMenuPermission('/admin/seo/tags'));              // M403 標籤管理
+app.use('/api/v1/admin/internallinks/*', requireMenuPermission('/admin/seo/tags'));   // M403 文章內鏈
 app.use('/api/v1/admin/labels/*', requireMenuPermission('/admin/seo/label'));           // M404 自定義標籤
 app.use('/api/v1/admin/site/*', requireMenuPermission('/admin/system/site'));           // M501 站點信息
 app.use('/api/v1/admin/company/*', requireMenuPermission('/admin/system/company'));     // M502 公司信息
@@ -582,10 +607,10 @@ app.post('/api/v1/admin/contents/ai-tags', async (c) => {
   const content = (typeof body.content === 'string' ? body.content : '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
   if (!title && !content) return err('標題和內容均為空', 1001);
   try {
-    const prompt = `Based on the following article, suggest 5-8 relevant tags (single words or short phrases, comma-separated, no numbering). Article title: "${title}". Content excerpt: "${content.slice(0, 500)}". Tags:`;
+    const prompt = `Based on the following article, suggest 5-8 relevant tags in Traditional Chinese (繁體中文). Single words or short phrases, comma-separated, no numbering. Article title: "${title}". Content excerpt: "${content.slice(0, 500)}". Tags:`;
     const aiResult = await c.env.AI.run('@cf/mistral/mistral-7b-instruct-v0.1', {
       messages: [
-        { role: 'system', content: 'You are a tag suggestion assistant. Respond ONLY with comma-separated tags, nothing else. Support both Chinese and English.' },
+        { role: 'system', content: 'You are a tag suggestion assistant. Respond ONLY with comma-separated tags in Traditional Chinese (繁體中文). No English, no explanations, no numbering. Example output: 醫療,健康,眼科,視力矯正' },
         { role: 'user', content: prompt },
       ],
       max_tokens: 100,
@@ -855,7 +880,7 @@ app.get('/api/v1/admin/stats', async (c) => {
     // Worker 版本元數據（Cloudflare version_metadata 綁定，僅管理後台可見）
     version: c.env.CF_VERSION_METADATA
       ? {
-          projectVersion: 'v1.9.19',
+          projectVersion: 'v1.9.20',
           workerId: c.env.CF_VERSION_METADATA.id,
           workerTag: c.env.CF_VERSION_METADATA.tag,
           workerTimestamp: c.env.CF_VERSION_METADATA.timestamp,
@@ -1133,20 +1158,20 @@ app.delete('/api/v1/admin/slides/:id', async (c) => {
   return extraService.handleDeleteSlide(siteDB(c), id);
 });
 
-// ===== 後台管理接口 - 標籤管理 =====
-app.get('/api/v1/admin/tags', async (c) => {
+// ===== 後台管理接口 - 文章內鏈（原標籤管理，ay_tags 表）=====
+app.get('/api/v1/admin/internallinks', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const params = new URL(c.req.url).searchParams;
   return extraService.handleAdminListTags(siteDB(c), params);
 });
 
-app.post('/api/v1/admin/tags', async (c) => {
+app.post('/api/v1/admin/internallinks', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
   const result = await extraService.handleCreateTag(siteDB(c), body, currentSiteId(c));
-  // 標籤變更影響文章內鏈渲染，清除內容緩存 + 標籤列表緩存
+  // 內鏈關鍵詞變更影響文章渲染，清除內容緩存 + 標籤列表緩存
   if (result.status === 200) {
     await clearContentCache(c.env.API_CACHE);
     await clearConfigCache(c.env.CONFIG_CACHE);
@@ -1154,7 +1179,7 @@ app.post('/api/v1/admin/tags', async (c) => {
   return result;
 });
 
-app.put('/api/v1/admin/tags/:id', async (c) => {
+app.put('/api/v1/admin/internallinks/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
@@ -1167,7 +1192,7 @@ app.put('/api/v1/admin/tags/:id', async (c) => {
   return result;
 });
 
-app.delete('/api/v1/admin/tags/:id', async (c) => {
+app.delete('/api/v1/admin/internallinks/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;

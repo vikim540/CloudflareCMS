@@ -11,7 +11,7 @@ import Singles from './pages/Singles'
 import SingleEdit from './pages/SingleEdit'
 import Links from './pages/Links'
 import Slides from './pages/Slides'
-import Tags from './pages/Tags'
+import InternalLinks from './pages/InternalLinks'
 import FormSubmissions from './pages/FormSubmissions'
 import FormManager from './pages/FormManager'
 import SiteInfo from './pages/SiteInfo'
@@ -102,7 +102,7 @@ export default function App() {
             <Route path="singles/:id" element={<RequirePermission mcode="M203"><SingleEdit /></RequirePermission>} />
             <Route path="links" element={<RequirePermission mcode="M401"><Links /></RequirePermission>} />
             <Route path="slides" element={<RequirePermission mcode="M402"><Slides /></RequirePermission>} />
-            <Route path="tags" element={<RequirePermission mcode="M403"><Tags /></RequirePermission>} />
+            <Route path="internallinks" element={<RequirePermission mcode="M403"><InternalLinks /></RequirePermission>} />
             <Route path="forms" element={<RequirePermission mcode="M210"><FormManager /></RequirePermission>} />
             <Route path="forms/submissions" element={<RequirePermission mcode="M204"><FormSubmissions /></RequirePermission>} />
             <Route path="site" element={<RequirePermission mcode="M501"><SiteInfo /></RequirePermission>} />

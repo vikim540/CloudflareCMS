@@ -1,9 +1,15 @@
+/**
+ * 文章內鏈管理頁面（原 Tags.tsx，v1.9.20 重命名）
+ *
+ * 管理文章正文中的關鍵詞自動連結（ay_tags 表）。
+ * API 路由從 /admin/tags 改為 /admin/internallinks，避免與文章標籤搜索 API 衝突。
+ */
 import { useEffect, useState, useCallback } from 'react'
 import { api } from '../lib/api'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
-/** 標籤數據結構（文章內鏈：關鍵詞 → 超連結自動替換） */
-interface TagItem {
+/** 內鏈數據結構（關鍵詞 → 超連結自動替換） */
+interface LinkItem {
   id: number
   name: string
   link: string
@@ -11,21 +17,21 @@ interface TagItem {
 }
 
 /** 表單數據 */
-interface TagForm {
+interface LinkForm {
   name: string
   link: string
   sorting: number
 }
 
 /** 空表單初始值 */
-const EMPTY_FORM: TagForm = {
+const EMPTY_FORM: LinkForm = {
   name: '',
   link: '',
   sorting: 1,
 }
 
-export default function Tags() {
-  const [tags, setTags] = useState<TagItem[]>([])
+export default function InternalLinks() {
+  const [links, setLinks] = useState<LinkItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
@@ -33,18 +39,18 @@ export default function Tags() {
 
   // 對話框狀態
   const [modalOpen, setModalOpen] = useState(false)
-  const [editTarget, setEditTarget] = useState<TagItem | null>(null)
-  const [form, setForm] = useState<TagForm>(EMPTY_FORM)
+  const [editTarget, setEditTarget] = useState<LinkItem | null>(null)
+  const [form, setForm] = useState<LinkForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState('')
 
-  /** 載入內鏈標籤列表 */
-  const fetchTags = useCallback(async () => {
+  /** 載入內鏈列表 */
+  const fetchLinks = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<TagItem[]>('/admin/tags')
-      setTags(res.data ?? [])
+      const res = await api.get<LinkItem[]>('/admin/internallinks')
+      setLinks(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')
     } finally {
@@ -53,8 +59,8 @@ export default function Tags() {
   }, [])
 
   useEffect(() => {
-    fetchTags()
-  }, [fetchTags])
+    fetchLinks()
+  }, [fetchLinks])
 
   /** 開啟新增對話框 */
   const openCreate = () => {
@@ -65,7 +71,7 @@ export default function Tags() {
   }
 
   /** 開啟編輯對話框 */
-  const openEdit = (item: TagItem) => {
+  const openEdit = (item: LinkItem) => {
     setEditTarget(item)
     setForm({
       name: item.name ?? '',
@@ -92,12 +98,12 @@ export default function Tags() {
         sorting: form.sorting,
       }
       if (editTarget) {
-        await api.put(`/admin/tags/${editTarget.id}`, payload)
+        await api.put(`/admin/internallinks/${editTarget.id}`, payload)
       } else {
-        await api.post('/admin/tags', payload)
+        await api.post('/admin/internallinks', payload)
       }
       setModalOpen(false)
-      await fetchTags()
+      await fetchLinks()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : '保存失敗')
     } finally {
@@ -105,13 +111,13 @@ export default function Tags() {
     }
   }
 
-  /** 刪除標籤 */
+  /** 刪除內鏈 */
   const handleDelete = async (id: number) => {
     if (!window.confirm('確定要刪除此內鏈關鍵詞嗎?')) return
     setActionLoading(id)
     try {
-      await api.del(`/admin/tags/${id}`)
-      await fetchTags()
+      await api.del(`/admin/internallinks/${id}`)
+      await fetchLinks()
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除失敗')
     } finally {
@@ -123,8 +129,8 @@ export default function Tags() {
   const handleSortSave = async (id: number, value: number) => {
     setSortSaving(id)
     try {
-      await api.put(`/admin/tags/${id}`, { sorting: value })
-      await fetchTags()
+      await api.put(`/admin/internallinks/${id}`, { sorting: value })
+      await fetchLinks()
     } catch (err) {
       setError(err instanceof Error ? err.message : '排序更新失敗')
     } finally {
@@ -163,9 +169,9 @@ export default function Tags() {
       {loading && <LoadingState text="載入中..." />}
 
       {/* 空狀態 */}
-      {!loading && tags.length === 0 && !error && (
+      {!loading && links.length === 0 && !error && (
         <>
-          <EmptyState icon="🏷️" text="尚未創建任何內鏈關鍵詞" />
+          <EmptyState icon="🔗" text="尚未創建任何內鏈關鍵詞" />
           <div className="flex justify-center -mt-16 pb-8">
             <button
               onClick={openCreate}
@@ -178,8 +184,8 @@ export default function Tags() {
         </>
       )}
 
-      {/* 標籤表格 */}
-      {!loading && tags.length > 0 && (
+      {/* 內鏈表格 */}
+      {!loading && links.length > 0 && (
         <div className="bg-white rounded-lg border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -193,7 +199,7 @@ export default function Tags() {
                 </tr>
               </thead>
               <tbody>
-                {tags.map((item) => (
+                {links.map((item) => (
                   <tr
                     key={item.id}
                     className="border-b last:border-0 hover:bg-accent/50 transition-colors"
@@ -201,7 +207,7 @@ export default function Tags() {
                     <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 font-medium">
-                        <span className="text-sm text-muted-foreground">🏷️</span>
+                        <span className="text-sm text-muted-foreground">🔗</span>
                         {item.name}
                       </span>
                     </td>
@@ -214,7 +220,7 @@ export default function Tags() {
                           className="inline-flex items-center gap-1 text-blue-600 hover:underline truncate max-w-xs"
                         >
                           <span className="truncate">{item.link}</span>
-                          <span className="text-xs shrink-0">🔗</span>
+                          <span className="text-xs shrink-0">↗</span>
                         </a>
                       ) : (
                         <span className="text-muted-foreground text-xs">-</span>
