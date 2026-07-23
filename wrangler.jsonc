@@ -19,6 +19,12 @@
     "enabled": true
   },
 
+  // Version Metadata：Worker 版本元數據綁定（id / tag / timestamp）
+  // 用於 /api/v1/version 端點，前端 Dashboard 展示當前部署版本信息
+  "version_metadata": {
+    "binding": "CF_VERSION_METADATA"
+  },
+
   // 多站點 D1 綁定（全部 APAC 地區）
   // DB = 主庫 endoscopy-cms（認證/用戶/角色/菜單等全局數據，向後兼容）
   // DB_SMILE / DB_VISION = 站點庫（各站點內容/配置等獨立數據）

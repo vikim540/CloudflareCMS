@@ -9,6 +9,12 @@ interface Stats {
   sortTotal: number
   visitsTotal: number
   todayNew: number
+  version?: {
+    projectVersion: string
+    workerId: string
+    workerTag: string
+    workerTimestamp: string
+  } | null
 }
 
 /** 當前激活的分頁 */
@@ -43,10 +49,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.18',
+    date: '2026-07-23 20:00:00',
+    icon: '🏷️',
+    latest: true,
+    changes: '🏷️ Cloudflare version_metadata 綁定 + 統一列表排序默認值\n\n📋 Version Metadata 綁定\n• wrangler.jsonc 新增 version_metadata 綁定（CF_VERSION_METADATA）\n• 新增 /api/v1/version 公開端點，返回 Worker 版本 ID/Tag/Timestamp\n• Dashboard 系統信息 Tab 新增「部署版本」區塊（即時展示當前部署版本）\n• Env 類型新增 WorkerVersionMetadata 聲明\n\n📋 統一列表排序（純前端改動）\n• 所有列表頁面 sorting 默認值從 0/255 統一為 1\n• Tags/Links/Singles 新增 inline input 排序編輯（失焦/Enter 保存）\n• 所有 inline input 添加 min={1} 約束\n• SortInput 組件驗證 v>=0 改為 v>=1\n• Contents 排序驗證 val<0 改為 val<1\n• Menus/FormManager 默認 255→1',
+  },
+  {
     version: 'v1.9.17',
     date: '2026-07-23 18:30:00',
     icon: '🔗',
-    latest: true,
+    latest: false,
     changes: '🔗 文章內鏈功能實現 + 標籤管理更名 + 留言系統遺留清理\n\n📋 文章內鏈替換引擎（核心功能）\n• 新建 src/utils/tagLink.ts — 五步預佔位替換算法（參考 PbootCMS Go 改進版）\n• Step 1: 保護 HTML 區塊（<a>/<pre>/<code>/所有標籤 → 佔位符）\n• Step 2: 去重同名標籤（修復 PHP strpos bug）\n• Step 3: 長詞優先（移除被更長 name 包含的短標籤）\n• Step 4: 預佔位替換（關鍵詞 → 佔位符，限制每詞 N 次）\n• Step 5: 還原佔位符 → <a> 標籤 + 還原保護的 HTML\n• URL 安全驗證（僅 http/https/相對路徑，阻斷 javascript:）\n• 自動添加 target="_blank" + rel="noopener noreferrer"\n\n📋 後端集成\n• handleContentDetail 新增 kv 參數，讀取 content_tags_replace_num 配置（默認 3）\n• 查詢 ay_tags 按 length(name) DESC 排序（長詞優先匹配）\n• 標籤 CRUD 後自動清除內容邊緣緩存（clearContentCache）\n• 替換失敗不影響正文返回（try/catch 保護）\n\n📋 前端更名（標籤管理 → 文章內鏈）\n• 側邊欄：🏷️ 標籤管理 → 🔗 文章內鏈\n• 頁面標題、對話框、表頭、按鈕文案全部更新\n• 新增功能說明提示框（解釋關鍵詞自動替換機制）\n\n📋 系統配置\n• Settings 新增「SEO 內鏈配置」分組（sorting 210-219）\n• content_tags_replace_num 配置項可在前端調整替換次數\n\n📋 留言系統遺留清理\n• 刪除 admin/src/pages/Messages.tsx 頁面\n• 移除 App.tsx 中 /messages 路由\n• 移除 index.ts 中 4 條 messages API 路由 + 權限中間件\n• 移除 extra.ts 中 6 個留言 handler + parseUserAgent 函數\n• 保留 ay_message 表（數據安全，不刪除歷史數據）',
   },
   {
@@ -672,8 +685,10 @@ export default function Dashboard() {
     sortTotal: 0,
     visitsTotal: 0,
     todayNew: 0,
+    version: null,
   })
 
+  // 獲取儀表板統計 + Worker 版本元數據（version_metadata 綁定，合併在 stats 響應中）
   useEffect(() => {
     api
       .get<Stats>('/admin/stats')
@@ -684,6 +699,7 @@ export default function Dashboard() {
           sortTotal: d?.sortTotal ?? 0,
           visitsTotal: d?.visitsTotal ?? 0,
           todayNew: d?.todayNew ?? 0,
+          version: d?.version ?? null,
         })
       })
       .catch(() => {})
@@ -1184,6 +1200,44 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
         {/* ========== Tab 4: 系統信息 ========== */}
         {activeTab === 'system' && (
           <div className="space-y-6">
+            {/* 部署版本（Cloudflare version_metadata 綁定） */}
+            <section>
+              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                <span>🏷️</span>
+                <span>部署版本</span>
+              </h3>
+              <div className="rounded-lg border border-border bg-gradient-to-br from-indigo-50 to-blue-50 p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">項目版本</div>
+                    <div className="font-bold text-lg text-indigo-700">
+                      {stats.version?.projectVersion ?? '未綁定'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Worker Version ID</div>
+                    <code className="font-mono text-xs text-foreground break-all">
+                      {stats.version?.workerId ?? '—'}
+                    </code>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">Version Tag</div>
+                    <code className="font-mono text-xs text-foreground">
+                      {stats.version?.workerTag ?? '—'}
+                    </code>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-1">部署時間</div>
+                    <code className="font-mono text-xs text-foreground">
+                      {stats.version?.workerTimestamp
+                        ? new Date(stats.version.workerTimestamp).toLocaleString('zh-HK', { timeZone: 'Asia/Hong_Kong' })
+                        : '—'}
+                    </code>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* 項目信息 */}
             <section>
               <h3 className="text-base font-semibold mb-3 flex items-center gap-2">

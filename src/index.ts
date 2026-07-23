@@ -66,6 +66,7 @@ export interface Env {
   LOGIN_LIMIT: RateLimit;
   FORM_LIMIT: RateLimit;
   'Flagship-service'?: Flagship;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;  // Worker 版本元數據（id / tag / timestamp）
 }
 
 /** Hono 應用環境類型 (含 Bindings 和 Variables) */
@@ -765,6 +766,15 @@ app.get('/api/v1/admin/stats', async (c) => {
     sortTotal: sortTotal?.n ?? 0,
     visitsTotal: visitsTotal?.n ?? 0,
     todayNew: todayNew?.n ?? 0,
+    // Worker 版本元數據（Cloudflare version_metadata 綁定，僅管理後台可見）
+    version: c.env.CF_VERSION_METADATA
+      ? {
+          projectVersion: 'v1.9.18',
+          workerId: c.env.CF_VERSION_METADATA.id,
+          workerTag: c.env.CF_VERSION_METADATA.tag,
+          workerTimestamp: c.env.CF_VERSION_METADATA.timestamp,
+        }
+      : null,
   }, '成功');
 });
 
