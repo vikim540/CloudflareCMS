@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, getCurrentSiteId } from '../lib/api'
 import { LoadingState } from '../components/StateDisplay'
 
 interface StorageConfig {
@@ -89,7 +89,7 @@ export default function Storage() {
         `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/storage/upload`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, 'X-Site-Id': getCurrentSiteId() },
           body: formData,
         },
       )

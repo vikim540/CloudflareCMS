@@ -19,6 +19,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { compressImage, type CompressOptions } from '../lib/imageCompress';
+import { getCurrentSiteId } from '../lib/api';
 
 /** 上傳進度信息 */
 export interface UploadProgress {
@@ -76,6 +77,7 @@ async function uploadFileToServer(
 
     xhr.open('POST', endpoint);
     xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('X-Site-Id', getCurrentSiteId());
 
     // 上傳進度
     if (onProgress) {
