@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.23',
+    date: '2026-07-27 11:10:24',
+    icon: '🐛',
+    latest: true,
+    changes: '🐛 修復跨站上傳圖片存錯目錄\n\n📋 問題根因\n• useImageUpload.ts 的 uploadFileToServer 用 XHR 上傳，只設置了 Authorization header\n• Storage.tsx 測試上傳用 fetch，也只設置了 Authorization\n• 兩處均缺失 X-Site-Id header，後端收不到站點標識回退到 endoscopy\n• 導致在 Smile/Vision 站點上傳圖片時，文件被存到 endoscopy/uploads/ 目錄\n\n📋 修復內容\n• useImageUpload.ts：XHR 請求增加 setRequestHeader("X-Site-Id", getCurrentSiteId())\n• Storage.tsx：fetch 請求 headers 增加 X-Site-Id: getCurrentSiteId()\n• 兩處均從 api.ts 導入 getCurrentSiteId 函數\n• 純前端修復，後端 siteId 解析邏輯無需變更',
+  },
+  {
     version: 'v1.9.22',
     date: '2026-07-27 10:03:25',
     icon: '🗂️',
-    latest: true,
+    latest: false,
     changes: '🗂️ 日誌分類合併 + 媒體庫站點隔離\n\n📋 日誌頁面優化\n• 刪除「爬蟲日誌」Tab（無實際使用價值）\n• 合併「管理操作」+「安全日誌」為「管理日誌」\n• 後端 buildLogWhereClause admin 查詢同時匹配 admin + security 級別\n• 日誌 Tab 從 7 類精簡為 5 類：全部 / 內容操作 / 管理日誌 / 通知日誌 / 錯誤日誌\n\n📋 媒體庫站點隔離（S3 prefix 方案）\n• 上傳路徑從 uploads/ 改為 {siteId}/uploads/（如 endoscopy/uploads/、vision/uploads/）\n• 媒體庫列表、上傳、清理未使用 三個端點均按站點隔離\n• vision 站點無法看到 endoscopy 的媒體資源，反之亦然\n• 零數據庫變更、零新表、僅 S3 key 路徑前綴變化\n• 已有舊文件（uploads/ 路徑）仍可通過 URL 訪問，但不在媒體庫列表顯示',
   },
   {
