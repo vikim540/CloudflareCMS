@@ -113,6 +113,7 @@ export async function handleCreateSort(
 
   const pcode = body.pcode || '0';
   const mcode = body.mcode || '2';
+  const filename = (body.filename as string) || '';
   const now = nowStr();
 
   // 計算同級欄目的最大排序值 + 1（默認從 1 開始）
@@ -124,8 +125,8 @@ export async function handleCreateSort(
 
   // 先插入,取得自增 ID 後再回填 scode
   const result = await db.prepare(
-    "INSERT INTO ay_content_sort (acode, mcode, pcode, scode, name, sorting, status, gtype, gid, create_time, update_time) VALUES (?, ?, ?, '', ?, ?, '1', '4', '', ?, ?)",
-  ).bind(acode, mcode, pcode, name, newSorting, now, now).run();
+    "INSERT INTO ay_content_sort (acode, mcode, pcode, scode, name, filename, sorting, status, gtype, gid, create_time, update_time) VALUES (?, ?, ?, '', ?, ?, ?, '1', '4', '', ?, ?)",
+  ).bind(acode, mcode, pcode, name, filename, newSorting, now, now).run();
 
   if (result.meta.changes > 0) {
     // 用自增 ID 作為 scode (與 PbootCMS 風格一致)

@@ -319,8 +319,20 @@ app.get('/api/health', (c) => {
 app.post('/api/v1/auth/login', loginRateLimit(), async (c) => {
   const body = await c.req.json();
   const loginIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
   const turnstileSecret = await c.env.TURNSTILE_SECRET_STORE.get();
-  return authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, await c.env.JWT_SECRET_STORE.get(), body, loginIp, turnstileSecret);
+  const result = await authService.handleLogin(primaryDB(c), c.env.CONFIG_CACHE, await c.env.JWT_SECRET_STORE.get(), body, loginIp, turnstileSecret);
+  // 記錄登錄日誌（成功/失敗均記錄）
+  try {
+    const cloned = result.clone();
+    const respBody = await cloned.json() as { code?: number; msg?: string };
+    const isSuccess = respBody.code === 0;
+    const event = isSuccess ? `用戶登錄: ${body.username || ''}` : `登錄失敗: ${body.username || ''}（${respBody.msg || '未知原因'}）`;
+    c.executionCtx.waitUntil(
+      systemService.logAction(primaryDB(c), body.username || '', loginIp, userAgent, event, isSuccess ? 'security' : 'error', '/api/v1/auth/login'),
+    );
+  } catch { /* ignore */ }
+  return result;
 });
 
 // 公開：獲取 Turnstile 配置（site key 是公開的，secret key 不返回）
@@ -344,6 +356,12 @@ app.get('/api/v1/auth/profile', async (c) => {
 app.post('/api/v1/auth/logout', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
+  const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
+  const userAgent = c.req.header('User-Agent') || '';
+  // 記錄退出日誌（用戶主動點擊退出）
+  c.executionCtx.waitUntil(
+    systemService.logAction(primaryDB(c), claims.username, userIp, userAgent, `用戶退出登錄: ${claims.username}`, 'security', '/api/v1/auth/logout'),
+  );
   return authService.handleLogout(c.env.TOKEN_BLACKLIST, claims);
 });
 
@@ -467,8 +485,8 @@ app.use('/api/v1/admin/*', async (c, next) => {
 });
 
 // ===== 後台管理 - 操作日誌中間件 =====
-// 自動記錄所有 admin POST/PUT/DELETE 操作到 ay_syslog
-// 記錄內容操作、敏感數據變更、操作錯誤，使用 waitUntil 異步寫入
+// 自動記錄管理操作到 ay_syslog，格式化為可讀的用戶行為描述
+// 過濾系統自動觸發的噪音端點，僅記錄有意義的用戶操作
 app.use('/api/v1/admin/*', async (c, next) => {
   await next();
 
@@ -483,19 +501,52 @@ app.use('/api/v1/admin/*', async (c, next) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
 
-  // 根據 URL 推斷操作類型和日誌級別
+  // 過濾噪音端點（系統自動觸發、非用戶主動操作）
+  const skipPaths = [
+    '/notify/version-check',  // Dashboard 自動觸發的版本檢查
+    '/notify/test-mail',      // 測試郵件
+    '/notify/test-webhook',   // 測試 Webhook
+    '/flags/',                // 功能開關讀取/切換（系統級）
+    '/stats',                 // 統計數據讀取
+    '/vectorize/reindex',     // 重建索引（系統維護）
+  ];
+  if (skipPaths.some((p) => path.includes(p))) return;
+
+  // 方法 → 中文動詞
+  const methodMap: Record<string, string> = { POST: '新增', PUT: '修改', DELETE: '刪除' };
+  const verb = methodMap[method] || method;
+
+  // 路徑 → 資源中文名 + 日誌級別
+  let resource = '';
   let level = 'admin';
-  let action = '';
-  if (path.includes('/contents')) { level = 'content'; action = '內容管理'; }
-  else if (path.includes('/sorts')) { level = 'content'; action = '欄目管理'; }
-  else if (path.includes('/models')) { level = 'content'; action = '模型管理'; }
-  else if (path.includes('/upload') || path.includes('/storage') || path.includes('/media')) { level = 'content'; action = '媒體存儲'; }
-  else if (path.includes('/users')) { level = 'security'; action = '用戶管理'; }
-  else if (path.includes('/roles')) { level = 'security'; action = '角色管理'; }
-  else if (path.includes('/menus')) { level = 'security'; action = '菜單管理'; }
-  else if (path.includes('/configs')) { level = 'security'; action = '系統配置'; }
-  else if (path.includes('/flags')) { level = 'security'; action = '功能開關'; }
-  else if (path.includes('/database')) { level = 'security'; action = '數據庫備份'; }
+  if (path.includes('/contents')) { resource = '文章'; level = 'content'; }
+  else if (path.includes('/sorts')) { resource = '欄目'; level = 'content'; }
+  else if (path.includes('/models')) { resource = '內容模型'; level = 'content'; }
+  else if (path.includes('/singles')) { resource = '單頁'; level = 'content'; }
+  else if (path.includes('/extfields')) { resource = '擴展字段'; level = 'content'; }
+  else if (path.includes('/slides')) { resource = '幻燈片'; level = 'content'; }
+  else if (path.includes('/links') && !path.includes('/internallinks')) { resource = '友情連結'; level = 'content'; }
+  else if (path.includes('/internallinks')) { resource = '文章內鏈'; level = 'content'; }
+  else if (path.includes('/media')) { resource = '媒體資源'; level = 'content'; }
+  else if (path.includes('/forms')) { resource = '表單'; level = 'content'; }
+  else if (path.includes('/upload')) { resource = '文件上傳'; level = 'content'; }
+  else if (path.includes('/users')) { resource = '系統用戶'; level = 'security'; }
+  else if (path.includes('/roles')) { resource = '角色'; level = 'security'; }
+  else if (path.includes('/menus')) { resource = '菜單'; level = 'security'; }
+  else if (path.includes('/configs')) { resource = '系統配置'; level = 'security'; }
+  else if (path.includes('/site')) { resource = '站點信息'; level = 'security'; }
+  else if (path.includes('/company')) { resource = '公司信息'; level = 'security'; }
+  else if (path.includes('/database')) { resource = '數據庫'; level = 'security'; }
+  else if (path.includes('/storage')) { resource = '存儲設置'; level = 'security'; }
+  else if (path.includes('/sites')) { resource = '多站點'; level = 'security'; }
+  else { resource = path.split('/').pop() || path; }
+
+  // 特殊操作描述（批量排序、回收站等）
+  let actionDesc = `${verb}${resource}`;
+  if (path.includes('/batch-sorting')) actionDesc = `批量調整${resource}排序`;
+  else if (path.includes('/trash')) actionDesc = `查看${resource}回收站`;
+  else if (path.includes('/restore')) actionDesc = `從回收站還原${resource}`;
+  else if (path.includes('/permanent')) actionDesc = `永久刪除${resource}`;
 
   // 檢查響應是否為錯誤
   let isError = false;
@@ -516,7 +567,7 @@ app.use('/api/v1/admin/*', async (c, next) => {
   } catch { /* 響應非 JSON，忽略 */ }
 
   const finalLevel = isError ? 'error' : level;
-  const event = `${method} ${path} - ${action}${isError ? ` 失敗: ${errorMsg}` : ''}`;
+  const event = isError ? `${actionDesc} 失敗: ${errorMsg}` : actionDesc;
 
   c.executionCtx.waitUntil(
     systemService.logAction(primaryDB(c), claims.username, userIp, userAgent, event, finalLevel, path),

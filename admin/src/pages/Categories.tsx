@@ -13,6 +13,7 @@ interface Sort {
   scode: string
   pcode: string
   mcode: string
+  filename: string
   status: string
   sorting: number
   keywords: string
@@ -35,12 +36,14 @@ interface CreateForm {
   name: string
   pcode: string
   mcode: string
+  filename: string
 }
 
 /** 編輯欄目表單 */
 interface EditForm {
   name: string
   subname: string
+  filename: string
   sorting: number
   status: string
   keywords: string
@@ -211,7 +214,7 @@ export default function Categories() {
 
   // 新增對話框狀態
   const [createOpen, setCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState<CreateForm>({ name: '', pcode: '0', mcode: '2' })
+  const [createForm, setCreateForm] = useState<CreateForm>({ name: '', pcode: '0', mcode: '2', filename: '' })
   const [creating, setCreating] = useState(false)
 
   // 編輯對話框狀態
@@ -219,6 +222,7 @@ export default function Categories() {
   const [editForm, setEditForm] = useState<EditForm>({
     name: '',
     subname: '',
+    filename: '',
     sorting: 1,
     status: '1',
     keywords: '',
@@ -307,7 +311,7 @@ export default function Categories() {
   const openCreate = () => {
     // 預設選擇第一個列表型模型 (type='2')
     const firstListModel = models.find((m) => m.type === '2' && m.status === '1')
-    setCreateForm({ name: '', pcode: '0', mcode: firstListModel?.mcode || '2' })
+    setCreateForm({ name: '', pcode: '0', mcode: firstListModel?.mcode || '2', filename: '' })
     setActionError('')
     setCreateOpen(true)
   }
@@ -325,6 +329,7 @@ export default function Categories() {
         name: createForm.name.trim(),
         pcode: createForm.pcode,
         mcode: createForm.mcode,
+        filename: createForm.filename.trim(),
       })
       setCreateOpen(false)
       await fetchTree()
@@ -341,6 +346,7 @@ export default function Categories() {
     setEditForm({
       name: node.name,
       subname: node.subname || '',
+      filename: node.filename || '',
       sorting: node.sorting ?? 1,
       status: node.status ?? '1',
       keywords: node.keywords || '',
@@ -362,6 +368,7 @@ export default function Categories() {
       await api.put(`/admin/sorts/${editTarget.id}`, {
         name: editForm.name.trim(),
         subname: editForm.subname,
+        filename: editForm.filename.trim(),
         sorting: editForm.sorting,
         status: editForm.status,
         keywords: editForm.keywords,
@@ -608,6 +615,20 @@ export default function Categories() {
                   autoFocus
                 />
               </div>
+              {/* URL名稱 */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">URL名稱</label>
+                <input
+                  type="text"
+                  value={createForm.filename}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, filename: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="如 about、news/latest（英文/數字/橫線）"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  用於生成欄目URL路徑，留空則自動使用欄目ID
+                </p>
+              </div>
               {/* 父欄目 */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">父欄目</label>
@@ -712,6 +733,20 @@ export default function Categories() {
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="欄目副標題（可選）"
                 />
+              </div>
+              {/* URL名稱 */}
+              <div>
+                <label className="block text-sm font-medium mb-1.5">URL名稱</label>
+                <input
+                  type="text"
+                  value={editForm.filename}
+                  onChange={(e) => setEditForm((f) => ({ ...f, filename: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="如 about、news/latest（英文/數字/橫線）"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  用於生成欄目URL路徑，留空則使用欄目ID
+                </p>
               </div>
               {/* 排序 & 狀態 */}
               <div className="grid grid-cols-2 gap-4">

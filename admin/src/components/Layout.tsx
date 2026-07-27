@@ -397,9 +397,9 @@ function LayoutInner() {
 
   return (
     <FeatureFlagProvider>
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       {/* 側邊欄 */}
-      <aside className="w-56 bg-white border-r flex flex-col">
+      <aside className="w-56 bg-white border-r flex flex-col shrink-0 h-screen">
         <div className="h-14 flex items-center px-6 border-b relative" ref={siteDropdownRef}>
           {/* 站點選擇器：顯示當前站點名稱，點擊展開下拉選單 */}
           <button
@@ -551,7 +551,7 @@ function LayoutInner() {
       </aside>
 
       {/* 主內容區 — key 綁定權限變化，確保 RequirePermission 在權限更新後重新渲染 */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto h-screen">
         <Outlet key={JSON.stringify(userInfo?.permissions ?? [])} />
       </main>
 

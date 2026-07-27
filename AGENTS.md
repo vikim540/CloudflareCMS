@@ -24,7 +24,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.113.0 | `D:\AI\Cache\pnpm-home\wrangler.CMD`（npm 全局安裝至 `D:\AI\Cache\npm-global`，junction 映射至 pnpm-home；pnpm 全局安裝因 Windows 原生二進制鎖定不可用）。**注意**：4.112.0+ 在 Windows 上 Worker/Pages 部署有 `.wrangler/tmp` 寫入權限 bug（`Access is denied`），部署請使用本地 `node node_modules/wrangler/bin/wrangler.js`（4.111.0） |
+| wrangler | 最新版 | `D:\AI\Cache\npm-home\wrangler.cmd `（如遇到啟動命令非最新版4.112.0+以上  請使用rg操作：reg add "HKCU\Software\Microsoft\Command Processor" /v AutoRun /t REG_SZ /d "doskey wrangler=D:\AI\Cache\npm-home\wrangler.cmd $*" /f ） |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
