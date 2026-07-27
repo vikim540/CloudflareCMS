@@ -16,18 +16,15 @@ interface LogItem {
 }
 
 /**
- * 日誌類型標籤頁定義（7 類，完全互斥，每條日誌僅屬於一個類別）
- * 後端 level 參數: admin=管理操作, content=內容操作, security=安全日誌, error=錯誤日誌, notify=通知日誌, spider=爬蟲日誌, all=全部
- * 分類原則：通知日誌含成功+失敗（用顏色區分），錯誤日誌僅含系統級錯誤
+ * 日誌類型標籤頁定義（5 類，完全互斥，每條日誌僅屬於一個類別）
+ * 後端 level 參數: admin=管理日誌(含原admin+security), content=內容操作, error=錯誤日誌, notify=通知日誌, all=全部
  */
 const LOG_TABS = [
   { key: 'all', label: '📋 全部' },
   { key: 'content', label: '📝 內容操作' },
-  { key: 'admin', label: '🛡️ 管理操作' },
-  { key: 'security', label: '🔐 安全日誌' },
+  { key: 'admin', label: '🛡️ 管理日誌' },
   { key: 'notify', label: '🔔 通知日誌' },
   { key: 'error', label: '❌ 錯誤日誌' },
-  { key: 'spider', label: '🕷️ 爬蟲日誌' },
 ] as const
 
 /** 每頁條數 */
@@ -37,15 +34,13 @@ const PAGE_SIZE = 20
 function getLevelBadge(level: string): { label: string; className: string } {
   switch (level) {
     case 'admin':
-      return { label: '系統', className: 'bg-blue-100 text-blue-700' }
-    case 'content':
-      return { label: '內容', className: 'bg-cyan-100 text-cyan-700' }
+      return { label: '管理', className: 'bg-blue-100 text-blue-700' }
     case 'security':
       return { label: '安全', className: 'bg-orange-100 text-orange-700' }
+    case 'content':
+      return { label: '內容', className: 'bg-cyan-100 text-cyan-700' }
     case 'error':
       return { label: '錯誤', className: 'bg-red-100 text-red-700' }
-    case 'spider':
-      return { label: '蜘蛛', className: 'bg-purple-100 text-purple-700' }
     case 'mail_success':
       return { label: '郵件成功', className: 'bg-green-100 text-green-700' }
     case 'mail_error':
@@ -130,7 +125,7 @@ export default function Logs() {
             <span className="text-2xl">📜</span>
             操作日誌
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">內容操作、管理操作、安全、通知、錯誤、爬蟲日誌分類查看</p>
+          <p className="text-sm text-muted-foreground mt-1">內容操作、管理日誌、通知、錯誤日誌分類查看</p>
         </div>
         <button
           onClick={handleClear}

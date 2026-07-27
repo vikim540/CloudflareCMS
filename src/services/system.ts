@@ -774,20 +774,14 @@ export async function handleDeleteMenuAction(db: D1Database, id: number): Promis
  */
 function buildLogWhereClause(level: string): string {
   if (level === 'admin') {
-    // 系統操作：排除 spider、通知日誌、以及細分類別（content/security/error 各有獨立 Tab）
-    return "level NOT LIKE 'spider' AND level NOT LIKE 'mail_%' AND level NOT LIKE 'webhook_%' AND level NOT IN ('content', 'security', 'error')";
+    // 管理日誌：合併原 admin + security，排除 content/notify/error
+    return "level IN ('admin', 'security')";
   }
   if (level === 'content') {
     return "level = 'content'";
   }
-  if (level === 'security') {
-    return "level = 'security'";
-  }
   if (level === 'error') {
     return "level = 'error'";
-  }
-  if (level === 'spider') {
-    return "level = 'spider'";
   }
   if (level === 'notify') {
     return "level LIKE 'mail_%' OR level LIKE 'webhook_%'";
@@ -843,7 +837,7 @@ export async function handleClearLogs(
 
   const whereClause = buildLogWhereClause(type);
   if (!whereClause) {
-    return err('無效的日誌類型, 支持: admin / content / security / error / notify / all', 1001);
+    return err('無效的日誌類型, 支持: admin / content / error / notify / all', 1001);
   }
 
   await db.prepare(`DELETE FROM ay_syslog WHERE ${whereClause}`).run();

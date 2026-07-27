@@ -957,7 +957,7 @@ app.post('/api/v1/admin/storage/upload', async (c) => {
   if (!claims) return err('未授權', 2002);
   return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  });
+  }, currentSiteId(c));
 });
 
 app.get('/api/v1/admin/storage/download/:key{.+}', async (c) => {
@@ -1003,7 +1003,7 @@ app.get('/api/v1/admin/media', async (c) => {
   const params = new URL(c.req.url).searchParams;
   return storageService.handleListMedia(siteDB(c), c.env.CONFIG_CACHE, params, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  });
+  }, currentSiteId(c));
 });
 
 // 文件詳情 (含使用狀態和標記狀態)
@@ -1035,7 +1035,7 @@ app.post('/api/v1/admin/media/clean', async (c) => {
   const force = body.force === true || body.force === 1 || body.force === '1';
   return storageService.handleCleanUnused(siteDB(c), c.env.CONFIG_CACHE, force, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  });
+  }, currentSiteId(c));
 });
 
 app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
@@ -1054,7 +1054,7 @@ app.post('/api/v1/admin/upload', async (c) => {
   if (!claims) return err('未授權', 2002);
   return storageService.handleUpload(siteDB(c), c.env.CONFIG_CACHE, c.req.raw, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  });
+  }, currentSiteId(c));
 });
 
 // ===== 後台管理接口 - 單頁管理 =====

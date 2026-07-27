@@ -399,6 +399,7 @@ export async function handleUpload(
   kv: KVNamespace,
   request: Request,
   s3Secrets?: S3Secrets,
+  siteId: string = 'endoscopy',
 ): Promise<Response> {
   const formData = await request.formData();
   const file = formData.get('file');
@@ -424,7 +425,7 @@ export async function handleUpload(
   }
 
   const contentType = file.type || guessContentType(file.name);
-  const key = generateKey(file.name, 'uploads', contentType);
+  const key = generateKey(file.name, `${siteId}/uploads`, contentType);
   const data = await file.arrayBuffer();
 
   try {
@@ -630,13 +631,14 @@ export async function handleListMedia(
   kv: KVNamespace,
   params: URLSearchParams,
   s3Secrets?: S3Secrets,
+  siteId: string = 'endoscopy',
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
 
-  const prefix = params.get('prefix') || 'uploads/';
+  const prefix = params.get('prefix') || `${siteId}/uploads/`;
   const maxKeys = Math.min(parseInt(params.get('pagesize') || '50', 10), 200);
   const cursor = params.get('cursor') || '';
 
@@ -809,6 +811,7 @@ export async function handleCleanUnused(
   kv: KVNamespace,
   force = false,
   s3Secrets?: S3Secrets,
+  siteId: string = 'endoscopy',
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
@@ -828,7 +831,7 @@ export async function handleCleanUnused(
   const deletedKeys: string[] = [];
 
   do {
-    const result = await s3ListObjects(s3Config, 'uploads/', 200, cursor);
+    const result = await s3ListObjects(s3Config, `${siteId}/uploads/`, 200, cursor);
     total += result.files.length;
 
     for (const file of result.files) {
