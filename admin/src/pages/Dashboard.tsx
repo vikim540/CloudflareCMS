@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.21',
+    date: '2026-07-27 08:56:01',
+    icon: '🔧',
+    latest: true,
+    changes: '🔧 欄目URL名稱填寫 + 系統日誌可讀化 + 側邊欄固定佈局\n\n📋 欄目管理補全 URL名稱\n• 後端 handleCreateSort INSERT 新增 filename 欄位\n• 新增欄目 modal 加入 URL名稱輸入框（欄目名稱下方）\n• 編輯欄目 modal 加入 URL名稱輸入框（副標題下方）\n• 修復 openCreate/handleCreate/editForm 遺漏 filename 欄位\n\n📋 系統日誌改為用戶操作行為\n• 過濾噪音端點（version-check、測試郵件/Webhook、功能開關等系統自動觸發事件）\n• 格式化為可讀描述：「新增欄目」「修改文章」「刪除系統用戶」\n• 支援批量排序、回收站還原、永久刪除等特殊操作描述\n• 登錄成功/失敗均記錄日誌（含用戶名+原因）\n• 用戶主動退出登錄記錄日誌\n\n📋 側邊欄固定 + main 獨立滾動\n• html/body/#root 設置 height:100% + overflow:hidden\n• 側邊欄 aside 固定 shrink-0 h-screen，始終100vh展示\n• 主內容區 main 改為 overflow-y-auto h-screen，獨立滾動\n• 不再整體 div 被滾動',
+  },
+  {
     version: 'v1.9.20',
     date: '2026-07-23 17:48:19',
     icon: '🏷️',
-    latest: true,
+    latest: false,
     changes: '🏷️ 文章標籤搜索 API + 內鏈改名 internallinks + AI 標籤繁體中文 + UI 修正\n\n📋 文章標籤搜索 API（新增公開端點）\n• GET /api/v1/tags — 搜索已發布文章的標籤（ay_content.tags 字段）\n• 支持 ?q=關鍵詞 模糊搜索 + ?limit= 數量限制（最大 200）\n• 自動去重 + 繁體中文排序（localeCompare zh-Hant）\n• 公開無需認證，供前端網站標籤搜索使用\n\n📋 內鏈改名（tags → internallinks）\n• 公開 API：/api/v1/tags（內鏈）→ /api/v1/internallinks\n• 管理 API：/admin/tags → /admin/internallinks（全部 CRUD）\n• 前端頁面：Tags.tsx → InternalLinks.tsx\n• 路由：/tags → /internallinks（側邊欄 + App.tsx）\n• 「tag」命名讓給文章標籤使用，更語義化\n\n📋 AI 標籤建議改為繁體中文\n• mistral-7b system prompt 明確要求繁體中文輸出\n• 提供範例格式（醫療,健康,眼科,視力矯正）\n• 禁止英文/編號/解釋\n\n📋 ContentEdit UI 修正\n• 「📋 批量導入」按鈕移入歷史標籤行（同一行 flex-nowrap overflow-x-auto）\n• TagInput 新增 hideBulk prop，由父組件自行渲染批量導入',
   },
   {
