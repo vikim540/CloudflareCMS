@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.22',
+    date: '2026-07-27 10:03:25',
+    icon: '🗂️',
+    latest: true,
+    changes: '🗂️ 日誌分類合併 + 媒體庫站點隔離\n\n📋 日誌頁面優化\n• 刪除「爬蟲日誌」Tab（無實際使用價值）\n• 合併「管理操作」+「安全日誌」為「管理日誌」\n• 後端 buildLogWhereClause admin 查詢同時匹配 admin + security 級別\n• 日誌 Tab 從 7 類精簡為 5 類：全部 / 內容操作 / 管理日誌 / 通知日誌 / 錯誤日誌\n\n📋 媒體庫站點隔離（S3 prefix 方案）\n• 上傳路徑從 uploads/ 改為 {siteId}/uploads/（如 endoscopy/uploads/、vision/uploads/）\n• 媒體庫列表、上傳、清理未使用 三個端點均按站點隔離\n• vision 站點無法看到 endoscopy 的媒體資源，反之亦然\n• 零數據庫變更、零新表、僅 S3 key 路徑前綴變化\n• 已有舊文件（uploads/ 路徑）仍可通過 URL 訪問，但不在媒體庫列表顯示',
+  },
+  {
     version: 'v1.9.21',
     date: '2026-07-27 08:56:01',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: '🔧 欄目URL名稱填寫 + 系統日誌可讀化 + 側邊欄固定佈局\n\n📋 欄目管理補全 URL名稱\n• 後端 handleCreateSort INSERT 新增 filename 欄位\n• 新增欄目 modal 加入 URL名稱輸入框（欄目名稱下方）\n• 編輯欄目 modal 加入 URL名稱輸入框（副標題下方）\n• 修復 openCreate/handleCreate/editForm 遺漏 filename 欄位\n\n📋 系統日誌改為用戶操作行為\n• 過濾噪音端點（version-check、測試郵件/Webhook、功能開關等系統自動觸發事件）\n• 格式化為可讀描述：「新增欄目」「修改文章」「刪除系統用戶」\n• 支援批量排序、回收站還原、永久刪除等特殊操作描述\n• 登錄成功/失敗均記錄日誌（含用戶名+原因）\n• 用戶主動退出登錄記錄日誌\n\n📋 側邊欄固定 + main 獨立滾動\n• html/body/#root 設置 height:100% + overflow:hidden\n• 側邊欄 aside 固定 shrink-0 h-screen，始終100vh展示\n• 主內容區 main 改為 overflow-y-auto h-screen，獨立滾動\n• 不再整體 div 被滾動',
   },
   {
