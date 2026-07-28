@@ -5,7 +5,7 @@
   "services": [
     {
       "binding": "API",
-      "service": "rust-cms"
+      "service": "cfstack-cms"
     }
   ]
 }

@@ -667,15 +667,22 @@ export default function Slides() {
                     <td className="px-4 py-3 text-muted-foreground">{item.subtitle || '-'}</td>
                     <td className="px-4 py-3">
                       {item.link ? (
-                        <a
-                          href={item.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-blue-600 hover:underline truncate max-w-[160px]"
-                        >
-                          <span className="truncate">{item.link}</span>
-                          <span className="text-xs shrink-0">🔗</span>
-                        </a>
+                        item.link.startsWith('http://') || item.link.startsWith('https://') ? (
+                          <a
+                            href={item.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-600 hover:underline truncate max-w-[160px]"
+                          >
+                            <span className="truncate">{item.link}</span>
+                            <span className="text-xs shrink-0">🔗</span>
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground truncate max-w-[160px]" title="站內連結，不提供跳轉">
+                            <span className="truncate font-mono text-xs">{item.link}</span>
+                            <span className="text-xs shrink-0">🔗</span>
+                          </span>
+                        )
                       ) : (
                         <span className="text-muted-foreground text-xs">-</span>
                       )}

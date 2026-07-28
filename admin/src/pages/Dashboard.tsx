@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.28',
+    date: '2026-07-28 16:13:39',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 Worker 更名 + 媒體庫標記 UI 優化 + 幻燈片連結智能處理\n\n📋 變更內容\n• Worker 名稱 rust-cms → cfstack-cms（wrangler.jsonc + admin/wrangler.jsonc Service Binding 同步更新）\n• 媒體庫標記保護按鈕優化：未標記 hover 顯示 🔐（點擊鎖定）、已標記顯示 🔒（右上角琥珀色徽章）、取消標記按鈕 🔓 + 綠色背景（區分解鎖操作）\n• 幻燈片管理連結智能處理：完整 URL（http/https）保持可點擊超鏈接、相對路徑（站內 API 連結）顯示為純文本 + 🔗 圖標，避免點擊跳轉 cms 域名不存在路徑造成非技術人員誤解`,
+  },
+  {
     version: 'v1.9.27',
     date: '2026-07-28 15:00:28',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 媒體庫追蹤回滾過度設計 + 性能優化\n\n📋 問題根因\n• v1.9.26 的跨站點數據庫掃描屬過度開發 — 各站點媒體已按 {siteId}/uploads/ 前綴隔離，跨站引用僅手動複製 URL 邊緣場景，路徑前綴已體現站點歸屬\n• handleMediaDetail / handleDeleteMedia 存在冗餘雙重全表掃描 — checkFileUsed + findUsages 各掃一遍所有表，findUsages 結果已含 isUsed 信息\n\n📋 修復內容\n• 移除 getAllSiteDatabases() 函數及所有調用（sitedb.ts / index.ts 4 處路由）\n• MediaUsage 接口移除 siteId 字段，前端移除站點列\n• handleMediaDetail：checkFileUsed + findUsages → 僅 findUsages，isUsed = usages.length > 0\n• handleDeleteMedia：同上優化，消除冗餘全表掃描\n• 每次媒體詳情/刪除請求減少一次全表掃描（6 張表 + 3 個 HTML 字段）`,
   },
   {

@@ -587,7 +587,7 @@ export default function MediaLibrary() {
                       title={isMarked ? '取消標記保護' : '標記保護'}
                       className={`absolute bottom-2 right-2 p-1.5 rounded-full transition-all disabled:opacity-50 ${
                         isMarked
-                          ? 'bg-amber-500 text-white opacity-100'
+                          ? 'bg-green-500 text-white hover:bg-green-600 opacity-100'
                           : 'bg-black/50 text-white hover:bg-black/70 opacity-0 group-hover:opacity-100'
                       }`}
                     >
@@ -596,7 +596,7 @@ export default function MediaLibrary() {
                       ) : isMarked ? (
                         <span className="text-xs">🔓</span>
                       ) : (
-                        <span className="text-xs">📑</span>
+                        <span className="text-xs">🔐</span>
                       )}
                     </button>
                   </div>

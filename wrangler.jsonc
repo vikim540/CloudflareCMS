@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "rust-cms",
+  "name": "cfstack-cms",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-14",
 
