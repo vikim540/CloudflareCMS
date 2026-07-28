@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.26',
+    date: '2026-07-28 14:41:12',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 媒體庫使用位置追蹤精準化 — 補全遺漏欄位 + 跨站點掃描\n\n📋 問題根因\n• FILE_REFS 白名單缺少 ay_slide.pic_mobile（手機端輪播圖）→ 幻燈片手機端圖片不被追蹤\n• getUsedPaths/findUsages 只查當前站點數據庫 → 跨站點引用不可見（如 endoscopy 上傳的圖片在 vision 站點幻燈片中使用，endoscopy 媒體庫仍顯示「未使用」）\n• ay_single.content（單頁正文）中的 HTML img src 未被掃描\n\n📋 修復內容\n• FILE_REFS：ay_slide 新增 pic_mobile 欄位（手機端輪播圖）\n• getUsedPaths/findUsages/checkFileUsed 重構為接受 D1Database | D1Database[]，支援跨站點掃描\n• 新增 scanUsedPathsInDb/findUsagesInDb 內部函數，公開函數迭代所有站點數據庫\n• sitedb.ts 新增 getAllSiteDatabases() 工具函數，從 SITE_REGISTRY 收集所有站點 D1 binding\n• handleListMedia/handleMediaDetail/handleDeleteMedia/handleCleanUnused 新增 allSiteDbs 參數\n• index.ts 四個媒體庫路由傳入 getAllSiteDatabases(c)\n• MediaUsage 接口新增 siteId 字段，使用位置列表顯示站點列\n• 前端 MediaLibrary.tsx UsageInfo 接口新增 siteId，使用位置表格新增「站點」列（藍色徽章）\n• 新增 ay_single.content HTML 圖片引用掃描`,
+  },
+  {
     version: 'v1.9.25',
     date: '2026-07-28 12:10:44',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: `🎨 內容編輯界面 UI 優化 — uiverse.io 風格表單設計系統\n\n📋 設計系統常量（DS）\n• 新增統一設計系統常量對象，涵蓋 input/select/textarea/btnSm/label/urlInput\n• 特徵：柔和半透明背景（bg-gray-50/50）+ 焦點白色高亮 + 光暈環（ring/20）+ 平滑過渡（duration-200）\n• 下拉框自定義 SVG 箭頭（appearance-none + background-image）\n\n📋 輸入框增強\n• 所有 input/select/textarea 統一使用 DS 常量，消除重複樣式代碼\n• 邊框圓角從 rounded-md 升級為 rounded-lg\n• 新增 hover:border-gray-300 懸停邊框變色\n• 焦點狀態：focus:ring-ring/20（半透明光暈）+ focus:bg-white（背景高亮）\n• placeholder 透明度降低（text-muted-foreground/60）\n\n📋 Checkbox/Radio 美化（uiverse.io 風格）\n• 置頂/推薦/頭條 Checkbox 改為卡片式容器（bg-gray-50/50 + rounded-lg + border）\n• 勾選符號從文字 ✓ 改為 SVG path（更清晰銳利）\n• 新增 peer-checked:shadow-sm + shadow-color/30 勾選時彩色陰影\n• transition-colors 升級為 transition-all duration-200\n• 擴展欄位 Radio 改為自定義圓形設計（內圓點 scale 動畫）\n• 擴展欄位 Checkbox 同步升級為 SVG 勾選 + emerald 配色\n\n📋 間距規範\n• 表單容器：space-y-5 → space-y-6（更大呼吸空間）\n• Grid 間距：gap-4 → gap-5（統一）\n• 標籤下邊距：mb-1.5 → mb-2（統一）\n• 表單內邊距：p-6 → p-6 md:p-8（響應式加大）\n• 容器寬度：max-w-4xl → max-w-5xl（更寬敞）\n• 表單卡片：新增 shadow-sm + rounded-xl + border-gray-200\n• 分隔線：border-t → border-t border-gray-100（更柔和）`,
   },
   {
@@ -644,8 +651,12 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/contents/:id/resources', desc: '預覽文章關聯靜態資源（永久刪除前確認，v1.9.14+）', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/contents/:id/permanent', desc: '永久刪除 (?delete_resources=true 一併清理 S3 圖片，v1.9.14+)', auth: true },
   { method: 'GET', path: '/api/v1/admin/models/all', desc: '所有模型', auth: true },
-  { method: 'GET', path: '/api/v1/admin/media', desc: '媒體列表', auth: true },
+  { method: 'GET', path: '/api/v1/admin/media', desc: '媒體列表（跨站點使用狀態追蹤，v1.9.26+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/media/config', desc: '媒體庫公開配置（非敏感字段）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/media/detail', desc: '文件詳情（含跨站點使用位置 + siteId，v1.9.26+）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/media/mark', desc: '切換文件標記保護', auth: true },
+  { method: 'POST', path: '/api/v1/admin/media/clean', desc: '清理未使用文件（跨站點檢查，v1.9.26+）', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/media/:key', desc: '刪除文件 (?force=1 強制，跨站點引用檢查 v1.9.26+）', auth: true },
   { method: 'POST', path: '/api/v1/admin/upload', desc: '文件上傳 (multipart/form-data)', auth: true },
   { method: 'GET', path: '/api/v1/admin/configs', desc: '系統配置', auth: true },
   { method: 'PUT', path: '/api/v1/admin/configs', desc: '更新配置', auth: true },
