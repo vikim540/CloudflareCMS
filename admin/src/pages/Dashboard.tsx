@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.25',
+    date: '2026-07-28 12:10:44',
+    icon: '🎨',
+    latest: true,
+    changes: `🎨 內容編輯界面 UI 優化 — uiverse.io 風格表單設計系統\n\n📋 設計系統常量（DS）\n• 新增統一設計系統常量對象，涵蓋 input/select/textarea/btnSm/label/urlInput\n• 特徵：柔和半透明背景（bg-gray-50/50）+ 焦點白色高亮 + 光暈環（ring/20）+ 平滑過渡（duration-200）\n• 下拉框自定義 SVG 箭頭（appearance-none + background-image）\n\n📋 輸入框增強\n• 所有 input/select/textarea 統一使用 DS 常量，消除重複樣式代碼\n• 邊框圓角從 rounded-md 升級為 rounded-lg\n• 新增 hover:border-gray-300 懸停邊框變色\n• 焦點狀態：focus:ring-ring/20（半透明光暈）+ focus:bg-white（背景高亮）\n• placeholder 透明度降低（text-muted-foreground/60）\n\n📋 Checkbox/Radio 美化（uiverse.io 風格）\n• 置頂/推薦/頭條 Checkbox 改為卡片式容器（bg-gray-50/50 + rounded-lg + border）\n• 勾選符號從文字 ✓ 改為 SVG path（更清晰銳利）\n• 新增 peer-checked:shadow-sm + shadow-color/30 勾選時彩色陰影\n• transition-colors 升級為 transition-all duration-200\n• 擴展欄位 Radio 改為自定義圓形設計（內圓點 scale 動畫）\n• 擴展欄位 Checkbox 同步升級為 SVG 勾選 + emerald 配色\n\n📋 間距規範\n• 表單容器：space-y-5 → space-y-6（更大呼吸空間）\n• Grid 間距：gap-4 → gap-5（統一）\n• 標籤下邊距：mb-1.5 → mb-2（統一）\n• 表單內邊距：p-6 → p-6 md:p-8（響應式加大）\n• 容器寬度：max-w-4xl → max-w-5xl（更寬敞）\n• 表單卡片：新增 shadow-sm + rounded-xl + border-gray-200\n• 分隔線：border-t → border-t border-gray-100（更柔和）`,
+  },
+  {
     version: 'v1.9.24',
     date: '2026-07-28 11:48:02',
     icon: '⏰',
-    latest: true,
+    latest: false,
     changes: `⏰ 定時發布功能完善 — 公開 API 日期過濾 + 待發布狀態\n\n📋 問題根因\n• 公開 API 只過濾 status=1，不檢查 date → 設了未來時間的已發布文章會立即出現在公開列表\n• 管理後台沒有「待發布」狀態 → status=0 + 未來日期的文章顯示為「草稿」，無法區分\n• 上一篇/下一篇導航也可能指向未來日期的文章\n\n📋 公開 API 日期過濾（後端 content.ts）\n• 新增 PUBLIC_DATE_FILTER 常量：(date <= now OR date = '' OR date IS NULL)\n• handleListContents（公開列表）：加入日期過濾條件\n• handleListAllContents（批量列表）：加入日期過濾條件\n• handlePublicContentDetail（單篇詳情）：按 ID 和 slug 查詢均加入日期過濾\n• 上一篇/下一篇查詢：加入日期過濾，避免導航到未發布文章\n• handleListContentsByTag（標籤搜索）：標籤雲和文章列表均加入日期過濾\n• vectorize 語義搜索：查詢結果加入日期過濾\n\n📋 管理後台待發布狀態（後端 + 前端）\n• handleAdminListContents 新增 scheduled 狀態篩選：status IN (0,1) AND date > now\n• 已發布 Tab 調整為：status=1 AND date <= now（未來日期的不在此顯示）\n• 草稿 Tab 調整為：status=0 AND date <= now（未來日期的不在此顯示）\n• 前端 STATUS_TABS 新增「待發布」Tab（橙色徽章）\n• getStatusBadge 函數接收 date 參數，未來日期顯示「待發布」徽章\n• isFutureDate 工具函數：按香港時區 UTC+8 判斷日期是否在未來`,
   },
   {
