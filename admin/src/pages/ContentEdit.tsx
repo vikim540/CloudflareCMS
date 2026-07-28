@@ -173,6 +173,47 @@ const EXT_TYPE_LABELS: Record<string, string> = {
   '10': '多圖',
 }
 
+// ============================================================================
+// ─── 設計系統：uiverse.io 風格表單元件樣式常量 ───
+// 特徵：柔和背景 + 漸變邊框 + 焦點光暈 + 平滑過渡
+// ============================================================================
+const DS = {
+  /** 輸入框：柔和半透明背景 + 焦點時白色高亮 + 光暈環 */
+  input:
+    'w-full px-4 py-2.5 text-sm bg-gray-50/50 border border-input rounded-lg ' +
+    'transition-all duration-200 hover:border-gray-300 ' +
+    'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white ' +
+    'placeholder:text-muted-foreground/60',
+  /** 下拉框：繼承輸入框 + 白色背景 + 自定義箭頭 */
+  select:
+    'w-full px-4 py-2.5 text-sm bg-white border border-input rounded-lg ' +
+    'transition-all duration-200 hover:border-gray-300 ' +
+    'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring ' +
+    'cursor-pointer appearance-none ' +
+    "bg-[url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23999'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E\")] " +
+    'bg-no-repeat bg-[right_0.75rem_center] bg-[length:1.25rem] pr-10',
+  /** 文本域 */
+  textarea:
+    'w-full px-4 py-2.5 text-sm bg-gray-50/50 border border-input rounded-lg ' +
+    'transition-all duration-200 hover:border-gray-300 ' +
+    'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white ' +
+    'placeholder:text-muted-foreground/60 resize-y',
+  /** 小按鈕（次要操作） */
+  btnSm:
+    'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-input rounded-lg ' +
+    'bg-white hover:bg-accent hover:border-gray-300 transition-all duration-200',
+  /** 標籤 */
+  label: 'block text-sm font-medium text-foreground mb-2',
+  /** 小標籤（帶描述） */
+  labelHint: 'text-xs font-normal text-muted-foreground ml-2',
+  /** URL 輸入框（窄行） */
+  urlInput:
+    'flex-1 min-w-[180px] px-3 py-2 text-sm bg-gray-50/50 border border-input rounded-lg ' +
+    'transition-all duration-200 hover:border-gray-300 ' +
+    'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white ' +
+    'placeholder:text-muted-foreground/60',
+}
+
 /** 表單數據 */
 interface FormData {
   title: string
@@ -320,9 +361,6 @@ function ExtFieldInput({
     onChange(images.join(','))
   }
 
-  const inputClass =
-    'w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring'
-
   switch (field.type) {
     case '1': // 單行文本
       return (
@@ -330,7 +368,7 @@ function ExtFieldInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={DS.input}
           placeholder={`請輸入${field.name}`}
         />
       )
@@ -341,33 +379,41 @@ function ExtFieldInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={field.type === '8' ? 8 : 4}
-          className={`${inputClass} resize-y`}
+          className={DS.textarea}
           placeholder={`請輸入${field.name}`}
         />
       )
-    case '3': // 單選
+    case '3': // 單選 — uiverse.io 風格自定義 radio
       return (
-        <div className="flex flex-wrap gap-4 pt-1">
+        <div className="flex flex-wrap gap-3 pt-1">
           {options.length === 0 && (
             <span className="text-sm text-muted-foreground">未設置選項</span>
           )}
           {options.map((opt) => (
-            <label key={opt} className="inline-flex items-center gap-1.5 cursor-pointer">
+            <label
+              key={opt}
+              className="inline-flex items-center gap-2 cursor-pointer group select-none"
+            >
               <input
                 type="radio"
                 name={`ext-${field.field}`}
                 checked={value === opt}
                 onChange={() => onChange(opt)}
-                className="w-4 h-4"
+                className="peer sr-only"
               />
-              <span className="text-sm">{opt}</span>
+              <span className="flex items-center justify-center w-5 h-5 rounded-full border-2 border-input bg-white transition-all duration-200 group-hover:border-blue-400 peer-checked:border-blue-500 peer-checked:bg-blue-500">
+                <span className="w-2 h-2 rounded-full bg-white scale-0 transition-transform duration-200 peer-checked:scale-100" />
+              </span>
+              <span className="text-sm text-foreground/80 group-hover:text-foreground transition-colors">
+                {opt}
+              </span>
             </label>
           ))}
         </div>
       )
-    case '4': // 多選
+    case '4': // 多選 — uiverse.io 風格自定義 checkbox
       return (
-        <div className="flex flex-wrap gap-4 pt-1">
+        <div className="flex flex-wrap gap-3 pt-1">
           {options.length === 0 && (
             <span className="text-sm text-muted-foreground">未設置選項</span>
           )}
@@ -375,15 +421,34 @@ function ExtFieldInput({
             const selected = value
               ? value.split(',').map((s) => s.trim()).filter(Boolean)
               : []
+            const isChecked = selected.includes(opt)
             return (
-              <label key={opt} className="inline-flex items-center gap-1.5 cursor-pointer">
+              <label
+                key={opt}
+                className="inline-flex items-center gap-2 cursor-pointer group select-none"
+              >
                 <input
                   type="checkbox"
-                  checked={selected.includes(opt)}
+                  checked={isChecked}
                   onChange={() => toggleMultiOption(opt)}
-                  className="w-4 h-4 rounded"
+                  className="peer sr-only"
                 />
-                <span className="text-sm">{opt}</span>
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-emerald-400 peer-checked:bg-emerald-500 peer-checked:border-emerald-500">
+                  {isChecked && (
+                    <svg
+                      className="w-3 h-3 text-white"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </span>
+                <span className="text-sm text-foreground/80 group-hover:text-foreground transition-colors">
+                  {opt}
+                </span>
               </label>
             )
           })}
@@ -414,7 +479,7 @@ function ExtFieldInput({
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="輸入圖片外鏈 URL"
-              className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              className={DS.urlInput}
             />
             <button
               type="button"
@@ -424,7 +489,7 @@ function ExtFieldInput({
                   setUrlInput('')
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+              className={DS.btnSm}
             >
               <span className="text-base">🔗</span>
               <span>確認</span>
@@ -433,7 +498,7 @@ function ExtFieldInput({
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+              className={DS.btnSm + ' disabled:opacity-50'}
             >
               {uploading ? (
                 <span className="inline-block animate-spin">🔄</span>
@@ -445,7 +510,7 @@ function ExtFieldInput({
             <button
               type="button"
               onClick={() => setMediaPickerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+              className={DS.btnSm}
             >
               <span className="text-base">🖼️</span>
               <span>媒體庫</span>
@@ -493,7 +558,7 @@ function ExtFieldInput({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+            className={DS.btnSm + ' disabled:opacity-50'}
           >
             {uploading ? (
               <span className="inline-block animate-spin">🔄</span>
@@ -510,7 +575,7 @@ function ExtFieldInput({
           type="date"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={DS.input}
         />
       )
     case '9': // 下拉
@@ -518,7 +583,7 @@ function ExtFieldInput({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`${inputClass} bg-white`}
+          className={DS.select}
         >
           <option value="">請選擇</option>
           {options.map((opt) => (
@@ -562,7 +627,7 @@ function ExtFieldInput({
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="輸入圖片外鏈 URL"
-              className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+              className={DS.urlInput}
             />
             <button
               type="button"
@@ -573,7 +638,7 @@ function ExtFieldInput({
                   setUrlInput('')
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+              className={DS.btnSm}
             >
               <span className="text-base">➕</span>
               <span>添加</span>
@@ -582,7 +647,7 @@ function ExtFieldInput({
               type="button"
               onClick={() => fileRef.current?.click()}
               disabled={uploading}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+              className={DS.btnSm + ' disabled:opacity-50'}
             >
               {uploading ? (
                 <span className="inline-block animate-spin">🔄</span>
@@ -594,7 +659,7 @@ function ExtFieldInput({
             <button
               type="button"
               onClick={() => setMediaPickerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+              className={DS.btnSm}
             >
               <span className="text-base">🖼️</span>
               <span>媒體庫</span>
@@ -663,7 +728,7 @@ function ExtFieldInput({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+          className={DS.input}
           placeholder={`請輸入${field.name}`}
         />
       )
@@ -1394,14 +1459,14 @@ export default function ContentEdit() {
 
   if (loading) {
     return (
-      <div className="p-6">
+      <div className="p-6 max-w-5xl">
         <LoadingState text="載入中..." />
       </div>
     )
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6 max-w-5xl">
       {/* 頁首 */}
       <div className="flex items-center gap-3 mb-6">
         <button
@@ -1416,7 +1481,7 @@ export default function ContentEdit() {
 
       {/* 錯誤提示 */}
       {error && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
           {error}
         </div>
       )}
@@ -1441,17 +1506,17 @@ export default function ContentEdit() {
       )}
 
       {/* 表單 */}
-      <form onSubmit={handleSubmit} className="space-y-5 bg-white rounded-lg border p-6">
+      <form onSubmit={handleSubmit} className="space-y-6 bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
         {/* Tab 切換 */}
-        <div className="flex gap-1 border-b">
+        <div className="flex gap-1 border-b border-gray-200">
           <button
             type="button"
             onClick={() => setActiveTab('basic')}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all duration-200',
               activeTab === 'basic'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300',
             )}
           >
             基本內容
@@ -1460,10 +1525,10 @@ export default function ContentEdit() {
             type="button"
             onClick={() => setActiveTab('advanced')}
             className={cn(
-              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+              'px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all duration-200',
               activeTab === 'advanced'
                 ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300',
             )}
           >
             高級內容
@@ -1475,7 +1540,7 @@ export default function ContentEdit() {
           <>
             {/* 標題 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">
+              <label className={DS.label}>
                 標題 <span className="text-destructive">*</span>
               </label>
               <div className="flex gap-2">
@@ -1483,7 +1548,7 @@ export default function ContentEdit() {
                   type="text"
                   value={form.title}
                   onChange={(e) => updateField('title', e.target.value)}
-                  className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={DS.input + ' flex-1'}
                   placeholder="請輸入內容標題"
                   required
                 />
@@ -1495,7 +1560,7 @@ export default function ContentEdit() {
                       type="color"
                       value={form.titlecolor || '#333333'}
                       onChange={(e) => updateField('titlecolor', e.target.value)}
-                      className="w-10 h-10 rounded-md border cursor-pointer p-0.5 bg-transparent"
+                      className="w-10 h-10 rounded-lg border border-input cursor-pointer p-0.5 bg-transparent transition-all duration-200 hover:border-gray-300"
                       title="標題顏色"
                     />
                     {form.titlecolor && (
@@ -1514,15 +1579,15 @@ export default function ContentEdit() {
             </div>
 
             {/* 欄目 + 狀態 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1.5">
+                <label className={DS.label}>
                   欄目 <span className="text-destructive">*</span>
                 </label>
                 <select
                   value={form.scode}
                   onChange={(e) => updateField('scode', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                  className={DS.select}
                   required
                 >
                   <option value="">請選擇欄目</option>
@@ -1530,11 +1595,11 @@ export default function ContentEdit() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">狀態</label>
+                <label className={DS.label}>狀態</label>
                 <select
                   value={form.status}
                   onChange={(e) => updateField('status', e.target.value as ContentStatus)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                  className={DS.select}
                 >
                   <option value="1">已發布</option>
                   <option value="0">草稿</option>
@@ -1543,33 +1608,33 @@ export default function ContentEdit() {
             </div>
 
             {/* Slug + 發佈時間 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1.5">Slug (URL別名)</label>
+                <label className={DS.label}>Slug (URL別名)</label>
                 <input
                   type="text"
                   value={form.filename}
                   onChange={(e) => updateField('filename', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={DS.input}
                   placeholder="URL別名，留空則用ID"
                   pattern="[-a-zA-Z0-9_/]+"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">發佈時間</label>
+                <label className={DS.label}>發佈時間</label>
                 <input
                   type="datetime-local"
                   value={form.date}
                   onChange={(e) => updateField('date', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={DS.input}
                 />
-                <p className="mt-1 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
               </div>
             </div>
 
             {/* 內容 - Quill 編輯器 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">
+              <label className={DS.label}>
                 內容 {!editorReady && <span className="text-xs text-muted-foreground">（編輯器載入中...）</span>}
                 {htmlMode && (
                   <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
@@ -1590,11 +1655,11 @@ export default function ContentEdit() {
               </label>
               {/* 編輯器與 HTML 源碼 textarea 都保持掛載，用 CSS 切換顯示 */}
               {/* 避免 htmlMode 切換時 Quill DOM 被卸載導致編輯器消失 */}
-              <div ref={editorRef} className={`border rounded-md overflow-hidden ${htmlMode ? 'hidden' : ''}`} />
+              <div ref={editorRef} className={`border border-input rounded-lg overflow-hidden ${htmlMode ? 'hidden' : ''}`} />
               <textarea
                 value={htmlSource}
                 onChange={(e) => setHtmlSource(e.target.value)}
-                className={`w-full h-96 px-3 py-2 border rounded-md font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring ${htmlMode ? '' : 'hidden'}`}
+                className={`w-full h-96 px-4 py-2.5 border border-input rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white transition-all duration-200 ${htmlMode ? '' : 'hidden'}`}
                 placeholder="<p>HTML 源碼...</p>"
                 spellCheck={false}
               />
@@ -1612,8 +1677,8 @@ export default function ContentEdit() {
 
             {/* 標籤（TagInput 組件 + AI 建議 + 歷史標籤快速補充） */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-sm font-medium">標籤</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className={DS.label + ' mb-0'}>標籤</label>
                 <button
                   type="button"
                   onClick={async () => {
@@ -1633,7 +1698,7 @@ export default function ContentEdit() {
                     finally { setAiTagLoading(false) }
                   }}
                   disabled={aiTagLoading || (!form.title && !form.content)}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-purple-600 border border-purple-200 rounded-full hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-purple-600 border border-purple-200 rounded-full hover:bg-purple-50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   title="基於文章標題和內容，AI 自動建議標籤"
                 >
                   {aiTagLoading ? (
@@ -1691,7 +1756,7 @@ export default function ContentEdit() {
                     value={bulkTagsText}
                     onChange={(e) => setBulkTagsText(e.target.value)}
                     placeholder="每行一個或用逗號分隔，批量添加標籤..."
-                    className="w-full px-2 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    className={DS.textarea}
                     rows={3}
                   />
                   <div className="flex justify-end gap-2 mt-1">
@@ -1722,24 +1787,24 @@ export default function ContentEdit() {
             </div>
 
             {/* 作者、來源 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <label className="block text-sm font-medium mb-1.5">作者</label>
+                <label className={DS.label}>作者</label>
                 <input
                   type="text"
                   value={form.author}
                   onChange={(e) => updateField('author', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={DS.input}
                   placeholder="請輸入作者"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1.5">來源</label>
+                <label className={DS.label}>來源</label>
                 <input
                   type="text"
                   value={form.source}
                   onChange={(e) => updateField('source', e.target.value)}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                  className={DS.input}
                   placeholder="請輸入來源"
                 />
               </div>
@@ -1747,14 +1812,14 @@ export default function ContentEdit() {
 
             {/* 縮略圖 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">縮略圖</label>
+              <label className={DS.label}>縮略圖</label>
               <div className="space-y-2">
                 {form.ico && (
                   <ImagePreviewWithRemove
                     src={form.ico}
                     alt="縮略圖"
                     onRemove={() => updateField('ico', '')}
-                    containerClassName="border rounded"
+                    containerClassName="border border-input rounded-lg"
                     imgClassName="w-32 h-32"
                   />
                 )}
@@ -1771,7 +1836,7 @@ export default function ContentEdit() {
                     value={icoUrlInput}
                     onChange={(e) => setIcoUrlInput(e.target.value)}
                     placeholder="輸入圖片外鏈 URL"
-                    className="flex-1 min-w-[180px] px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                    className={DS.urlInput}
                   />
                   <button
                     type="button"
@@ -1781,7 +1846,7 @@ export default function ContentEdit() {
                         setIcoUrlInput('')
                       }
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+                    className={DS.btnSm}
                   >
                     <span className="text-base">🔗</span>
                     <span>確認</span>
@@ -1790,7 +1855,7 @@ export default function ContentEdit() {
                     type="button"
                     onClick={() => icoFileRef.current?.click()}
                     disabled={icoUploading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+                    className={DS.btnSm + ' disabled:opacity-50'}
                   >
                     {icoUploading ? (
                       <span className="inline-block animate-spin">🔄</span>
@@ -1802,7 +1867,7 @@ export default function ContentEdit() {
                   <button
                     type="button"
                     onClick={() => setIcoMediaPickerOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+                    className={DS.btnSm}
                   >
                     <span className="text-base">🖼️</span>
                     <span>媒體庫</span>
@@ -1811,8 +1876,8 @@ export default function ContentEdit() {
               </div>
             </div>
 
-            {/* 選項 */}
-            <div className="flex items-center gap-3">
+            {/* 選項 — uiverse.io 風格卡片式 Checkbox */}
+            <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
               <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
@@ -1820,10 +1885,14 @@ export default function ContentEdit() {
                   onChange={(e) => updateField('istop', e.target.checked)}
                   className="peer sr-only"
                 />
-                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-blue-500 peer-checked:border-blue-500 group-hover:border-blue-400">
-                  {form.istop && <span className="text-white text-xs">✓</span>}
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-blue-400 peer-checked:bg-blue-500 peer-checked:border-blue-500 peer-checked:shadow-sm peer-checked:shadow-blue-500/30">
+                  {form.istop && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </span>
-                <span className="text-sm group-hover:text-blue-600 transition-colors">置頂</span>
+                <span className="text-sm text-foreground/80 group-hover:text-blue-600 transition-colors">置頂</span>
               </label>
               <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
@@ -1832,10 +1901,14 @@ export default function ContentEdit() {
                   onChange={(e) => updateField('isrecommend', e.target.checked)}
                   className="peer sr-only"
                 />
-                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-emerald-500 peer-checked:border-emerald-500 group-hover:border-emerald-400">
-                  {form.isrecommend && <span className="text-white text-xs">✓</span>}
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-emerald-400 peer-checked:bg-emerald-500 peer-checked:border-emerald-500 peer-checked:shadow-sm peer-checked:shadow-emerald-500/30">
+                  {form.isrecommend && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </span>
-                <span className="text-sm group-hover:text-emerald-600 transition-colors">推薦</span>
+                <span className="text-sm text-foreground/80 group-hover:text-emerald-600 transition-colors">推薦</span>
               </label>
               <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
@@ -1844,16 +1917,20 @@ export default function ContentEdit() {
                   onChange={(e) => updateField('isheadline', e.target.checked)}
                   className="peer sr-only"
                 />
-                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-colors peer-checked:bg-amber-500 peer-checked:border-amber-500 group-hover:border-amber-400">
-                  {form.isheadline && <span className="text-white text-xs">✓</span>}
+                <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-amber-400 peer-checked:bg-amber-500 peer-checked:border-amber-500 peer-checked:shadow-sm peer-checked:shadow-amber-500/30">
+                  {form.isheadline && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
                 </span>
-                <span className="text-sm group-hover:text-amber-600 transition-colors">頭條</span>
+                <span className="text-sm text-foreground/80 group-hover:text-amber-600 transition-colors">頭條</span>
               </label>
             </div>
 
             {/* 自定義字段（擴展欄位） */}
-            <div className="pt-2 border-t">
-              <h3 className="text-sm font-semibold mb-3 pt-3">自定義字段</h3>
+            <div className="pt-2 border-t border-gray-100">
+              <h3 className="text-sm font-semibold mb-3 pt-3 text-foreground">自定義字段</h3>
               {extLoading ? (
                 <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                   <span className="inline-block animate-spin">🔄</span>
@@ -1867,10 +1944,10 @@ export default function ContentEdit() {
                 <div className="space-y-4">
                   {extFields.map((field) => (
                     <div key={field.id}>
-                      <label className="block text-sm font-medium mb-1.5">
+                      <label className={DS.label}>
                         {field.name}
                         {field.required === '1' && <span className="text-destructive"> *</span>}
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        <span className={DS.labelHint}>
                           ({EXT_TYPE_LABELS[field.type] ?? '自定義'})
                         </span>
                       </label>
@@ -1893,48 +1970,48 @@ export default function ContentEdit() {
           <>
             {/* 副標題 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">副標題</label>
+              <label className={DS.label}>副標題</label>
               <input
                 type="text"
                 value={form.subtitle}
                 onChange={(e) => updateField('subtitle', e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                className={DS.input}
                 placeholder="請輸入副標題"
               />
             </div>
 
             {/* 外鏈 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">外鏈</label>
+              <label className={DS.label}>外鏈</label>
               <input
                 type="text"
                 value={form.outlink}
                 onChange={(e) => updateField('outlink', e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                className={DS.input}
                 placeholder="跳轉外鏈接，設置後內容變為外鏈類型"
               />
             </div>
 
             {/* 關鍵字 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">關鍵字</label>
+              <label className={DS.label}>關鍵字</label>
               <input
                 type="text"
                 value={form.keywords}
                 onChange={(e) => updateField('keywords', e.target.value)}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                className={DS.input}
                 placeholder="多個關鍵字以逗號分隔"
               />
             </div>
 
             {/* 描述 */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">描述</label>
+              <label className={DS.label}>描述</label>
               <textarea
                 value={form.description}
                 onChange={(e) => updateField('description', e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring resize-y"
+                className={DS.textarea}
                 placeholder="SEO 描述..."
               />
             </div>
@@ -1942,12 +2019,14 @@ export default function ContentEdit() {
         </div>
 
         {/* 操作按鈕 */}
-        <div className="flex items-center gap-3 pt-4 border-t">
+        <div className="flex items-center gap-3 pt-5 border-t border-gray-100">
           <button
             type="submit"
             disabled={saving}
             className={cn(
-              'inline-flex items-center gap-1.5 px-5 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm disabled:opacity-50',
+              'inline-flex items-center gap-1.5 px-6 py-2.5 bg-primary text-primary-foreground rounded-lg',
+              'hover:opacity-90 hover:shadow-md transition-all duration-200 text-sm font-medium',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
             )}
           >
             <span className="text-base">💾</span>
@@ -1956,7 +2035,7 @@ export default function ContentEdit() {
           <button
             type="button"
             onClick={() => navigate('/contents')}
-            className="px-5 py-2 border rounded-md hover:bg-accent transition-colors text-sm"
+            className="px-6 py-2.5 border border-input rounded-lg hover:bg-accent hover:border-gray-300 transition-all duration-200 text-sm font-medium"
           >
             取消
           </button>
