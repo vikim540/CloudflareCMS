@@ -65,11 +65,23 @@ const DEFAULT_PAGE_SIZE = 20
 const STATUS_TABS = [
   { key: 'all', label: '全部' },
   { key: '1', label: '已發布' },
+  { key: 'scheduled', label: '待發布' },
   { key: '0', label: '草稿' },
 ] as const
 
-/** 根據狀態取得徽章樣式 */
-function getStatusBadge(status: ContentStatus): { label: string; className: string } {
+/** 判斷文章日期是否在未來（香港時區 UTC+8） */
+function isFutureDate(dateStr: string): boolean {
+  if (!dateStr) return false
+  const target = new Date(dateStr.replace(' ', 'T') + '+08:00')
+  return target.getTime() > Date.now()
+}
+
+/** 根據狀態+日期取得徽章樣式（未來日期顯示「待發布」） */
+function getStatusBadge(status: ContentStatus, date: string): { label: string; className: string } {
+  // 未來日期的文章統一顯示為「待發布」，無論 status 是 0 還是 1
+  if (isFutureDate(date) && status !== '-1') {
+    return { label: '待發布', className: 'bg-orange-100 text-orange-700' }
+  }
   switch (status) {
     case '1':
       return { label: '已發布', className: 'bg-green-100 text-green-700' }
@@ -577,7 +589,7 @@ export default function Contents() {
                 </tr>
               ) : (
                 contents.map((item) => {
-                  const badge = getStatusBadge(item.status)
+                  const badge = getStatusBadge(item.status, item.date)
                   const isSelected = selectedIds.has(item.id)
                   const tags = parseTags(item.tags)
                   const formattedDate = formatDate(item.date)

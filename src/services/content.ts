@@ -31,6 +31,11 @@ function validateFieldLengths(body: Record<string, unknown>): string | null {
   return null;
 }
 
+/** 公開 API 日期過濾條件：未來日期的文章不出現（兼容空 date） */
+const PUBLIC_DATE_FILTER = "(c.date <= datetime('now', '+8 hours') OR c.date = '' OR c.date IS NULL)";
+/** 公開 API 日期過濾條件（無表別名版，用於不帶 c. 前綴的查詢） */
+const PUBLIC_DATE_FILTER_RAW = "(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)";
+
 /** 公開內容列表 API（僅返回摘要字段，排除 content 正文，減小響應體積） */
 export async function handleListContents(
   db: D1Database,
@@ -46,7 +51,7 @@ export async function handleListContents(
   // 列表字段（僅排除 content 正文，其餘字段全部返回）
   const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
 
-  const conditions: string[] = ["c.status = '1'", "c.scode != ''"];
+  const conditions: string[] = ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [];
 
   // 欄目篩選 (含子孫欄目)
@@ -191,12 +196,12 @@ export async function handleContentDetail(
 
   if (isNumericId) {
     content = await db.prepare(
-      "SELECT * FROM ay_content WHERE id = ? AND status = '1'",
+      `SELECT * FROM ay_content WHERE id = ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW}`,
     ).bind(Number(idOrSlug)).first();
   } else {
     // slug 查詢（filename 字段，已有索引 idx_content_filename）
     content = await db.prepare(
-      "SELECT * FROM ay_content WHERE filename = ? AND status = '1'",
+      `SELECT * FROM ay_content WHERE filename = ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW}`,
     ).bind(idOrSlug).first();
   }
 
@@ -248,11 +253,11 @@ export async function handleContentDetail(
       const placeholders = scodeList.map(() => '?').join(',');
       // 上一篇：同欄目樹範圍內 id 比當前小的最近一篇
       prev = await db.prepare(
-        `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
+        `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW} AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
       ).bind(contentId, ...scodeList).first();
       // 下一篇：同欄目樹範圍內 id 比當前大的最近一篇
       next = await db.prepare(
-        `SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' AND scode IN (${placeholders}) ORDER BY id ASC LIMIT 1`,
+        `SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW} AND scode IN (${placeholders}) ORDER BY id ASC LIMIT 1`,
       ).bind(contentId, ...scodeList).first();
     }
   }
@@ -313,7 +318,7 @@ export async function handleListAllContents(
   // 摘要字段（同列表 API，排除 content 正文）
   const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
 
-  const conditions: string[] = ["c.status = '1'", "c.scode != ''"];
+  const conditions: string[] = ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [];
 
   // 欄目篩選 (含子孫欄目)
@@ -377,11 +382,23 @@ export async function handleAdminListContents(
   const conditions: string[] = ["scode != ''"];
   const binds: (string | number)[] = [];
 
-  // 狀態篩選
+  // 狀態篩選（scheduled = 待發布：status 0 或 1 且日期在未來）
   if (status === 'all') {
     conditions.push("status >= '0'");
   } else if (status === 'trash') {
     conditions.push("status = '-1'");
+  } else if (status === 'scheduled') {
+    // 待發布：已標記為草稿/已發布但日期在未來，尚未到達發布時間
+    conditions.push("status IN ('0', '1')");
+    conditions.push("date > datetime('now', '+8 hours')");
+  } else if (status === '1') {
+    // 已發布：status=1 且日期已到或為空（未來日期的歸入「待發布」）
+    conditions.push("status = '1'");
+    conditions.push("(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)");
+  } else if (status === '0') {
+    // 草稿：status=0 且日期已到或為空（未來日期的歸入「待發布」）
+    conditions.push("status = '0'");
+    conditions.push("(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)");
   } else {
     conditions.push('status = ?');
     binds.push(status);
@@ -619,7 +636,7 @@ export async function handleListContentsByTag(
   // 無搜索關鍵詞時，返回所有標籤列表
   if (!q) {
     const result = await db.prepare(
-      "SELECT tags FROM ay_content WHERE status = '1' AND tags IS NOT NULL AND tags != ''",
+      `SELECT tags FROM ay_content WHERE status = '1' AND ${PUBLIC_DATE_FILTER_RAW} AND tags IS NOT NULL AND tags != ''`,
     ).all<{ tags: string }>();
 
     const tagSet = new Set<string>();
@@ -640,7 +657,7 @@ export async function handleListContentsByTag(
   // 欄目信息通過 LEFT JOIN 獲取：s = 當前欄目，ps = 父級欄目
   const selectFields = `c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname, s.filename as sortfilename, s.name as sortname, s.pcode as sortpcode, ps.filename as parent_sortfilename, ps.name as parent_sortname`;
 
-  const conditions = ["c.status = '1'", "c.scode != ''", 'c.tags LIKE ?'];
+  const conditions = ["c.status = '1'", "c.scode != ''", 'c.tags LIKE ?', PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [`%${q}%`];
 
   const whereClause = conditions.join(' AND ');

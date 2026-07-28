@@ -271,7 +271,7 @@ export async function semanticSearch(
   }>;
   try {
     const result = await db.prepare(
-      `SELECT id, title, description, scode, date, ico FROM ay_content WHERE id IN (${placeholders}) AND status = '1'`,
+      `SELECT id, title, description, scode, date, ico FROM ay_content WHERE id IN (${placeholders}) AND status = '1' AND (date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)`,
     )
       .bind(...articleIds)
       .all<{
