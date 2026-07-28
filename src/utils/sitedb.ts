@@ -97,31 +97,6 @@ export function listRegisteredSites(registryStr: string): Array<SiteEntry & { si
   }));
 }
 
-/**
- * 獲取所有已註冊站點的數據庫列表（用於跨站點媒體引用追蹤）
- * 遍歷 SITE_REGISTRY 中所有已綁定 binding 的站點，收集對應的 D1Database 實例。
- * 未配置站點時回退到主庫（c.env.DB）。
- * @returns Array<{ siteId: string; db: D1Database }>
- */
-export function getAllSiteDatabases<T extends SiteAppEnv>(c: Context<T>): Array<{ siteId: string; db: D1Database }> {
-  const registry = parseSiteRegistry(c.env.SITE_REGISTRY ?? '{}');
-  const result: Array<{ siteId: string; db: D1Database }> = [];
-  const envBindings = c.env as unknown as Record<string, D1Database>;
-
-  for (const [siteId, entry] of Object.entries(registry)) {
-    if (entry.binding && envBindings[entry.binding]) {
-      result.push({ siteId, db: envBindings[entry.binding] });
-    }
-  }
-
-  // 確保至少有當前站點的數據庫（fallback 到主庫）
-  if (result.length === 0) {
-    result.push({ siteId: 'endoscopy', db: c.env.DB });
-  }
-
-  return result;
-}
-
 // ============================================================================
 // D1 REST API Client（動態站點用，原生 binding 不可用時）
 // ============================================================================

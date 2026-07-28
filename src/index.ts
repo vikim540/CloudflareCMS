@@ -19,7 +19,7 @@ import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Fla
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
 import { isTokenBlacklisted, hasPermission, hasMenuPermission, reloadUserPermissions } from './services/auth';
 import { ok, okData, err, forbidden } from './utils/response';
-import { siteDB, primaryDB, currentSiteId, currentSiteName, resolveBinding, parseSiteRegistry, listRegisteredSites, getAllSiteDatabases, D1RestClient, createD1Database } from './utils/sitedb';
+import { siteDB, primaryDB, currentSiteId, currentSiteName, resolveBinding, parseSiteRegistry, listRegisteredSites, D1RestClient, createD1Database } from './utils/sitedb';
 import * as authService from './services/auth';
 import * as configService from './services/config';
 import * as sortService from './services/sort';
@@ -1003,7 +1003,7 @@ app.get('/api/v1/admin/media', async (c) => {
   const params = new URL(c.req.url).searchParams;
   return storageService.handleListMedia(siteDB(c), c.env.CONFIG_CACHE, params, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  }, currentSiteId(c), getAllSiteDatabases(c));
+  }, currentSiteId(c));
 });
 
 // 文件詳情 (含使用狀態和標記狀態)
@@ -1014,7 +1014,7 @@ app.get('/api/v1/admin/media/detail', async (c) => {
   if (!key) return err('缺少 key 參數', 1001);
   return storageService.handleMediaDetail(siteDB(c), c.env.CONFIG_CACHE, key, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  }, getAllSiteDatabases(c));
+  });
 });
 
 // 切換文件標記 (標記保護/取消標記)
@@ -1035,7 +1035,7 @@ app.post('/api/v1/admin/media/clean', async (c) => {
   const force = body.force === true || body.force === 1 || body.force === '1';
   return storageService.handleCleanUnused(siteDB(c), c.env.CONFIG_CACHE, force, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  }, currentSiteId(c), getAllSiteDatabases(c));
+  }, currentSiteId(c));
 });
 
 app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
@@ -1045,7 +1045,7 @@ app.delete('/api/v1/admin/media/:key{.+}', async (c) => {
   const force = c.req.query('force') === '1';
   return storageService.handleDeleteMedia(siteDB(c), c.env.CONFIG_CACHE, key, force, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  }, getAllSiteDatabases(c));
+  });
 });
 
 // 通用上傳端點 (供編輯器圖片上傳使用)

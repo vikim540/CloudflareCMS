@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.26**（2026-07-28）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.27**（2026-07-28）
 
 ## 語言選擇優先級
 
@@ -294,9 +294,7 @@ cd admin; npx vite build
 
 # 3. Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
 cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy deploy --project-name=cms-admin --commit-dirty=true
-# 若 wrangler 4.112.0 遇到 Windows .wrangler/tmp 寫入權限 bug，改用本地版本：
-# cd admin; node '../node_modules/wrangler/bin/wrangler.js' pages deploy deploy --project-name=cms-admin --commit-dirty=true
-
+ 
 # ===== 數據庫 =====
 # 遷移（主庫 endoscopy-cms）
 & 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 migrations apply endoscopy-cms --remote

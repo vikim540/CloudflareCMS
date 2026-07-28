@@ -149,7 +149,6 @@ export interface MediaUsage {
   id: number;
   name: string;
   field: string;
-  siteId?: string;
 }
 
 /** 單庫掃描：收集一個數據庫中所有文件引用路徑到 Set */
@@ -221,7 +220,7 @@ async function scanUsedPathsInDb(db: D1Database, used: Set<string>): Promise<voi
 }
 
 /** 單庫查找：在一個數據庫中查找指定文件的所有使用位置 */
-async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Promise<MediaUsage[]> {
+async function findUsagesInDb(db: D1Database, np: string): Promise<MediaUsage[]> {
   const usages: MediaUsage[] = [];
 
   for (const rt of FILE_REFS) {
@@ -238,7 +237,7 @@ async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Prom
           for (const c of rt.columns) {
             const val = row[c.col];
             if (val && pathMatchesField(val, np)) {
-              usages.push({ table: rt.table, id, name, field: c.label, siteId });
+              usages.push({ table: rt.table, id, name, field: c.label });
             }
           }
         }
@@ -254,7 +253,7 @@ async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Prom
     if (result.results) {
       for (const row of result.results) {
         if (row.content && containsImgSrc(row.content, np)) {
-          usages.push({ table: 'ay_content', id: row.id, name: row.title, field: '正文', siteId });
+          usages.push({ table: 'ay_content', id: row.id, name: row.title, field: '正文' });
         }
       }
     }
@@ -268,7 +267,7 @@ async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Prom
     if (result.results) {
       for (const row of result.results) {
         if (row.content && containsImgSrc(row.content, np)) {
-          usages.push({ table: 'ay_single', id: row.id, name: row.title, field: '單頁正文', siteId });
+          usages.push({ table: 'ay_single', id: row.id, name: row.title, field: '單頁正文' });
         }
       }
     }
@@ -284,7 +283,7 @@ async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Prom
         if (row.value) {
           const decoded = row.value.replace(/&quot;/g, '"');
           if (containsImgSrc(decoded, np)) {
-            usages.push({ table: 'ay_label', id: row.id, name: row.name, field: '標籤值', siteId });
+            usages.push({ table: 'ay_label', id: row.id, name: row.name, field: '標籤值' });
           }
         }
       }
@@ -297,50 +296,27 @@ async function findUsagesInDb(db: D1Database, np: string, siteId?: string): Prom
 }
 
 /** 掃描所有 FILE_REFS 表, 收集所有文件 URL/路徑到一個 Set。
- *  支援跨站點掃描: 傳入多個數據庫時，合併所有站點的引用路徑。
- *  @param dbs - 單個 D1Database 或多個站點數據庫陣列（用於跨站點追蹤）
+ *  同時掃描 ay_content.content、ay_single.content 和 ay_label.value 中的 HTML img src。
  *  @returns Set<string> - 已標準化的路徑集合 (包含帶/不帶前導斜線兩種形式) */
-export async function getUsedPaths(dbs: D1Database | D1Database[]): Promise<Set<string>> {
-  const dbArray = Array.isArray(dbs) ? dbs : [dbs];
+export async function getUsedPaths(db: D1Database): Promise<Set<string>> {
   const used = new Set<string>();
-
-  for (const db of dbArray) {
-    await scanUsedPathsInDb(db, used);
-  }
-
+  await scanUsedPathsInDb(db, used);
   return used;
 }
 
 /** 查找指定文件 URL 在數據庫中的所有使用位置。
- *  支援跨站點搜索: 傳入多個數據庫時，搜索所有站點並標記 siteId。
- *  @param dbs - 單個 D1Database 或多個站點數據庫陣列（用於跨站點追蹤）
- *  @returns 使用位置數組 { table, id, name, field, siteId } */
-export async function findUsages(
-  dbs: D1Database | D1Database[],
-  fileUrl: string,
-  siteIds?: string[],
-): Promise<MediaUsage[]> {
+ *  搜索所有 FILE_REFS 表, 以及 ay_content.content、ay_single.content 和 ay_label.value 中的 HTML 引用。
+ *  @returns 使用位置數組 { table, id, name, field } */
+export async function findUsages(db: D1Database, fileUrl: string): Promise<MediaUsage[]> {
   const np = normalizeFilePath(fileUrl);
   if (!np) return [];
-
-  const dbArray = Array.isArray(dbs) ? dbs : [dbs];
-  const allUsages: MediaUsage[] = [];
-
-  for (let i = 0; i < dbArray.length; i++) {
-    const db = dbArray[i];
-    const siteId = siteIds?.[i];
-    const usages = await findUsagesInDb(db, np, siteId);
-    allUsages.push(...usages);
-  }
-
-  return allUsages;
+  return findUsagesInDb(db, np);
 }
 
 /** 快速檢查文件 URL 是否在任何地方被引用。
- *  通過 getUsedPaths 收集所有引用後進行 Set 查找。
- *  支援跨站點: 傳入多個數據庫時，檢查所有站點。 */
-export async function checkFileUsed(dbs: D1Database | D1Database[], fileUrl: string): Promise<boolean> {
-  const used = await getUsedPaths(dbs);
+ *  通過 getUsedPaths 收集所有引用後進行 Set 查找。 */
+export async function checkFileUsed(db: D1Database, fileUrl: string): Promise<boolean> {
+  const used = await getUsedPaths(db);
   const np = normalizeFilePath(fileUrl);
   if (!np) return false;
   return used.has(np) || used.has('/' + np);
@@ -691,7 +667,6 @@ export async function handleListMedia(
   params: URLSearchParams,
   s3Secrets?: S3Secrets,
   siteId: string = 'endoscopy',
-  allSiteDbs?: Array<{ siteId: string; db: D1Database }>,
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
@@ -705,9 +680,8 @@ export async function handleListMedia(
   try {
     const result = await s3ListObjects(s3Config, prefix, maxKeys, cursor);
 
-    // 為每個文件附加 isUsed 和 isMarked 狀態（跨站點掃描所有站點數據庫）
-    const dbs = allSiteDbs?.map((s) => s.db) ?? [db];
-    const usedPaths = await getUsedPaths(dbs);
+    // 為每個文件附加 isUsed 和 isMarked 狀態
+    const usedPaths = await getUsedPaths(db);
     const markedPaths = await getMarkedPaths(db);
 
     const enrichedFiles = result.files.map((f) => {
@@ -738,23 +712,19 @@ export async function handleDeleteMedia(
   key: string,
   force = false,
   s3Secrets?: S3Secrets,
-  allSiteDbs?: Array<{ siteId: string; db: D1Database }>,
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
 
-  // 刪除前檢查文件是否被引用 (除非指定了 force) — 跨站點檢查所有站點
+  // 刪除前檢查文件是否被引用 (除非指定了 force)
   if (!force) {
-    const dbs = allSiteDbs?.map((s) => s.db) ?? [db];
-    const siteIds = allSiteDbs?.map((s) => s.siteId);
-    const isUsed = await checkFileUsed(dbs, key);
-    if (isUsed) {
-      const usages = await findUsages(dbs, key, siteIds);
+    const usages = await findUsages(db, key);
+    if (usages.length > 0) {
       const usageSummary = usages
         .slice(0, 10)
-        .map((u) => `${u.siteId ? `[${u.siteId}] ` : ''}${u.table}#${u.id}(${u.field})`)
+        .map((u) => `${u.table}#${u.id}(${u.field})`)
         .join(', ');
       return err(
         `文件正在被 ${usages.length} 處引用, 無法刪除。引用位置: ${usageSummary}。如需強制刪除, 請添加 force=1 參數`,
@@ -781,7 +751,6 @@ export async function handleMediaDetail(
   kv: KVNamespace,
   key: string,
   s3Secrets?: S3Secrets,
-  allSiteDbs?: Array<{ siteId: string; db: D1Database }>,
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
@@ -802,11 +771,9 @@ export async function handleMediaDetail(
     return err('文件不存在', 1004);
   }
 
-  // 檢查使用狀態（跨站點掃描所有站點數據庫）
-  const dbs = allSiteDbs?.map((s) => s.db) ?? [db];
-  const siteIds = allSiteDbs?.map((s) => s.siteId);
-  const isUsed = await checkFileUsed(dbs, key);
-  const usages = await findUsages(dbs, key, siteIds);
+  // 檢查使用狀態（findUsages 已包含 isUsed 信息，無需再調 checkFileUsed 雙重掃描）
+  const usages = await findUsages(db, key);
+  const isUsed = usages.length > 0;
 
   // 檢查標記狀態
   await ensureMediaMarkTable(db);
@@ -879,16 +846,14 @@ export async function handleCleanUnused(
   force = false,
   s3Secrets?: S3Secrets,
   siteId: string = 'endoscopy',
-  allSiteDbs?: Array<{ siteId: string; db: D1Database }>,
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置', 1005);
   }
 
-  // 獲取所有已使用路徑（跨站點掃描）和已標記路徑
-  const dbs = allSiteDbs?.map((s) => s.db) ?? [db];
-  const usedPaths = await getUsedPaths(dbs);
+  // 獲取所有已使用路徑和已標記路徑
+  const usedPaths = await getUsedPaths(db);
   const markedPaths = await getMarkedPaths(db);
 
   // 分頁列出 S3 中所有文件並清理

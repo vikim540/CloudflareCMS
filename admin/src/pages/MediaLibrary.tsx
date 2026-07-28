@@ -21,7 +21,6 @@ interface UsageInfo {
   id: number
   name: string
   field: string
-  siteId?: string
 }
 
 /** 文件詳情 */
@@ -797,7 +796,6 @@ export default function MediaLibrary() {
                               <th className="px-3 py-2 text-left font-medium text-muted-foreground w-16">ID</th>
                               <th className="px-3 py-2 text-left font-medium text-muted-foreground">名稱</th>
                               <th className="px-3 py-2 text-left font-medium text-muted-foreground">欄位</th>
-                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">站點</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -807,13 +805,6 @@ export default function MediaLibrary() {
                                 <td className="px-3 py-2 text-xs">{u.id}</td>
                                 <td className="px-3 py-2 break-all">{u.name || '-'}</td>
                                 <td className="px-3 py-2 text-xs text-muted-foreground">{u.field}</td>
-                                <td className="px-3 py-2 text-xs">
-                                  {u.siteId ? (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">{u.siteId}</span>
-                                  ) : (
-                                    <span className="text-muted-foreground">-</span>
-                                  )}
-                                </td>
                               </tr>
                             ))}
                           </tbody>

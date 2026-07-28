@@ -62,11 +62,18 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.27',
+    date: '2026-07-28 15:00:28',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 媒體庫追蹤回滾過度設計 + 性能優化\n\n📋 問題根因\n• v1.9.26 的跨站點數據庫掃描屬過度開發 — 各站點媒體已按 {siteId}/uploads/ 前綴隔離，跨站引用僅手動複製 URL 邊緣場景，路徑前綴已體現站點歸屬\n• handleMediaDetail / handleDeleteMedia 存在冗餘雙重全表掃描 — checkFileUsed + findUsages 各掃一遍所有表，findUsages 結果已含 isUsed 信息\n\n📋 修復內容\n• 移除 getAllSiteDatabases() 函數及所有調用（sitedb.ts / index.ts 4 處路由）\n• MediaUsage 接口移除 siteId 字段，前端移除站點列\n• handleMediaDetail：checkFileUsed + findUsages → 僅 findUsages，isUsed = usages.length > 0\n• handleDeleteMedia：同上優化，消除冗餘全表掃描\n• 每次媒體詳情/刪除請求減少一次全表掃描（6 張表 + 3 個 HTML 字段）`,
+  },
+  {
     version: 'v1.9.26',
     date: '2026-07-28 14:41:12',
     icon: '🐛',
-    latest: true,
-    changes: `🐛 媒體庫使用位置追蹤精準化 — 補全遺漏欄位 + 跨站點掃描\n\n📋 問題根因\n• FILE_REFS 白名單缺少 ay_slide.pic_mobile（手機端輪播圖）→ 幻燈片手機端圖片不被追蹤\n• getUsedPaths/findUsages 只查當前站點數據庫 → 跨站點引用不可見（如 endoscopy 上傳的圖片在 vision 站點幻燈片中使用，endoscopy 媒體庫仍顯示「未使用」）\n• ay_single.content（單頁正文）中的 HTML img src 未被掃描\n\n📋 修復內容\n• FILE_REFS：ay_slide 新增 pic_mobile 欄位（手機端輪播圖）\n• getUsedPaths/findUsages/checkFileUsed 重構為接受 D1Database | D1Database[]，支援跨站點掃描\n• 新增 scanUsedPathsInDb/findUsagesInDb 內部函數，公開函數迭代所有站點數據庫\n• sitedb.ts 新增 getAllSiteDatabases() 工具函數，從 SITE_REGISTRY 收集所有站點 D1 binding\n• handleListMedia/handleMediaDetail/handleDeleteMedia/handleCleanUnused 新增 allSiteDbs 參數\n• index.ts 四個媒體庫路由傳入 getAllSiteDatabases(c)\n• MediaUsage 接口新增 siteId 字段，使用位置列表顯示站點列\n• 前端 MediaLibrary.tsx UsageInfo 接口新增 siteId，使用位置表格新增「站點」列（藍色徽章）\n• 新增 ay_single.content HTML 圖片引用掃描`,
+    latest: false,
+    changes: `🐛 媒體庫使用位置追蹤精準化 — 補全遺漏欄位\n\n📋 問題根因\n• FILE_REFS 白名單缺少 ay_slide.pic_mobile（手機端輪播圖）→ 幻燈片手機端圖片不被追蹤\n• ay_single.content（單頁正文）中的 HTML img src 未被掃描\n\n📋 修復內容\n• FILE_REFS：ay_slide 新增 pic_mobile 欄位（手機端輪播圖）\n• 新增 ay_single.content HTML 圖片引用掃描（extractSrcPaths + containsImgSrc）\n• 注：v1.9.26 曾嘗試跨站點數據庫掃描，v1.9.27 回滾為過度設計`,
   },
   {
     version: 'v1.9.25',
