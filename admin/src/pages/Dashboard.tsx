@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.24',
+    date: '2026-07-28 11:48:02',
+    icon: '⏰',
+    latest: true,
+    changes: '⏰ 定時發布功能完善 — 公開 API 日期過濾 + 待發布狀態\n\n📋 問題根因\n• 公開 API 只過濾 status=1，不檢查 date → 設了未來時間的已發布文章會立即出現在公開列表\n• 管理後台沒有「待發布」狀態 → status=0 + 未來日期的文章顯示為「草稿」，無法區分\n• 上一篇/下一篇導航也可能指向未來日期的文章\n\n📋 公開 API 日期過濾（後端 content.ts）\n• 新增 PUBLIC_DATE_FILTER 常量：(date <= now OR date = '' OR date IS NULL)\n• handleListContents（公開列表）：加入日期過濾條件\n• handleListAllContents（批量列表）：加入日期過濾條件\n• handlePublicContentDetail（單篇詳情）：按 ID 和 slug 查詢均加入日期過濾\n• 上一篇/下一篇查詢：加入日期過濾，避免導航到未發布文章\n• handleListContentsByTag（標籤搜索）：標籤雲和文章列表均加入日期過濾\n• vectorize 語義搜索：查詢結果加入日期過濾\n\n📋 管理後台待發布狀態（後端 + 前端）\n• handleAdminListContents 新增 scheduled 狀態篩選：status IN (0,1) AND date > now\n• 已發布 Tab 調整為：status=1 AND date <= now（未來日期的不在此顯示）\n• 草稿 Tab 調整為：status=0 AND date <= now（未來日期的不在此顯示）\n• 前端 STATUS_TABS 新增「待發布」Tab（橙色徽章）\n• getStatusBadge 函數接收 date 參數，未來日期顯示「待發布」徽章\n• isFutureDate 工具函數：按香港時區 UTC+8 判斷日期是否在未來',
+  },
+  {
     version: 'v1.9.23',
     date: '2026-07-27 11:10:24',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: '🐛 修復跨站上傳圖片存錯目錄\n\n📋 問題根因\n• useImageUpload.ts 的 uploadFileToServer 用 XHR 上傳，只設置了 Authorization header\n• Storage.tsx 測試上傳用 fetch，也只設置了 Authorization\n• 兩處均缺失 X-Site-Id header，後端收不到站點標識回退到 endoscopy\n• 導致在 Smile/Vision 站點上傳圖片時，文件被存到 endoscopy/uploads/ 目錄\n\n📋 修復內容\n• useImageUpload.ts：XHR 請求增加 setRequestHeader("X-Site-Id", getCurrentSiteId())\n• Storage.tsx：fetch 請求 headers 增加 X-Site-Id: getCurrentSiteId()\n• 兩處均從 api.ts 導入 getCurrentSiteId 函數\n• 純前端修復，後端 siteId 解析邏輯無需變更',
   },
   {
