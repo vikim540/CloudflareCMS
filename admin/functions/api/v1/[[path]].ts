@@ -5,16 +5,16 @@
  * 不走公網，不消耗額外 subrequest 配額
  *
  * 配置: admin/wrangler.jsonc 中需添加 services 綁定:
- *   { "binding": "API", "service": "rust-cms" }
+ *   { "binding": "API", "service": "cfstack-cms" }
  */
 
 interface Env {
-  API: Fetcher; // Service binding to rust-cms Worker
+  API: Fetcher; // Service binding to cfstack-cms Worker
 }
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
-  const targetUrl = new URL(url.pathname + url.search, 'https://rust-cms.internal');
+  const targetUrl = new URL(url.pathname + url.search, 'https://cfstack-cms.internal');
 
   // 如果 Service Binding 未配置，返回錯誤（不暴露 Worker 公網域名）
   if (!context.env.API) {
@@ -22,7 +22,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       JSON.stringify({
         code: 500,
         msg: 'Service Binding 未配置，請聯繫管理員',
-        detail: `Pages Function env.API 為空。請檢查 admin/wrangler.jsonc 中 services 綁定是否配置正確（binding: "API", service: "rust-cms"）。\n請求: ${context.request.method} ${url.pathname}${url.search}`,
+        detail: `Pages Function env.API 為空。請檢查 admin/wrangler.jsonc 中 services 綁定是否配置正確（binding: "API", service: "cfstack-cms"）。\n請求: ${context.request.method} ${url.pathname}${url.search}`,
       }),
       {
         status: 500,

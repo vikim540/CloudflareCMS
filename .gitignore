@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+package-lock.json
 
 # Build output
 build/
@@ -11,9 +12,6 @@ deploy/
 
 # TypeScript build info
 *.tsbuildinfo
-
-# Rust build (kept for future migration)
-target/
 
 # Local D1 database
 .wrangler/state/

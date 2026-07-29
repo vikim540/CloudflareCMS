@@ -6,9 +6,10 @@
  *   Workers Cache 通過 Cache-Control 頭 + Vary: X-Site-Id 實現邊緣緩存，
  *   無需 KV 讀寫，零延遲、自動繞過 Authorization 請求。
  *
- *   本文件保留 clearContentCache / clearConfigCache 用於清除 KV 中殘留的
- *   config:all 等配置緩存條目（config.ts 的 clearConfigCache 負責）。
- *   內容/配置 CRUD 後仍調用這些函數確保 KV 配置緩存即時失效。
+ *   本文件保留 clearContentCache / clearApiCacheRemnants 用於清除 KV 中殘留的
+ *   API 響應緩存條目（api:GET:* 前綴）。
+ *   config.ts 的 clearConfigCache 負責清除 config:all 配置緩存鍵。
+ *   內容/配置 CRUD 後仍調用這些函數確保 KV 緩存即時失效。
  */
 import type { KVNamespace } from '@cloudflare/workers-types';
 
@@ -38,10 +39,10 @@ export async function clearContentCache(kv: KVNamespace): Promise<void> {
 }
 
 /**
- * 清除配置相關緩存
- * 在系統配置/站點信息更新時調用
+ * 清除公開 API 響應緩存殘留
+ * 在系統配置/站點信息/標籤更新時調用（清除 api:GET:* 前綴的 KV 殘留）
  */
-export async function clearConfigCache(kv: KVNamespace): Promise<void> {
+export async function clearApiCacheRemnants(kv: KVNamespace): Promise<void> {
   await clearCacheByPrefix(kv, 'api:GET:/api/v1/site');
   await clearCacheByPrefix(kv, 'api:GET:/api/v1/nav');
   await clearCacheByPrefix(kv, 'api:GET:/api/v1/singles');

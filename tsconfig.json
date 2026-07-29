@@ -19,5 +19,5 @@
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "src/**/*.rs"]
+  "exclude": ["node_modules"]
 }

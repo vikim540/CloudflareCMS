@@ -6,7 +6,7 @@
  * - 切換站點時顯示過渡覆蓋層（避免白屏閃爍），再刷新頁面重新獲取數據
  *
  * 注意：
- * - 當前 24+ 頁面各自獨立從 localStorage（getCurrentSiteId）讀取站點 ID 並獲取數據，
+ * - 當前 26 個頁面各自獨立從 localStorage（getCurrentSiteId）讀取站點 ID 並獲取數據，
  *   統一改為 Context 消費需要大規模遷移，故暫保留 reload 方案 + 過渡動畫。
  * - 未來可逐步將頁面遷移為消費 Context 的 currentSiteId，並用 useEffect 依賴觸發重新獲取，
  *   最終移除 reload。
@@ -70,7 +70,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
    * 3. 顯示過渡覆蓋層
    * 4. 短暫延遲後刷新頁面（讓所有頁面重新獲取新站點數據）
    *
-   * 保留 reload 是因為 24+ 頁面各自獨立獲取數據，無法通過 Context 統一觸發。
+   * 保留 reload 是因為 26 個頁面各自獨立獲取數據，無法通過 Context 統一觸發。
    * 過渡動畫讓 reload 看起來是「有意為之」而非突兀的閃爍。
    */
   const switchSite = useCallback(

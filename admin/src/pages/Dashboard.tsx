@@ -1457,7 +1457,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-foreground">rust-cms</code>
+                        <code className="font-mono text-foreground">cfstack-cms</code>
                         <span className="text-muted-foreground mx-2">·</span>
                         <span className="text-muted-foreground text-xs">內部綁定（Service Binding）</span>
                       </td>
@@ -1490,12 +1490,12 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         <code className="font-mono text-foreground">cms-admin</code>
                         <span className="text-muted-foreground mx-2">·</span>
                         <a
-                          href="https://cms.cmermedical.com.hk"
+                          href={window.location.origin}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline inline-flex items-center gap-1"
                         >
-                          <span>cms.cmermedical.com.hk</span>
+                          <span>{window.location.hostname}</span>
                           <span>🔗</span>
                         </a>
                       </td>
@@ -1566,7 +1566,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <code className="font-mono text-foreground">cms-admin → rust-cms</code>
+                        <code className="font-mono text-foreground">cms-admin → cfstack-cms</code>
                         <span className="text-muted-foreground mx-2 text-xs">零延遲內部通信</span>
                       </td>
                     </tr>

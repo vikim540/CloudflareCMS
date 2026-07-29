@@ -24,7 +24,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.115.0+ | 全局安裝（`yarn global add wrangler@latest` / `npm install -g wrangler@latest` / `pnpm add -g wrangler@latest`），項目本地 `node_modules/wrangler` 為 4.111.0。注意：TRAE 沙箱環境無法寫入 D 盤真實文件系統，全局升級需在用戶自己的終端執行 |
+| wrangler | ^4.115.0（package.json） | ⚠️ 必須使用 `npx wrangler` 調用（直接 `wrangler` 命中 Yarn 全局 3.1.0，路徑 `D:\Program Files\nodejs\Yarn\bin\wrangler.cmd`，過時不可用）。本地 `node_modules/wrangler` 實際 4.111.0，package.json 已聲明 ^4.115.0，需 `pnpm install` 升級。注意：TRAE 沙箱環境無法寫入 D 盤真實文件系統，全局升級需在用戶自己的終端執行 |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
@@ -42,15 +42,17 @@ Cloudflarerustcms/
 │   ├── index.ts                # 路由薄層 + 中間件註冊
 │   ├── services/               # 業務厚層（每個功能一個文件）
 │   │   ├── auth.ts             # JWT + 權限（reloadUserPermissions 實時刷新）
-│   │   ├── content.ts          # 內容 CRUD + 按模型過濾
-│   │   ├── config.ts           # KV 配置緩存
-│   │   ├── extra.ts            # 站點/公司信息（HK 本地化字段白名單）
+│   │   ├── content.ts          # 內容 CRUD + 按模型過濾 + 內鏈替換
+│   │   ├── config.ts           # KV 配置緩存（config:all 讀寫 + clearConfigCache）
+│   │   ├── extra.ts            # 公司信息/輪播圖/友情鏈接/標籤/單頁（HK 本地化）
 │   │   ├── flags.ts            # FLAG_REGISTRY 功能開關註冊表
+│   │   ├── forms.ts            # 統一表單提交系統（POST /f/:token + 管理 CRUD）
 │   │   ├── notify.ts           # Webhook + 郵件通知
 │   │   ├── vectorize.ts        # 語義搜索（Vectorize + Workers AI）
 │   │   ├── scheduler.ts        # Queues 定時發布 + Cron
 │   │   ├── ratelimit.ts        # Rate Limiting bindings
-│   │   ├── cache.ts            # KV API 響應緩存
+│   │   ├── cache.ts            # KV 緩存清理（clearContentCache / clearApiCacheRemnants）
+│   │   ├── site.ts             # 多站點管理（CRUD + 動態站點創建 + 用戶站點分配）
 │   │   ├── storage.ts          # R2/S3 S3 兼容存儲 + 媒體庫引用
 │   │   ├── sort.ts             # 欄目樹 buildSortTree
 │   │   ├── model.ts            # 內容模型管理
@@ -61,19 +63,23 @@ Cloudflarerustcms/
 │       ├── response.ts         # okData/err/forbidden 統一響應
 │       ├── datetime.ts         # UTC+8 香港時區
 │       ├── pagination.ts       # 分頁工具
+│       ├── sanitize.ts         # HTML 淨化（sanitizeHtml / stripHtmlTags，XSS 防禦）
+│       ├── sitedb.ts           # 多站點數據庫路由（siteDB / currentSiteId / parseSiteRegistry）
+│       ├── tagLink.ts          # 文章內鏈替換引擎（五步預佔位策略）
 │       └── s3sig.ts            # AWS SigV4 簽名（純 Web Crypto）
 ├── admin/                      # 前端 SPA（React 18 + Vite + Tailwind）
-│   ├── functions/api/v1/[[path]].ts  # Pages Functions Service Binding 代理
+│   ├── functions/api/v1/[[path]].ts  # Pages Functions Service Binding 代理（→ cfstack-cms）
 │   ├── src/
 │   │   ├── App.tsx             # 路由 + RequirePermission 守衛
-│   │   ├── components/         # Layout / ImageCompressDialog / TagInput 等
-│   │   ├── hooks/              # useFeatureFlags / useImageUpload
-│   │   ├── lib/                # api.ts（HTTP 客戶端）/ imageCompress.ts / utils.ts
-│   │   └── pages/              # 24 個頁面組件
+│   │   ├── components/         # Layout / ImageCompressDialog / TagInput 等（14 組件）
+│   │   ├── contexts/           # SiteContext（站點切換 + 過渡動畫）
+│   │   ├── hooks/              # useFeatureFlags / useImageUpload / useBatchSorting
+│   │   ├── lib/                # api.ts / imageCompress.ts / utils.ts / quill/（編輯器插件）
+│   │   └── pages/              # 26 個頁面組件
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
-│   ├── wrangler.jsonc          # Pages 部署配置（pages_build_output_dir: deploy）
+│   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，當前 0001-0012）
+├── migrations/                 # D1 遷移（冪等語法，當前 0001-0006）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
@@ -85,7 +91,7 @@ Cloudflarerustcms/
 
 | 資源 | 標識 | 說明 |
 |------|------|------|
-| Worker | `rust-cms` | 內部 Service Binding，**公網 URL 已禁用**（`workers_dev: false`） |
+| Worker | `cfstack-cms` | 內部 Service Binding，**公網 URL 已禁用**（`workers_dev: false`） |
 | D1（主庫） | `endoscopy-cms` | ID: `c824a999-6a14-4878-bc43-2f3de023cbde`（認證/用戶/角色/菜單/站點註冊表） |
 | D1（smile） | `smile-cms` | ID: `f59320b5-b1f2-47cf-8b32-e341e1c5da48` |
 | D1（vision） | `vision-cms` | ID: `a49903a9-098e-43cd-934c-9bad2466d8ae` |
@@ -99,7 +105,7 @@ Cloudflarerustcms/
 | Workers Cache | `cache.enabled: true` | 聲明式邊緣緩存，公開 GET 自動緩存（配置 3600s / 內容 300s），排除 /admin/* 及 /auth/*，Vary: X-Site-Id 多站點分區 |
 | Smart Placement | `placement.mode: smart` | Worker 自動部署靠近 D1 的數據中心，降低數據庫延遲 |
 | Pages | `cms-admin` | 管理後台 SPA，域名 `cms.cmermedical.com.hk` |
-| Service Binding | Pages `cms-admin` → Worker `rust-cms` | 零延遲內部通信，前端通過 `functions/api/v1/[[path]].ts` 代理 |
+| Service Binding | Pages `cms-admin` → Worker `cfstack-cms` | 零延遲內部通信。配置：`admin/wrangler.jsonc`（services 字段，binding: `API`）。代理腳本：`admin/functions/api/v1/[[path]].ts` |
 | GitHub | `https://github.com/vikim540/CloudflareCMS.git` | 賬號 `waicun_lee@outlook.com`（Account ID: `f5d4e94cb23f69f8ae69baedff94f2ba`） |
 
 ---
@@ -111,7 +117,7 @@ Cloudflarerustcms/
 - 表前綴 `ay_` 不變，**可按需修改/新增表結構和字段**
 - SQL 始終 `.bind()` 參數化，**禁止字符串拼接**
 - 新增表/字段用冪等語法：`CREATE TABLE IF NOT EXISTS`、`ALTER TABLE ... ADD COLUMN`
-- 遷移文件編號需唯一（當前存在重複編號 0003/0004，後續新增從 0013 開始）
+- 遷移文件編號需唯一（v1.8.7 已合併原 15 個遷移為 `0001_init.sql`，重複編號已清理。後續新增從 0007 開始）
 
 ### 禁止依賴
 
@@ -122,7 +128,7 @@ Cloudflarerustcms/
 | `bcrypt` / `argon2` | 雙 MD5（`md5(md5(password))`，與 PbootCMS/Go 版兼容） |
 | `nodemailer` / SMTP 庫 | MailChannels / Resend HTTP API |
 | `node-fetch` / `axios` | 全局 `fetch()` |
-| `lucide-react` / 字體圖標 | emoji（`lucide-react` 在 package.json 中為殘留依賴，可移除） |
+| `lucide-react` / 字體圖標 | emoji（`lucide-react` 已從 package.json 移除） |
 
 ### 前後端分離
 

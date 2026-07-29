@@ -33,7 +33,7 @@ import * as notifyService from './services/notify';
 import * as siteService from './services/site';
 import * as formsService from './services/forms';
 import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
-import { clearContentCache, clearConfigCache } from './services/cache';
+import { clearContentCache, clearApiCacheRemnants } from './services/cache';
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
 import type { PublishMessage } from './services/scheduler';
@@ -889,7 +889,7 @@ app.put('/api/v1/admin/configs', async (c) => {
     secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
   // 清除 API 響應緩存
-  await clearConfigCache(c.env.API_CACHE);
+  await clearApiCacheRemnants(c.env.API_CACHE);
   return result;
 });
 
@@ -1219,7 +1219,7 @@ app.post('/api/v1/admin/internallinks', async (c) => {
   // 內鏈關鍵詞變更影響文章渲染，清除內容緩存 + 標籤列表緩存
   if (result.status === 200) {
     await clearContentCache(c.env.API_CACHE);
-    await clearConfigCache(c.env.CONFIG_CACHE);
+    await clearApiCacheRemnants(c.env.CONFIG_CACHE);
   }
   return result;
 });
@@ -1232,7 +1232,7 @@ app.put('/api/v1/admin/internallinks/:id', async (c) => {
   const result = await extraService.handleUpdateTag(siteDB(c), id, body);
   if (result.status === 200) {
     await clearContentCache(c.env.API_CACHE);
-    await clearConfigCache(c.env.CONFIG_CACHE);
+    await clearApiCacheRemnants(c.env.CONFIG_CACHE);
   }
   return result;
 });
@@ -1244,7 +1244,7 @@ app.delete('/api/v1/admin/internallinks/:id', async (c) => {
   const result = await extraService.handleDeleteTag(siteDB(c), id);
   if (result.status === 200) {
     await clearContentCache(c.env.API_CACHE);
-    await clearConfigCache(c.env.CONFIG_CACHE);
+    await clearApiCacheRemnants(c.env.CONFIG_CACHE);
   }
   return result;
 });
@@ -1724,7 +1724,7 @@ app.put('/api/v1/admin/flags', async (c) => {
     }
 
     // 清除配置緩存
-    await clearConfigCache(c.env.CONFIG_CACHE);
+    await clearApiCacheRemnants(c.env.CONFIG_CACHE);
 
     return ok(body.enabled ? '功能已開啟' : '功能已關閉');
   } catch (e) {
