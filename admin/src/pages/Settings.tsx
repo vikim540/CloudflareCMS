@@ -45,9 +45,19 @@ const TABS = [
   { key: 'notify', label: '通知配置', icon: '🔔', groupMins: [50, 90] },
 ] as const
 
-/** Webhook 專屬配置項（通知 tab 中單獨一個 section 展示） */
-const WEBHOOK_SECTION_CONFIGS = new Set([
+/** 系統更新 Webhook 配置項（版本更新通知，推送至開發群） */
+const SYSTEM_WEBHOOK_CONFIGS = new Set([
+  'system_webhook_url',
+])
+
+/** 表單推送 Webhook 配置項（留言/表單/評論通知，推送至客服群） */
+const FORM_WEBHOOK_CONFIGS = new Set([
   'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
+])
+
+/** 所有 Webhook 配置項（webhook_enabled 關閉時隱藏） */
+const WEBHOOK_SECTION_CONFIGS = new Set([
+  ...SYSTEM_WEBHOOK_CONFIGS, ...FORM_WEBHOOK_CONFIGS,
 ])
 
 /** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
@@ -62,7 +72,7 @@ const HIDDEN_CONFIGS = new Set([
 
 /** Webhook 相關配置項（webhook_enabled 關閉時隱藏） */
 const WEBHOOK_CONFIGS = new Set([
-  'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment',
+  'system_webhook_url', 'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
 ])
 
 /** 通知配置分組中的郵件相關配置項（mail_enabled 關閉時隱藏） */
@@ -510,7 +520,7 @@ export default function Settings() {
                     ) : (
                       <span className="text-sm">🪝</span>
                     )}
-                    測試 Webhook
+                    測試表單 Webhook
                   </button>
                 )}
               </div>
@@ -534,18 +544,22 @@ export default function Settings() {
     return { groups: matched, others }
   }, [activeTab, groupedConfigs])
 
-  /** 通知 tab 中將 webhook 配置分離 */
+  /** 通知 tab 中將 webhook 配置分離為系統更新 + 表單推送兩組 */
   const splitNotifyGroups = useMemo(() => {
     if (activeTab !== 'notify') return null
     const result: { title: string; icon: string; desc: string; items: Config[]; isWebhook: boolean }[] = []
     for (const { group, items } of visibleGroups.groups) {
-      const webhookItems = items.filter((c) => WEBHOOK_SECTION_CONFIGS.has(c.name))
+      const systemWebhookItems = items.filter((c) => SYSTEM_WEBHOOK_CONFIGS.has(c.name))
+      const formWebhookItems = items.filter((c) => FORM_WEBHOOK_CONFIGS.has(c.name))
       const normalItems = items.filter((c) => !WEBHOOK_SECTION_CONFIGS.has(c.name))
       if (normalItems.length > 0) {
         result.push({ title: group.title, icon: group.icon, desc: group.desc, items: normalItems, isWebhook: false })
       }
-      if (webhookItems.length > 0) {
-        result.push({ title: 'Webhook 推送', icon: '🪝', desc: 'Webhook 通知地址與開關（表單提交推送至客服群）', items: webhookItems, isWebhook: true })
+      if (systemWebhookItems.length > 0) {
+        result.push({ title: '系統更新 Webhook', icon: '🚀', desc: '版本更新通知推送地址（開發群，留空則回退到表單推送 Webhook）', items: systemWebhookItems, isWebhook: true })
+      }
+      if (formWebhookItems.length > 0) {
+        result.push({ title: '表單推送 Webhook', icon: '🪝', desc: '留言/表單/評論提交通知推送地址（客服群）', items: formWebhookItems, isWebhook: true })
       }
     }
     return result
@@ -688,13 +702,13 @@ export default function Settings() {
         </div>
       )}
 
-      {/* 通知 tab：webhook 單獨一個 section */}
+      {/* 通知 tab：系統更新 Webhook + 表單推送 Webhook 分開展示 */}
       {activeTab === 'notify' && splitNotifyGroups && (
         <div className="space-y-5">
           {splitNotifyGroups.map((section) => {
             const group: ConfigGroup = {
               min: section.isWebhook ? 55 : 50,
-              max: section.isWebhook ? 55 : 59,
+              max: section.isWebhook ? 65 : 59,
               title: section.title,
               icon: section.icon,
               desc: section.desc,
