@@ -17,7 +17,7 @@
 -- ============================================================================
 
 INSERT OR IGNORE INTO ay_config (name, value, type, sorting, description) VALUES
-  ('system_webhook_url', '', '2', 61, '系統更新 Webhook URL（開發群，留空則回退到 webhook_url）');
+  ('system_webhook_url', '', '2', 60, '系統更新 Webhook URL（開發群，留空則回退到 webhook_url）');
 
 -- 更新 webhook_url 描述，明確標註為表單推送用
 UPDATE ay_config SET description = '表單/留言/評論 Webhook 推送地址（客服群）' WHERE name = 'webhook_url';

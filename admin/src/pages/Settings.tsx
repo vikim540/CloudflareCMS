@@ -28,8 +28,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 20, max: 29, title: '留言表單', icon: '💬', desc: '留言與表單提交相關配置' },
   { min: 30, max: 39, title: '安全配置', icon: '🛡️', desc: 'API 安全、防護等設置' },
   { min: 40, max: 49, title: 'WebAPI', icon: '</>', desc: 'API 接口與跨域配置' },
-  { min: 50, max: 59, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
-  { min: 60, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
+  { min: 50, max: 60, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
+  { min: 61, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
   { min: 70, max: 79, title: 'S3 存儲配置', icon: '💾', desc: 'R2/S3 兼容存儲（默認鎖定，點擊解鎖後可修改）' },
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
   { min: 210, max: 219, title: 'SEO 內鏈配置', icon: '🔗', desc: '文章關鍵詞自動替換為超連結' },
@@ -38,7 +38,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
 /** Tab 定義 */
 const TABS = [
   { key: 'flags', label: '功能開關', icon: '🚩' },
-  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 60, 210] },
+  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 61, 210] },
   { key: 'security', label: '安全配置', icon: '🛡️', groupMins: [30] },
   { key: 'webapi', label: 'WebAPI', icon: '🔌', groupMins: [40] },
   { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70] },
