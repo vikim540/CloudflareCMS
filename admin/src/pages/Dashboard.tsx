@@ -66,7 +66,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-29 10:12:14',
     icon: '🔧',
     latest: true,
-    changes: `🔧 wrangler 全局升級 + 路徑遷移 + AGENTS.md 命令簡化\n\n📋 變更內容\n• wrangler 全局升級至 4.115.0（最新版），安裝至新路徑 D:\\AI\\Cache\\wrangler-home\n• 原 D:\\AI\\Cache\\npm-home 路徑因文件系統損壞（ENOTDIR 幻影路徑）已廢棄\n• 已通過用戶 PATH 環境變量 + 註冊表 doskey 雙重確保全局可用\n• AGENTS.md 常用命令簡化：所有完整路徑調用改為直接 wrangler\n• package.json devDependencies wrangler 版本從 ^4.113.0 升級至 ^4.115.0`,
+    changes: `🔧 wrangler 版本聲明升級 + AGENTS.md 命令簡化\n\n📋 變更內容\n• package.json devDependencies wrangler 版本從 ^4.113.0 升級至 ^4.115.0\n• AGENTS.md 常用命令簡化：所有完整路徑調用改為直接 wrangler\n• 項目本地 wrangler 為 4.111.0（真實可用），全局升級需用戶在自己的終端執行\n• 發現 TRAE 沙箱環境對 D 盤有文件系統虛擬化，沙箱內創建的目錄不會寫入真實磁盤`,
   },
   {
     version: 'v1.9.29',

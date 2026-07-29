@@ -24,7 +24,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 4.115.0+ | `D:\AI\Cache\wrangler-home\wrangler.cmd`（v1.9.30 起遷移至此路徑，原 `D:\AI\Cache\npm-home` 路徑因文件系統損壞已廢棄；已通過 PATH + 註冊表 doskey 全局可用：`reg add "HKCU\Software\Microsoft\Command Processor" /v AutoRun /t REG_SZ /d "doskey wrangler=D:\AI\Cache\wrangler-home\wrangler.cmd $*" /f`） |
+| wrangler | 4.115.0+ | 全局安裝（`yarn global add wrangler@latest` / `npm install -g wrangler@latest` / `pnpm add -g wrangler@latest`），項目本地 `node_modules/wrangler` 為 4.111.0。注意：TRAE 沙箱環境無法寫入 D 盤真實文件系統，全局升級需在用戶自己的終端執行 |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
