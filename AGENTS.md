@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.30**（2026-07-29）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.33**（2026-07-29）
 
 ## 語言選擇優先級
 
@@ -79,7 +79,7 @@ Cloudflarerustcms/
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，當前 0001-0006）
+├── migrations/                 # D1 遷移（冪等語法，當前僅 0001_init.sql）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
@@ -117,7 +117,7 @@ Cloudflarerustcms/
 - 表前綴 `ay_` 不變，**可按需修改/新增表結構和字段**
 - SQL 始終 `.bind()` 參數化，**禁止字符串拼接**
 - 新增表/字段用冪等語法：`CREATE TABLE IF NOT EXISTS`、`ALTER TABLE ... ADD COLUMN`
-- 遷移文件編號需唯一（v1.8.7 已合併原 15 個遷移為 `0001_init.sql`，重複編號已清理。後續新增從 0007 開始）
+- 遷移文件編號需唯一（v1.9.33 已合併 0001-0007 為單一 `0001_init.sql`。後續新增從 0002 開始）
 
 ### 禁止依賴
 

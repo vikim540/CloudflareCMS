@@ -62,11 +62,18 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.33',
+    date: '2026-07-29 15:26:16',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 Webhook 配置簡化 + 遷移文件合併\n\n📋 變更內容\n• 簡化 Webhook 架構：webhook_url（開發群，系統更新通知）+ form_webhook_url（客服群，表單/留言/評論通知），移除多餘的 system_webhook_url\n• 後端 sendWebhook 改用 form_webhook_url（留空回退 webhook_url）\n• 後端 handleVersionNotify 直接使用 webhook_url（開發群）\n• 前端 Settings 通知配置 tab 清晰分離：🚀 系統更新 Webhook（開發群）+ 🪝 表單推送 Webhook（客服群）\n• 修正 sorting 衝突（form_webhook_url 61、google_verification 62、bing_verification 63）\n• 合併遷移文件 0001-0007 為單一 0001_init.sql，刪除 6 個增量遷移文件\n• 清理 d1_migrations 追蹤表，移除已合併遷移記錄`,
+  },
+  {
     version: 'v1.9.32',
     date: '2026-07-29 14:35:07',
     icon: '🔔',
-    latest: true,
-    changes: `🔔 系統更新 Webhook 與表單推送 Webhook 分離\n\n📋 變更內容\n• 新增 system_webhook_url 配置字段（migration 0007），系統版本更新通知推送至獨立群組\n• 後端 handleVersionNotify 優先使用 system_webhook_url，留空時回退到 webhook_url（向後兼容）\n• 前端 Settings 通知配置 tab 將 Webhook 拆分為兩個獨立 section：\n  🚀 系統更新 Webhook（開發群）— 版本更新通知\n  🪝 表單推送 Webhook（客服群）— 留言/表單/評論通知\n• 更新 webhook_url 描述為「表單/留言/評論 Webhook 推送地址（客服群）」\n• 測試按鈕文字標註為「測試表單 Webhook」，明確區分測試對象`,
+    latest: false,
+    changes: `🔔 系統更新 Webhook 與表單推送 Webhook 分離（已被 v1.9.33 簡化取代）\n\n📋 變更內容\n• 新增 system_webhook_url 配置字段（v1.9.33 已移除，改為直接使用 webhook_url）\n• 前端 Settings 通知配置 tab 將 Webhook 拆分為兩個獨立 section`,
   },
   {
     version: 'v1.9.31',

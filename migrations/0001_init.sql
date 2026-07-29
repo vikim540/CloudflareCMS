@@ -1,20 +1,29 @@
 -- ============================================================================
 -- 合併遷移 0001_init.sql
 -- ============================================================================
--- 生成日期：2026-07-22
--- 替代原 0001-0013（含重複編號 0003/0004）共 15 個遷移文件
+-- 生成日期：2026-07-22（v1.9.33 合併 0001-0007）
+-- 替代原 0001-0013（含重複編號 0003/0004）共 15 個遷移文件 + 0002-0007 共 7 個增量遷移
 --
 -- 本遷移為當前 D1 數據庫完整快照（schema + 種子數據），全冪等語法：
 --   CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS / INSERT OR IGNORE
 -- 可安全重複執行，也可用於全新站點數據庫初始化。
+--
+-- 合併的增量遷移（0002-0007）：
+--   0002: ay_form_submission 表索引 + form_webhook_url 配置 + 菜單 M204/M205 調整
+--   0003: ay_form 擴展字段 + 表單種子數據 + 菜單 M210 + 角色權限
+--   0004: ay_form 安全字段（submit_token/turnstile_enabled/allowed_origins）+ 種子 token
+--   0005: M210 pcode 修正（M200→M610）+ ay_slide status 字段（已在 schema 中）
+--   0006: M205 菜單徹底刪除（從角色權限和菜單表中移除）
+--   0007: webhook 配置分離（webhook_url 開發群 + form_webhook_url 客服群）
 --
 -- 修復的歷史數據問題：
 --   1. R103 levels 字段 M308→M508（v1.7.5 代碼遷移時 ay_role.levels 未同步更新）
 --   2. R101 levels 字段補全 M508（v1.7.5 新增多站點菜單後未同步到 levels 緩存）
 --   3. 移除 turnstile_secret_key 配置行（v1.8.6 已遷移至 Secrets Store）
 --   4. ay_area 去重（原有 2 條完全相同的記錄）
---   5. 敏感憑證（s3_access_key/s3_secret_key/webhook_url）種子值留空，
+--   5. 敏感憑證（s3_access_key/s3_secret_key）種子值留空，
 --      生產環境通過 INSERT OR IGNORE 不覆蓋已有值
+--   6. M205 菜單完全移除（不保留 status='0' 的停用記錄）
 -- ============================================================================
 
 -- ============================================================================
@@ -304,13 +313,19 @@ CREATE TABLE IF NOT EXISTS ay_form (
     fcode TEXT,
     form_name TEXT,
     table_name TEXT,
+    description TEXT,
+    is_active TEXT DEFAULT '1',
+    sorting INTEGER DEFAULT 255,
+    status TEXT DEFAULT '1',
+    webhook_url TEXT,
+    submit_token TEXT,
+    turnstile_enabled TEXT DEFAULT '0',
+    allowed_origins TEXT,
     create_user TEXT,
     update_user TEXT,
     create_time TEXT,
     update_time TEXT
 );
--- 注意：ay_form 的擴展字段（description/is_active/sorting/status/webhook_url/
--- submit_token/turnstile_enabled/allowed_origins）由 0003/0004 遷移 ALTER TABLE 添加
 
 CREATE TABLE IF NOT EXISTS ay_form_field (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -344,6 +359,9 @@ CREATE TABLE IF NOT EXISTS ay_form_submission (
 
 CREATE INDEX IF NOT EXISTS idx_form_sub_status ON ay_form_submission(status);
 CREATE INDEX IF NOT EXISTS idx_form_sub_create_time ON ay_form_submission(create_time);
+CREATE INDEX IF NOT EXISTS idx_form_sub_form_key ON ay_form_submission(form_key);
+CREATE INDEX IF NOT EXISTS idx_form_sub_name ON ay_form_submission(name);
+CREATE INDEX IF NOT EXISTS idx_form_sub_tel ON ay_form_submission(tel);
 
 CREATE TABLE IF NOT EXISTS ay_label (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -495,9 +513,8 @@ INSERT OR IGNORE INTO ay_menu (id, mcode, pcode, name, url, ico, sorting, status
   (3,  'M201', 'M200','文章列表', '/admin/content/index',    '',   210, '1', '0', '1'),
   (4,  'M202', 'M610','欄目管理', '/admin/content/sort',      '',   613, '1', '0', '1'),
   (5,  'M203', 'M400','單頁管理', '/admin/content/single',   '',   230, '1', '0', '1'),
-  (6,  'M204', 'M400','自定義表單','/admin/forms/submissions',  '',   240, '1', '0', '1'),
-  (7,  'M205', 'M400','自定義表單(舊)','/admin/content/form',  '',   250, '0', '0', '1'), -- 已在 0006 中刪除，保留行號佔位
-  (8,  'M206', 'M600','擴展字段', '/admin/content/extfield', '',   603, '1', '0', '1'),
+  (6, 'M204', 'M400','自定義表單','/admin/forms/submissions',  '',   240, '1', '0', '1'),
+  (8, 'M206', 'M600','擴展字段', '/admin/content/extfield', '',   603, '1', '0', '1'),
   (9,  'M207', 'M600','內容模型', '/admin/content/model',    '',   602, '1', '0', '1'),
   (10, 'M208', 'M200','回收站',   '/admin/content/trash',    '',   280, '1', '0', '1'),
   (11, 'M300', '0',   '多媒體',   NULL,                       '🖼️', 55,  '1', '1', '1'),
@@ -579,10 +596,18 @@ INSERT OR IGNORE INTO ay_slide_group (id, gid, name, sorting, create_time, updat
   (3, '3', '大腸鏡檢查', 3, datetime('now', '+8 hours'), datetime('now', '+8 hours'));
 
 -- ============================================================================
--- Section 12b: 種子數據 — 預設表單
+-- Section 12b: 種子數據 — 預設表單（合併自 0003/0004）
 -- ============================================================================
--- 注意：預設表單種子數據由 0003_form_management.sql 提供
--- （因 ay_form 表的擴展字段在 0003 中通過 ALTER TABLE 添加）
+
+INSERT OR IGNORE INTO ay_form (id, fcode, form_name, description, is_active, sorting, status, submit_token, create_time, update_time) VALUES
+  (1, 'general', '通用表單', '默認通用表單（無指定 formId 時使用）', '1', 100, '1', 'Kx9mB2nQ7pL4rT8v', datetime('now'), datetime('now')),
+  (2, 'appointment', '預約表單', '預約/報名表單', '1', 200, '1', 'Ap7Lk3R9wX2nF5jH', datetime('now'), datetime('now')),
+  (3, 'contact', '聯絡表單', '聯絡/諮詢表單', '1', 300, '1', 'Zt4Pq8M1cV6bN3yD', datetime('now'), datetime('now'));
+
+-- 遷移舊數據：將 form_key 文字改為 form ID（冪等，新庫無數據時為空操作）
+UPDATE ay_form_submission SET form_key = '1' WHERE form_key = 'general';
+UPDATE ay_form_submission SET form_key = '2' WHERE form_key = 'appointment';
+UPDATE ay_form_submission SET form_key = '3' WHERE form_key = 'contact';
 
 -- ============================================================================
 -- Section 13: 種子數據 — 擴展字段定義
@@ -644,15 +669,16 @@ INSERT OR IGNORE INTO ay_config (id, name, value, type, sorting, description) VA
   (101,'mail_from',            '',  '2', 92, '發件人地址'),
   (102,'mail_from_name',       'CMS 系統','2', 93, '發件人名稱'),
   (106,'mail_enabled',         '1', '1', 55, '郵件通知總開關'),
-  -- Webhook（webhook_url 含 token，種子留空）
+  -- Webhook（webhook_url = 系統更新推送至開發群，form_webhook_url = 表單推送至客服群）
   (107,'webhook_enabled',      '1', '1', 56, 'Webhook通知總開關'),
-  (94, 'webhook_url',          '',  '2', 57, 'Webhook推送地址(釘釘/企業微信/通用)'),
+  (94, 'webhook_url',          '',  '2', 57, '系統更新 Webhook URL（開發群）'),
   (95, 'webhook_message',      '1', '1', 58, '留言推送開關'),
   (96, 'webhook_form',         '0', '1', 59, '表單推送開關'),
   (97, 'webhook_comment',      '0', '1', 60, '評論推送開關'),
+  (112,'form_webhook_url',     '',  '2', 61, '表單/留言/評論 Webhook URL（客服群）'),
   -- 搜索引擎驗證
-  (108,'google_verification',  '',  '2', 61, 'Google Search Console 驗證碼'),
-  (109,'bing_verification',    '',  '2', 62, 'Bing Webmaster Tools 驗證碼'),
+  (108,'google_verification',  '',  '2', 62, 'Google Search Console 驗證碼'),
+  (109,'bing_verification',    '',  '2', 63, 'Bing Webmaster Tools 驗證碼'),
   -- 水印（已隱藏，headless CMS 不使用）
   (30, 'watermark_open',       '0', '1', 200, '水印開關'),
   (31, 'watermark_text',      '',  '2', 201, '水印文字'),

@@ -28,8 +28,8 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 20, max: 29, title: '留言表單', icon: '💬', desc: '留言與表單提交相關配置' },
   { min: 30, max: 39, title: '安全配置', icon: '🛡️', desc: 'API 安全、防護等設置' },
   { min: 40, max: 49, title: 'WebAPI', icon: '</>', desc: 'API 接口與跨域配置' },
-  { min: 50, max: 60, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
-  { min: 61, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
+  { min: 50, max: 61, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
+  { min: 62, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
   { min: 70, max: 79, title: 'S3 存儲配置', icon: '💾', desc: 'R2/S3 兼容存儲（默認鎖定，點擊解鎖後可修改）' },
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
   { min: 210, max: 219, title: 'SEO 內鏈配置', icon: '🔗', desc: '文章關鍵詞自動替換為超連結' },
@@ -38,7 +38,7 @@ const CONFIG_GROUPS: ConfigGroup[] = [
 /** Tab 定義 */
 const TABS = [
   { key: 'flags', label: '功能開關', icon: '🚩' },
-  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 61, 210] },
+  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 62, 210] },
   { key: 'security', label: '安全配置', icon: '🛡️', groupMins: [30] },
   { key: 'webapi', label: 'WebAPI', icon: '🔌', groupMins: [40] },
   { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70] },
@@ -47,12 +47,12 @@ const TABS = [
 
 /** 系統更新 Webhook 配置項（版本更新通知，推送至開發群） */
 const SYSTEM_WEBHOOK_CONFIGS = new Set([
-  'system_webhook_url',
+  'webhook_url',
 ])
 
 /** 表單推送 Webhook 配置項（留言/表單/評論通知，推送至客服群） */
 const FORM_WEBHOOK_CONFIGS = new Set([
-  'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
+  'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
 ])
 
 /** 所有 Webhook 配置項（webhook_enabled 關閉時隱藏） */
@@ -72,7 +72,7 @@ const HIDDEN_CONFIGS = new Set([
 
 /** Webhook 相關配置項（webhook_enabled 關閉時隱藏） */
 const WEBHOOK_CONFIGS = new Set([
-  'system_webhook_url', 'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
+  'webhook_url', 'webhook_message', 'webhook_form', 'webhook_comment', 'form_webhook_url',
 ])
 
 /** 通知配置分組中的郵件相關配置項（mail_enabled 關閉時隱藏） */
@@ -400,7 +400,7 @@ export default function Settings() {
       : group
 
     const isS3Group = displayGroup.min === 70
-    const isSeoGroup = displayGroup.min === 60
+    const isSeoGroup = displayGroup.min === 62
     const isCollapsible = isS3Group || isSeoGroup
     const isCollapsed = isS3Group ? s3Collapsed : isSeoGroup ? seoCollapsed : false
     const isLocked = isS3Group && !s3Unlocked
@@ -556,10 +556,10 @@ export default function Settings() {
         result.push({ title: group.title, icon: group.icon, desc: group.desc, items: normalItems, isWebhook: false })
       }
       if (systemWebhookItems.length > 0) {
-        result.push({ title: '系統更新 Webhook', icon: '🚀', desc: '版本更新通知推送地址（開發群，留空則回退到表單推送 Webhook）', items: systemWebhookItems, isWebhook: true })
+        result.push({ title: '系統更新 Webhook（開發群）', icon: '🚀', desc: '版本更新通知推送地址', items: systemWebhookItems, isWebhook: true })
       }
       if (formWebhookItems.length > 0) {
-        result.push({ title: '表單推送 Webhook', icon: '🪝', desc: '留言/表單/評論提交通知推送地址（客服群）', items: formWebhookItems, isWebhook: true })
+        result.push({ title: '表單推送 Webhook（客服群）', icon: '🪝', desc: '留言/表單/評論提交通知推送地址', items: formWebhookItems, isWebhook: true })
       }
     }
     return result

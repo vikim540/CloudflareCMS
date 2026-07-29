@@ -106,8 +106,9 @@ export async function sendWebhook(
   meta: NotifyMeta,
   detailUrl: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const webhookUrl = cfg(configs, 'webhook_url');
-  if (!webhookUrl) return { success: false, error: 'webhook_url 未配置' };
+  // 表單/留言/評論通知使用 form_webhook_url（客服群），留空則回退 webhook_url
+  const webhookUrl = cfg(configs, 'form_webhook_url') || cfg(configs, 'webhook_url');
+  if (!webhookUrl) return { success: false, error: 'form_webhook_url 未配置' };
   const switchKey = `webhook_${category}`;
   if (cfg(configs, switchKey) !== '1') return { success: false, error: `${switchKey} 未啟用` };
 
@@ -312,8 +313,9 @@ export async function handleTestMail(db: D1Database, kv: KVNamespace, body: { to
 
 export async function handleTestWebhook(db: D1Database, kv: KVNamespace, body: { category?: 'message' | 'form' | 'comment' }): Promise<Response> {
   const configs = await loadConfigsFromDB(db);
-  const webhookUrl = cfg(configs, 'webhook_url');
-  if (!webhookUrl) return err('webhook_url 未配置', 1001);
+  // 表單/留言/評論 Webhook 測試使用 form_webhook_url（客服群）
+  const webhookUrl = cfg(configs, 'form_webhook_url') || cfg(configs, 'webhook_url');
+  if (!webhookUrl) return err('form_webhook_url 未配置', 1001);
   const category = body.category || 'message';
   const site = await getSiteInfo(db);
   const detailUrl = buildAdminUrl(site.domain, category);
@@ -360,10 +362,9 @@ export async function handleVersionNotify(
 
   // 從 D1 讀取配置（不依賴 KV 緩存，確保 webhook 配置最新）
   const configs = await loadConfigsFromDB(db);
-  // v1.9.32: 系統更新通知使用獨立的 system_webhook_url（開發群），
-  // 未配置時回退到 webhook_url（向後兼容）
-  const webhookUrl = cfg(configs, 'system_webhook_url') || cfg(configs, 'webhook_url');
-  if (!webhookUrl) return okData({ skipped: true, reason: 'system_webhook_url 和 webhook_url 均未配置' }, '成功');
+  // 系統更新通知使用 webhook_url（開發群）
+  const webhookUrl = cfg(configs, 'webhook_url');
+  if (!webhookUrl) return okData({ skipped: true, reason: 'webhook_url 未配置' }, '成功');
 
   // 檢查 webhook 總開關 — 版本通知為系統級功能，直接讀 D1 配置（繞過 Flagship）
   // 原因：Flagship 可能未配置 webhook_enabled flag，返回 false 導致通知被靜默跳過
