@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.34',
+    date: '2026-07-29 16:24:14',
+    icon: '🏗️',
+    latest: true,
+    changes: `🏗️ 通知架構修復 + 死代碼清理\n\n📋 變更內容\n• triggerNotify 架構修復：forms.ts 表單提交接入統一通知系統（此前 triggerNotify 定義但從未被調用，表單僅用 pushFormDingTalk 純釘釘推送，無郵件/企業微信/功能開關/日誌）\n• triggerNotify/sendWebhook 新增 overrideWebhookUrl 參數，支持表單專屬 webhook 優先級（表單專屬 > form_webhook_url > webhook_url）\n• 移除 forms.ts 重複代碼：pushFormDingTalk、getFormWebhookUrl、parseUserAgent 副本（共 ~70 行）\n• notify.ts 內部函數移除冗餘 export：sendWebhook、sendNotifyMail、buildNotifyEmailHtml（僅本文件使用）\n• 後端死代碼清理：移除 8 個未使用函數（featureFlagMiddleware、menu action 函數、handleTrashContent、checkFileUsed、totalPages、s3CopyObject 等）\n• TypeScript as never 類型斷言修復（index.ts）`,
+  },
+  {
     version: 'v1.9.33',
     date: '2026-07-29 15:26:16',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 Webhook 配置簡化 + 遷移文件合併\n\n📋 變更內容\n• 簡化 Webhook 架構：webhook_url（開發群，系統更新通知）+ form_webhook_url（客服群，表單/留言/評論通知），移除多餘的 system_webhook_url\n• 後端 sendWebhook 改用 form_webhook_url（留空回退 webhook_url）\n• 後端 handleVersionNotify 直接使用 webhook_url（開發群）\n• 前端 Settings 通知配置 tab 清晰分離：🚀 系統更新 Webhook（開發群）+ 🪝 表單推送 Webhook（客服群）\n• 修正 sorting 衝突（form_webhook_url 61、google_verification 62、bing_verification 63）\n• 合併遷移文件 0001-0007 為單一 0001_init.sql，刪除 6 個增量遷移文件\n• 清理 d1_migrations 追蹤表，移除已合併遷移記錄`,
   },
   {

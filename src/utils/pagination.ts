@@ -18,9 +18,3 @@ export function fromQuery(params: URLSearchParams): Pagination {
 export function offset(p: Pagination): number {
   return (p.page - 1) * p.pagesize;
 }
-
-/** 計算總頁數 */
-export function totalPages(total: number, pagesize: number): number {
-  if (total === 0 || pagesize === 0) return 0;
-  return Math.ceil(total / pagesize);
-}

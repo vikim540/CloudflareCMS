@@ -12,7 +12,7 @@
  */
 
 /** 視頻 embed 值（含完整 iframe 屬性） */
-export interface VideoEmbedValue {
+interface VideoEmbedValue {
   src: string
   title?: string
   allow?: string

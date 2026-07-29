@@ -717,49 +717,6 @@ async function collectChildMcodes(db: D1Database, parentMcode: string, acc: stri
   }
 }
 
-/** 菜單操作列表 (按 mcode 查詢) */
-export async function handleListMenuActions(db: D1Database, mcode: string): Promise<Response> {
-  const result = await db
-    .prepare('SELECT * FROM ay_menu_action WHERE mcode = ? ORDER BY sorting ASC, id ASC')
-    .bind(mcode)
-    .all();
-  return okData(result.results, '成功');
-}
-
-/** 新增菜單操作 */
-export async function handleCreateMenuAction(
-  db: D1Database,
-  body: {
-    mcode?: string;
-    name?: string;
-    action?: string;
-    sorting?: number;
-  },
-): Promise<Response> {
-  const mcode = body.mcode;
-  const name = body.name;
-  if (!mcode) return err('缺少 mcode 參數', 1001);
-  if (!name) return err('缺少 name 參數', 1001);
-
-  const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
-
-  const result = await db
-    .prepare('INSERT INTO ay_menu_action (mcode, name, action, sorting) VALUES (?, ?, ?, ?)')
-    .bind(mcode, name, body.action || '', sorting)
-    .run();
-
-  if (result.meta.changes > 0) {
-    return ok('菜單操作創建成功');
-  }
-  return err('菜單操作創建失敗', 1005);
-}
-
-/** 刪除菜單操作 */
-export async function handleDeleteMenuAction(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_menu_action WHERE id = ?').bind(id).run();
-  return ok('菜單操作刪除成功');
-}
-
 // ============================================================================
 // 模塊 4: 系統日誌 (ay_syslog)
 // level 分類: admin (管理操作), spider (爬蟲), mail_*/webhook_* (通知)

@@ -177,24 +177,6 @@ export async function getAllFlags(env: FlagReadEnv): Promise<
 // ============================================================================
 
 /**
- * 功能開關中間件 — 關閉時返回 404
- * 用法：app.use('/api/v1/search/*', featureFlagMiddleware('semantic_search_enabled'))
- */
-export function featureFlagMiddleware(flagKey: string): MiddlewareHandler {
-  return async (c, next) => {
-    // 多站點：優先使用站點庫，回退到主庫
-    const siteDb = (c.get('siteDb') as D1Database | undefined) ?? c.env.DB;
-    const siteId = (c.get('siteId') as string | undefined) ?? 'default';
-    const flagEnv = { ...c.env, DB: siteDb, siteId } as FlagReadEnv;
-    const enabled = await getFlagEnabled(flagEnv, flagKey);
-    if (!enabled) {
-      return err('此功能已關閉', 1004);
-    }
-    await next();
-  };
-}
-
-/**
  * 路由保護中間件 — 自動匹配註冊表中的 protectedRoutes
  * 在 index.ts 的路由註冊前調用：app.use('*', autoRouteProtection())
  */

@@ -192,51 +192,9 @@ export async function compressImage(
   }
 }
 
-/**
- * 壓縮圖片文件，僅返回 File 對象（簡便方法）
- *
- * @param file 原始圖片文件
- * @param options 壓縮選項
- * @returns 壓縮後的 File 對象
- */
-export async function compressImageToWebP(
-  file: File,
-  options?: CompressOptions,
-): Promise<File> {
-  const result = await compressImage(file, options);
-  return result.file;
-}
-
-/**
- * 批量壓縮圖片文件
- * @param files 原始圖片文件數組
- * @param options 壓縮選項
- * @returns 壓縮結果數組
- */
-export async function compressImagesBatch(
-  files: File[],
-  options?: CompressOptions,
-): Promise<CompressResult[]> {
-  return Promise.all(files.map((f) => compressImage(f, options)));
-}
-
 /** 格式化文件大小為人類可讀字符串 */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-/**
- * 獲取圖片的原始尺寸
- * @param url 圖片 URL
- * @returns { width, height }
- */
-export function getImageSize(url: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => resolve({ width: 0, height: 0 });
-    img.src = url;
-  });
 }

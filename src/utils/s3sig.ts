@@ -190,30 +190,6 @@ export async function s3GetObject(
   return { data, contentType };
 }
 
-/** 複製 S3 對象（同桶內複製，使用 CopyObject API） */
-export async function s3CopyObject(
-  config: S3Config,
-  sourceKey: string,
-  destKey: string,
-): Promise<void> {
-  const endpoint = config.endpoint.replace(/\/$/, '');
-  const url = `${endpoint}/${config.bucket}/${uriEncode(destKey, false)}`;
-
-  // x-amz-copy-source 頭需要包含桶名和源 key
-  const copySource = `/${config.bucket}/${uriEncode(sourceKey, false)}`;
-
-  const { headers } = await signS3Request('PUT', url, config, null, '', {
-    'x-amz-copy-source': copySource,
-  });
-
-  const resp = await fetch(url, { method: 'PUT', headers });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`S3 複製失敗: ${resp.status} ${text}`);
-  }
-}
-
 /** 從 S3 刪除文件 */
 export async function s3DeleteObject(config: S3Config, key: string): Promise<void> {
   const endpoint = config.endpoint.replace(/\/$/, '');

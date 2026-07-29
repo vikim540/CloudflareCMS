@@ -26,13 +26,13 @@
  */
 
 /** FAQ 單項數據結構 */
-export interface FaqItemData {
+interface FaqItemData {
   question: string
   answer: string
 }
 
 /** FAQ 群組 embed 值 */
-export interface FaqGroupValue {
+interface FaqGroupValue {
   items: FaqItemData[]
 }
 

@@ -3,7 +3,7 @@ import { useState } from 'react'
 /**
  * FAQ Q&A 配對結構
  */
-export interface FaqPair {
+interface FaqPair {
   id: string
   question: string
   answer: string
@@ -62,7 +62,7 @@ function buildFaqItemHtml(pair: FaqPair): string {
  * 整組 FAQ 包裝在一個容器中，作為單一的 BlockEmbed 插入編輯器
  * 避免多個獨立 embed 之間產生空 <p><br/></p> 行
  */
-export function buildFaqGroupHtml(pairs: FaqPair[]): string {
+function buildFaqGroupHtml(pairs: FaqPair[]): string {
   const validPairs = pairs.filter((p) => p.question.trim() && p.answer.trim())
   if (validPairs.length === 0) return ''
   const itemsHtml = validPairs.map(buildFaqItemHtml).join('')

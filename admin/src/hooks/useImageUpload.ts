@@ -37,15 +37,8 @@ export interface UploadProgress {
   uploadProgress?: number;
 }
 
-/** 上傳結果 */
-export interface UploadResult {
-  url: string;
-  originalName: string;
-  compressed: boolean;
-}
-
 /** Hook 選項 */
-export interface UseImageUploadOptions {
+interface UseImageUploadOptions {
   /** 上傳端點，默認 /api/v1/admin/upload */
   endpoint?: string;
   /** 是否自動壓縮圖片，默認 true */

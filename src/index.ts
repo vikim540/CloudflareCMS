@@ -445,7 +445,7 @@ app.post('/api/v1/f/:token', formRateLimit(), async (c) => {
   const userIp = c.req.header('CF-Connecting-IP') || c.req.header('X-Real-IP') || '';
   const userAgent = c.req.header('User-Agent') || '';
   const sourceUrl = c.req.header('Referer') || c.req.header('Origin') || '';
-  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, body, userIp, userAgent, sourceUrl, currentSiteId(c), submitToken);
+  return formsService.handleSubmitForm(siteDB(c), c.env.CONFIG_CACHE, c.executionCtx as ExecutionContext, c.env['Flagship-service'], body, userIp, userAgent, sourceUrl, currentSiteId(c), submitToken);
 });
 
 // ===== 後台管理 - JWT 認證中間件 (設置 claims 到上下文供後續中間件使用) =====
@@ -1703,7 +1703,11 @@ app.post('/api/v1/admin/vectorize/reindex', async (c) => {
 app.get('/api/v1/admin/flags', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  const flags = await getAllFlags({ ...c.env, DB: siteDB(c), siteId: currentSiteId(c) } as never);
+  const flags = await getAllFlags({
+    DB: siteDB(c),
+    'Flagship-service': c.env['Flagship-service'],
+    siteId: currentSiteId(c),
+  });
   return okData(flags, '成功');
 });
 
@@ -1718,7 +1722,12 @@ app.put('/api/v1/admin/flags', async (c) => {
       return err('缺少 key 或 enabled 參數');
     }
 
-    const result = await setFlagEnabled({ ...c.env, DB: siteDB(c), siteId: currentSiteId(c) } as never, body.key, body.enabled);
+    const result = await setFlagEnabled({
+      DB: siteDB(c),
+      'Flagship-service': c.env['Flagship-service'],
+      siteId: currentSiteId(c),
+      CONFIG_CACHE: c.env.CONFIG_CACHE,
+    }, body.key, body.enabled);
     if (!result.success) {
       return err(result.error || '開關切換失敗', 1005);
     }

@@ -30,7 +30,7 @@ export interface NotifyMeta {
   timestamp?: string;
 }
 
-function parseUserAgent(ua: string): { os: string; bs: string } {
+export function parseUserAgent(ua: string): { os: string; bs: string } {
   let os = 'Unknown';
   let bs = 'Unknown';
   if (!ua) return { os, bs };
@@ -98,16 +98,17 @@ function buildGenericPayload(formName: string, fields: NotifyField[], meta: Noti
 
 interface RobotResponse { errcode?: number; errmsg?: string; }
 
-export async function sendWebhook(
+async function sendWebhook(
   configs: Record<string, string>,
   category: 'message' | 'form' | 'comment',
   formName: string,
   fields: NotifyField[],
   meta: NotifyMeta,
   detailUrl: string,
+  overrideWebhookUrl?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  // 表單/留言/評論通知使用 form_webhook_url（客服群），留空則回退 webhook_url
-  const webhookUrl = cfg(configs, 'form_webhook_url') || cfg(configs, 'webhook_url');
+  // 表單專屬 webhook 優先 > form_webhook_url（客服群）> webhook_url（開發群）
+  const webhookUrl = overrideWebhookUrl || cfg(configs, 'form_webhook_url') || cfg(configs, 'webhook_url');
   if (!webhookUrl) return { success: false, error: 'form_webhook_url 未配置' };
   const switchKey = `webhook_${category}`;
   if (cfg(configs, switchKey) !== '1') return { success: false, error: `${switchKey} 未啟用` };
@@ -137,7 +138,7 @@ export async function sendWebhook(
 // 郵件通知
 // ============================================================================
 
-export function buildNotifyEmailHtml(siteName: string, siteLogo: string, formName: string, fields: NotifyField[], meta: NotifyMeta): string {
+function buildNotifyEmailHtml(siteName: string, siteLogo: string, formName: string, fields: NotifyField[], meta: NotifyMeta): string {
   const ts = meta.timestamp || nowStr();
   const ip = normalizeIp(meta.ip);
   const fieldRows = fields.filter((f) => f.value).map((f) => `<tr><td style="padding:8px 16px;color:#6b7280;font-size:14px;white-space:nowrap;border-bottom:1px solid #f3f4f6;">${f.label}</td><td style="padding:8px 16px;color:#1f2937;font-size:14px;word-break:break-all;border-bottom:1px solid #f3f4f6;">${f.value}</td></tr>`).join('');
@@ -163,7 +164,7 @@ ${meta.sourceUrl ? `<tr><td style="padding:4px 0;font-size:13px;color:#6b7280;">
  * 發送郵件通知
  * 使用 MailChannels / Resend HTTP API (免費第三方接入)
  */
-export async function sendNotifyMail(
+async function sendNotifyMail(
   configs: Record<string, string>,
   to: string,
   subject: string,
@@ -245,6 +246,7 @@ export async function triggerNotify(
   userAgent: string,
   sourceUrl?: string,
   siteId?: string,
+  overrideWebhookUrl?: string,
 ): Promise<void> {
   try {
     // 始終從 D1 讀取配置 (不依賴 KV 緩存, 確保 webhook/mail 配置最新)
@@ -272,7 +274,7 @@ export async function triggerNotify(
 
     // Webhook 推送
     if (webhookEnabled) {
-      const webhookResult = await sendWebhook(configs, category, formName, fields, meta, detailUrl);
+      const webhookResult = await sendWebhook(configs, category, formName, fields, meta, detailUrl, overrideWebhookUrl);
       if (webhookResult.success || (webhookResult.error && !webhookResult.error.includes('未啟用'))) {
         await logNotify(db, 'webhook', webhookResult.success, webhookResult.error || `${formName} -> webhook`);
       }

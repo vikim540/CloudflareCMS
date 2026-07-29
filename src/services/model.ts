@@ -566,20 +566,6 @@ export async function handleListTrashedContents(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
-/** 移入回收站 (軟刪除: status='-1'; 僅當 status >= 0 時操作, 避免重複) */
-export async function handleTrashContent(db: D1Database, id: number): Promise<Response> {
-  const now = nowStr();
-  // 僅當 status >= 0 (已發布或草稿) 時才移入回收站
-  const result = await db.prepare(
-    "UPDATE ay_content SET status = '-1', update_time = ? WHERE id = ? AND CAST(status AS INTEGER) >= 0",
-  ).bind(now, id).run();
-
-  if (result.meta.changes > 0) {
-    return ok('已移入回收站');
-  }
-  return err('內容不存在或已在回收站中', 1004);
-}
-
 /** 從回收站恢復 (status='0' 恢復為草稿; 僅當 status='-1' 時操作) */
 export async function handleRestoreContent(db: D1Database, id: number): Promise<Response> {
   const now = nowStr();

@@ -6,9 +6,10 @@
  * 管理端提供列表/詳情/狀態更新/刪除。
  */
 
-import type { D1Database, KVNamespace, ExecutionContext } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, ExecutionContext, Flagship } from '@cloudflare/workers-types';
 import { ok, okData, okList, err } from '../utils/response';
 import { nowStr } from '../utils/datetime';
+import { triggerNotify, parseUserAgent, type NotifyField } from './notify';
 
 /** 表單提交狀態 */
 const STATUS_LABELS: Record<string, string> = {
@@ -16,24 +17,6 @@ const STATUS_LABELS: Record<string, string> = {
   '1': '已處理',
   '2': '已封存',
 };
-
-/** 簡易 UA 解析（避免與 extra.ts 循環依賴） */
-function parseUserAgent(ua: string): { os: string; bs: string } {
-  let os = 'Unknown';
-  let bs = 'Unknown';
-  if (!ua) return { os, bs };
-  if (/Windows NT 10/.test(ua)) os = 'Windows 10';
-  else if (/Windows NT/.test(ua)) os = 'Windows';
-  else if (/Mac OS X/.test(ua)) os = 'macOS';
-  else if (/Android/.test(ua)) os = 'Android';
-  else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
-  else if (/Linux/.test(ua)) os = 'Linux';
-  if (/Edg\//.test(ua)) bs = 'Edge';
-  else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) bs = 'Chrome';
-  else if (/Firefox\//.test(ua)) bs = 'Firefox';
-  else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) bs = 'Safari';
-  return { os, bs };
-}
 
 /** 從表單數據中提取常用搜索字段 */
 function extractField(body: Record<string, unknown>, keys: string[]): string {
@@ -43,69 +26,6 @@ function extractField(body: Record<string, unknown>, keys: string[]): string {
     if (typeof val === 'number') return String(val);
   }
   return '';
-}
-
-/** 從 D1 讀取表單 webhook URL */
-async function getFormWebhookUrl(db: D1Database, kv: KVNamespace | null): Promise<string> {
-  // 先從 KV 緩存讀
-  if (kv) {
-    const cached = await kv.get('config:all');
-    if (cached) {
-      try {
-        const configs = JSON.parse(cached) as Record<string, string>;
-        if (configs.form_webhook_url) return configs.form_webhook_url;
-      } catch { /* ignore */ }
-    }
-  }
-  // 回退到 D1
-  const row = await db.prepare("SELECT value FROM ay_config WHERE name = 'form_webhook_url'").first<{ value: string }>();
-  return row?.value || '';
-}
-
-/** 推送釘釘 ActionCard 通知到客服群 */
-async function pushFormDingTalk(
-  db: D1Database,
-  kv: KVNamespace | null,
-  formData: Record<string, unknown>,
-  name: string,
-  formName: string,
-  timestamp: string,
-  ip: string,
-  overrideWebhookUrl?: string,
-): Promise<void> {
-  // 優先使用表單專屬 webhook，否則使用全局 webhook
-  const webhookUrl = overrideWebhookUrl || await getFormWebhookUrl(db, kv);
-  if (!webhookUrl) return;
-
-  // 構建 markdown 內容（精簡文本，不dump原始JSON）
-  let content = `#### 📋 ${formName} - 新提交\n\n> **時間**: ${timestamp}\n\n> **IP**: ${ip}\n\n---\n\n`;
-  for (const [key, value] of Object.entries(formData)) {
-    if (value === undefined || value === null || value === '') continue;
-    content += `**${key}**: ${value}\n\n`;
-  }
-
-  const payload = {
-    msgtype: 'actionCard',
-    actionCard: {
-      title: `📋 ${formName} - ${name || '未知'}`,
-      text: content,
-      hideAvatar: '0',
-    },
-  };
-
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify(payload),
-    });
-    const result = await res.json() as { errcode?: number; errmsg?: string };
-    if (result.errcode !== 0) {
-      console.error('[FormDingTalk] 推送失敗:', result.errmsg);
-    }
-  } catch (e) {
-    console.error('[FormDingTalk] 網絡錯誤:', e);
-  }
 }
 
 /** 表單提交數據結構 */
@@ -138,6 +58,7 @@ export async function handleSubmitForm(
   db: D1Database,
   kv: KVNamespace | null,
   ctx: ExecutionContext | null,
+  flags: Flagship | undefined,
   body: FormBody,
   userIp: string,
   userAgent: string,
@@ -220,9 +141,12 @@ export async function handleSubmitForm(
     if (kv) {
       await kv.put(RATE_KEY, '1', { expirationTtl: 10 });
     }
-    // 異步推送釘釘通知（使用表單專屬 webhook 或全局 webhook）
+    // 異步觸發統一通知（webhook + 郵件 + 功能開關 + 日誌記錄）
     if (ctx) {
-      ctx.waitUntil(pushFormDingTalk(db, kv, body, name, formName, now, userIp, formWebhookUrl));
+      const notifyFields: NotifyField[] = Object.entries(body)
+        .filter(([, v]) => v !== undefined && v !== null && v !== '')
+        .map(([k, v]) => ({ label: k, value: String(v) }));
+      ctx.waitUntil(triggerNotify(db, kv, flags, 'form', formName, notifyFields, userIp, userAgent, sourceUrl, acode, formWebhookUrl));
     }
     return ok('表單提交成功');
   }

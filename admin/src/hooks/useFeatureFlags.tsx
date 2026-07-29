@@ -14,7 +14,7 @@ import type { ReactNode } from 'react'
 import { api, getToken } from '../lib/api'
 
 /** 功能開關狀態（與後端 flags.ts FLAG_REGISTRY 對應） */
-export interface FlagState {
+interface FlagState {
   key: string
   label: string
   description: string
@@ -88,10 +88,4 @@ export function useFeatureFlags(): FlagContextValue {
     }
   }
   return ctx
-}
-
-/** 單個開關 Hook — 簡化用法 */
-export function useFeatureFlag(key: string): boolean {
-  const { isEnabled } = useFeatureFlags()
-  return isEnabled(key)
 }

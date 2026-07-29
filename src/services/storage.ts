@@ -313,15 +313,6 @@ export async function findUsages(db: D1Database, fileUrl: string): Promise<Media
   return findUsagesInDb(db, np);
 }
 
-/** 快速檢查文件 URL 是否在任何地方被引用。
- *  通過 getUsedPaths 收集所有引用後進行 Set 查找。 */
-export async function checkFileUsed(db: D1Database, fileUrl: string): Promise<boolean> {
-  const used = await getUsedPaths(db);
-  const np = normalizeFilePath(fileUrl);
-  if (!np) return false;
-  return used.has(np) || used.has('/' + np);
-}
-
 /** 獲取所有已標記保護的文件路徑集合 */
 async function getMarkedPaths(db: D1Database): Promise<Set<string>> {
   await ensureMediaMarkTable(db);

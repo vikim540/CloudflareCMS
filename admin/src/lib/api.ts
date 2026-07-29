@@ -117,7 +117,7 @@ export function getCachedSites(): SiteInfo[] {
 }
 
 /** 統一 API 響應格式 */
-export interface ApiResponse<T = unknown> {
+interface ApiResponse<T = unknown> {
   code: number
   msg: string
   data?: T
