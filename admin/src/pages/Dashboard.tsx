@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.31',
+    date: '2026-07-29 14:23:17',
+    icon: '🧹',
+    latest: true,
+    changes: `🧹 項目清理與文檔校準\n\n📋 變更內容\n• AGENTS.md：wrangler 版本信息修正（Yarn 全局 3.1.0 路徑確認），Worker 名稱統一 cfstack-cms，目錄結構與服務模塊補全，遷移文件編號修正\n• README.md：重寫移除敏感域名信息，更新架構圖與技術棧描述\n• 清理殘留：刪除 package-lock.json（npm 殘留）、Update.md（更新日誌）、FeatureGate.tsx（死代碼）、Quill vendor 本地文件（CDN 加載）\n• cache.ts：clearConfigCache 重命名為 clearApiCacheRemnants 避免與 config.ts 命名衝突\n• package.json：修正數據庫腳本使用正確庫名 endoscopy-cms，新增 db:types 腳本\n• tsconfig.json：移除 Rust 相關 exclude 殘留\n• .gitignore：新增 package-lock.json 排除規則`,
+  },
+  {
     version: 'v1.9.30',
     date: '2026-07-29 10:12:14',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 wrangler 版本聲明升級 + AGENTS.md 命令簡化\n\n📋 變更內容\n• package.json devDependencies wrangler 版本從 ^4.113.0 升級至 ^4.115.0\n• AGENTS.md 常用命令簡化：所有完整路徑調用改為直接 wrangler\n• 項目本地 wrangler 為 4.111.0（真實可用），全局升級需用戶在自己的終端執行\n• 發現 TRAE 沙箱環境對 D 盤有文件系統虛擬化，沙箱內創建的目錄不會寫入真實磁盤`,
   },
   {
