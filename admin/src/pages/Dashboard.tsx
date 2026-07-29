@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.35',
+    date: '2026-07-29 17:44:54',
+    icon: '📅',
+    latest: true,
+    changes: `📅 講座預約管理功能（僅 smile 站點）\n\n📋 變更內容\n• 新增兩張數據表：ay_booking_calendar（日曆圖片，WebP）+ ay_booking_schedule（預約排期）\n• 日曆圖片管理：圖片上傳（WebP 壓縮）+ 標題（同時用作 alt/title）+ 拖拽排序 + 批量刪除\n• 預約排期管理：服務類型篩選 + 日期範圍篩選 + 批量新增（日期×時段組合）+ 行內編輯 + 批量刪除\n• 服務類型：Smile Pro旺角 / Smile Pro中環 / Smile中環，地點根據服務類型自動推導\n• 公開 API 僅 GET（供 https://smile.hkcmereye.com/ 拉取）：/api/v1/booking/calendars + /api/v1/booking/schedules\n• 管理 API 需 JWT + M302 權限（POST/PUT/DELETE 僅內部操作，不對外暴露）\n• 菜單掛在 M300 多媒體下（M302），僅 smile 站點可見（前端 currentSiteId 過濾）\n• 新增遷移文件 0002_booking.sql（冪等語法）`,
+  },
+  {
     version: 'v1.9.34',
     date: '2026-07-29 16:24:14',
     icon: '🏗️',
-    latest: true,
+    latest: false,
     changes: `🏗️ 通知架構修復 + 死代碼清理\n\n📋 變更內容\n• triggerNotify 架構修復：forms.ts 表單提交接入統一通知系統（此前 triggerNotify 定義但從未被調用，表單僅用 pushFormDingTalk 純釘釘推送，無郵件/企業微信/功能開關/日誌）\n• triggerNotify/sendWebhook 新增 overrideWebhookUrl 參數，支持表單專屬 webhook 優先級（表單專屬 > form_webhook_url > webhook_url）\n• 移除 forms.ts 重複代碼：pushFormDingTalk、getFormWebhookUrl、parseUserAgent 副本（共 ~70 行）\n• notify.ts 內部函數移除冗餘 export：sendWebhook、sendNotifyMail、buildNotifyEmailHtml（僅本文件使用）\n• 後端死代碼清理：移除 8 個未使用函數（featureFlagMiddleware、menu action 函數、handleTrashContent、checkFileUsed、totalPages、s3CopyObject 等）\n• TypeScript as never 類型斷言修復（index.ts）`,
   },
   {
@@ -688,6 +695,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/singles/:scode', desc: '單頁詳情', auth: false },
   { method: 'GET', path: '/api/v1/internallinks', desc: '內鏈關鍵詞列表（供前端 tagLink 自動連結）', auth: false },
   { method: 'GET', path: '/api/v1/tags', desc: '文章標籤搜索（?q=標籤詞 → 返回匹配文章列表；無 q → 返回所有標籤）', auth: false },
+  { method: 'GET', path: '/api/v1/booking/calendars', desc: '講座日曆圖片列表（僅 smile 站點，v1.9.35+）', auth: false },
+  { method: 'GET', path: '/api/v1/booking/schedules', desc: '講座預約排期列表 (?service_type=&location=, 僅 smile 站點, v1.9.35+)', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
   { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
@@ -751,6 +760,18 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/extfields/batch-sorting', desc: '批量更新擴展字段排序', auth: true },
   { method: 'GET', path: '/api/v1/admin/extfields/:id/history', desc: '獲取擴展字段歷史值 (type=11 標籤輸入)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/batch-sorting', desc: '批量更新幻燈片排序', auth: true },
+  // 講座預約管理 (M302, 僅 smile 站點, v1.9.35+)
+  { method: 'GET', path: '/api/v1/admin/booking/calendars', desc: '日曆圖片列表', auth: true },
+  { method: 'POST', path: '/api/v1/admin/booking/calendars', desc: '新增日曆圖片', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/booking/calendars/:id', desc: '更新日曆圖片', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/booking/calendars/:id', desc: '刪除日曆圖片', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/booking/calendars/batch-sorting', desc: '批量更新日曆圖片排序', auth: true },
+  { method: 'GET', path: '/api/v1/admin/booking/schedules', desc: '排期列表 (?service_type=&location=&date_from=&date_to=)', auth: true },
+  { method: 'POST', path: '/api/v1/admin/booking/schedules', desc: '新增排期', auth: true },
+  { method: 'POST', path: '/api/v1/admin/booking/schedules/batch', desc: '批量新增排期 (日期×時段組合)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/booking/schedules/:id', desc: '更新排期', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/booking/schedules/:id', desc: '刪除排期', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/booking/schedules/batch', desc: '批量刪除排期 (?ids=1,2,3)', auth: true },
   // 多站點管理 (v1.6.0+)
   { method: 'GET', path: '/api/v1/admin/sites', desc: '列出用戶可訪問的站點', auth: true },
   { method: 'GET', path: '/api/v1/admin/sites/current', desc: '當前站點信息', auth: true },

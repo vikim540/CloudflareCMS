@@ -32,6 +32,7 @@ import * as systemService from './services/system';
 import * as notifyService from './services/notify';
 import * as siteService from './services/site';
 import * as formsService from './services/forms';
+import * as bookingService from './services/booking';
 import { loginRateLimit, formRateLimit, publicRateLimit, adminRateLimit } from './services/ratelimit';
 import { clearContentCache, clearApiCacheRemnants } from './services/cache';
 import * as vectorizeService from './services/vectorize';
@@ -424,6 +425,16 @@ app.get('/api/v1/slides', async (c) => {
   return extraService.handleListSlides(siteDB(c), params);
 });
 
+// ===== 公開講座預約 API（僅 GET，供外部廣告網站 https://smile.hkcmereye.com/ 拉取）=====
+app.get('/api/v1/booking/calendars', async (c) => {
+  return bookingService.handleListBookingCalendars(siteDB(c));
+});
+
+app.get('/api/v1/booking/schedules', async (c) => {
+  const params = new URL(c.req.url).searchParams;
+  return bookingService.handleListBookingSchedules(siteDB(c), params);
+});
+
 // 內鏈關鍵詞列表（供前端網站 tagLink 功能使用）
 app.get('/api/v1/internallinks', async (c) => extraService.handleListTags(siteDB(c)));
 
@@ -529,6 +540,7 @@ app.use('/api/v1/admin/*', async (c, next) => {
   else if (path.includes('/internallinks')) { resource = '文章內鏈'; level = 'content'; }
   else if (path.includes('/media')) { resource = '媒體資源'; level = 'content'; }
   else if (path.includes('/forms')) { resource = '表單'; level = 'content'; }
+  else if (path.includes('/booking')) { resource = '講座預約'; level = 'content'; }
   else if (path.includes('/upload')) { resource = '文件上傳'; level = 'content'; }
   else if (path.includes('/users')) { resource = '系統用戶'; level = 'security'; }
   else if (path.includes('/roles')) { resource = '角色'; level = 'security'; }
@@ -605,6 +617,7 @@ app.use('/api/v1/admin/extfields/*', requireMenuPermission('/admin/content/extfi
 app.use('/api/v1/admin/media/*', requireMenuPermission('/admin/media'));                // M301 媒體庫
 app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));             // M401 友情連結
 app.use('/api/v1/admin/slides/*', requireMenuPermission('/admin/seo/slide'));           // M402 幻燈片
+app.use('/api/v1/admin/booking/*', requireMenuPermission('/admin/booking'));             // M302 講座預約
 app.use('/api/v1/admin/internallinks/*', requireMenuPermission('/admin/seo/tags'));   // M403 文章內鏈
 app.use('/api/v1/admin/labels/*', requireMenuPermission('/admin/seo/label'));           // M404 自定義標籤
 app.use('/api/v1/admin/site/*', requireMenuPermission('/admin/system/site'));           // M501 站點信息
@@ -1201,6 +1214,101 @@ app.delete('/api/v1/admin/slides/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return extraService.handleDeleteSlide(siteDB(c), id);
+});
+
+// ===== 後台管理接口 - 講座預約（M302，僅 smile 站點）=====
+// ⚠️ batch-* 子路徑路由必須在 :id 路由之前註冊（遵循 Hono 路由順序約束）
+
+// ── 日曆圖片管理 ──
+app.get('/api/v1/admin/booking/calendars', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const params = new URL(c.req.url).searchParams;
+  return bookingService.handleAdminListBookingCalendars(siteDB(c), params);
+});
+
+app.post('/api/v1/admin/booking/calendars', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return bookingService.handleCreateBookingCalendar(siteDB(c), body, currentSiteId(c));
+});
+
+app.put('/api/v1/admin/booking/calendars/batch-sorting', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const items = Array.isArray(body?.items) ? body.items : [];
+  return bookingService.handleBatchUpdateCalendarSorting(siteDB(c), items);
+});
+
+app.put('/api/v1/admin/booking/calendars/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return bookingService.handleUpdateBookingCalendar(siteDB(c), id, body);
+});
+
+app.delete('/api/v1/admin/booking/calendars/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return bookingService.handleDeleteBookingCalendar(siteDB(c), id);
+});
+
+// ── 預約排期管理 ──
+app.get('/api/v1/admin/booking/schedules', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const params = new URL(c.req.url).searchParams;
+  return bookingService.handleAdminListBookingSchedules(siteDB(c), params);
+});
+
+app.post('/api/v1/admin/booking/schedules', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return bookingService.handleCreateBookingSchedule(siteDB(c), body, currentSiteId(c));
+});
+
+app.post('/api/v1/admin/booking/schedules/batch', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return bookingService.handleBatchCreateBookingSchedules(siteDB(c), body, currentSiteId(c));
+});
+
+app.put('/api/v1/admin/booking/schedules/batch-sorting', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  const items = Array.isArray(body?.items) ? body.items : [];
+  return bookingService.handleBatchUpdateScheduleSorting(siteDB(c), items);
+});
+
+app.delete('/api/v1/admin/booking/schedules/batch', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  // 支持查詢參數 ?ids=1,2,3（前端 api.del() 不支持 body）
+  const idsParam = new URL(c.req.url).searchParams.get('ids') || '';
+  const ids = idsParam.split(',').map((n) => Number(n)).filter((n) => n > 0);
+  return bookingService.handleBatchDeleteBookingSchedules(siteDB(c), ids);
+});
+
+app.put('/api/v1/admin/booking/schedules/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return bookingService.handleUpdateBookingSchedule(siteDB(c), id, body);
+});
+
+app.delete('/api/v1/admin/booking/schedules/:id', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return bookingService.handleDeleteBookingSchedule(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 文章內鏈（原標籤管理，ay_tags 表）=====

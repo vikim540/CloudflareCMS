@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.34**（2026-07-29）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.35**（2026-07-29）
 
 ## 語言選擇優先級
 
@@ -42,6 +42,7 @@ Cloudflarerustcms/
 │   ├── index.ts                # 路由薄層 + 中間件註冊
 │   ├── services/               # 業務厚層（每個功能一個文件）
 │   │   ├── auth.ts             # JWT + 權限（reloadUserPermissions 實時刷新）
+│   │   ├── booking.ts          # 講座預約管理（日曆圖片 + 排期，僅 smile 站點）
 │   │   ├── content.ts          # 內容 CRUD + 按模型過濾 + 內鏈替換
 │   │   ├── config.ts           # KV 配置緩存（config:all 讀寫 + clearConfigCache）
 │   │   ├── extra.ts            # 公司信息/輪播圖/友情鏈接/標籤/單頁（HK 本地化）
@@ -79,7 +80,7 @@ Cloudflarerustcms/
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，當前僅 0001_init.sql）
+├── migrations/                 # D1 遷移（冪等語法，0001_init.sql + 0002_booking.sql）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
@@ -156,7 +157,7 @@ Cloudflarerustcms/
 ### API 路由
 
 - 前綴 `/api/v1/`，RESTful
-- **公開**：`/api/v1/{resource}`（無認證，60 req/min）— 含 `/api/v1/company`（公開公司聯繫信息）、`/api/v1/search`（語義搜索）、`/api/v1/auth/turnstile-config`（Turnstile 配置）
+- **公開**：`/api/v1/{resource}`（無認證，60 req/min）— 含 `/api/v1/company`（公開公司聯繫信息）、`/api/v1/search`（語義搜索）、`/api/v1/auth/turnstile-config`（Turnstile 配置）、`/api/v1/booking/calendars` + `/api/v1/booking/schedules`（講座預約，僅 GET）
 - **管理**：`/api/v1/admin/{resource}`（JWT `requireAuth` + `requireMenuPermission`，300 req/min）
   - `database` / `storage` 路由僅超管可用 `requireSuperAdmin`
   - `flags` / `stats` / `upload` / `notify` / `vectorize` 路由僅需登錄（無菜單權限限制）
@@ -230,6 +231,16 @@ Cloudflarerustcms/
 - 文章創建/更新時自動索引（標題+正文剝離 HTML，截斷 2000 字）
 - 流程：搜索詞 → Workers AI 嵌入 → Vectorize 查詢 → 閾值 0.5 過濾 → D1 取完整文章
 - 重建索引：`POST /api/v1/admin/vectorize/reindex`
+
+### 講座預約管理（v1.9.35，僅 smile 站點）
+
+- **兩張表**：`ay_booking_calendar`（日曆圖片，WebP）+ `ay_booking_schedule`（預約排期）
+- **日曆圖片**：無 location 字段（兩張圖全展示），無 AVIF（媒體庫僅 WebP），`title` 同時用作 `alt` 和 `title` 屬性
+- **排期管理**：服務類型（Smile Pro旺角/Smile Pro中環/Smile中環），地點根據服務類型自動推導（type '1'→旺角, type '2'/'3'→中環），時段（上午/下午）
+- **公開 API 僅 GET**（供 `https://smile.hkcmereye.com/` 拉取）：`/api/v1/booking/calendars` + `/api/v1/booking/schedules`
+- **管理 API**（POST/PUT/DELETE 僅內部操作，需 JWT + M302 權限）：`/api/v1/admin/booking/calendars/*` + `/api/v1/admin/booking/schedules/*`
+- **菜單**：M302 掛在 M300 多媒體下，僅 smile 站點可見（前端 `currentSiteId` 過濾，`NavItem.siteOnly` 字段）
+- **批量操作**：排期支持批量新增（日期×時段組合）、批量刪除（`?ids=1,2,3`）
 
 ### 邊緣緩存（Workers Cache，v1.7.0）
 

@@ -25,6 +25,8 @@ interface NavItem {
   mcode?: string
   /** 顯式權限 mcode（用於動態注入項目，如表單子項使用 M204） */
   permissionMcode?: string
+  /** 僅在指定站點可見（如 'smile'），不指定則所有站點可見 */
+  siteOnly?: string
 }
 
 /** 活躍表單（用於側邊欄動態注入） */
@@ -57,6 +59,7 @@ const LABEL_MCODE_MAP: Record<string, string> = {
   '回收站': 'M208',
   // 多媒體 (M300 子菜單)
   '媒體庫': 'M301',
+  '講座預約': 'M302',
   // SEO設置 (M400 子菜單)
   '友情連結': 'M401',
   '幻燈片': 'M402',
@@ -126,6 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: '/media', label: '媒體庫', icon: '🖼️' },
       { to: '/slides', label: '幻燈片', icon: '🖼️' },
+      { to: '/booking', label: '講座預約', icon: '📅', siteOnly: 'smile' },
     ],
   },
   {
@@ -342,11 +346,15 @@ function LayoutInner() {
     return navGroups
       .map((group) => ({
         ...group,
-        items: group.items.filter(hasNavPermission),
+        items: group.items.filter((item) => {
+          // 站點特定項目：僅在匹配站點時顯示（如講座預約僅 smile 站點可見）
+          if (item.siteOnly && currentSiteId !== item.siteOnly) return false
+          return hasNavPermission(item)
+        }),
       }))
       .filter((group) => group.items.length > 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navGroups, userInfo])
+  }, [navGroups, userInfo, currentSiteId])
 
   /** 判斷帶 mcode 的內容項目是否當前活躍（基於 query 參數比對） */
   const isContentItemActive = (itemMcode: string): boolean => {
