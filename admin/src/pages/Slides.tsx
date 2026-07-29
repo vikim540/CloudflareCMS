@@ -95,6 +95,11 @@ export default function Slides() {
   // 手動修改排序的 dirty 記錄（id → 新排序值），保存按鈕統一提交
   const [dirtySorts, setDirtySorts] = useState<Record<number, number>>({})
 
+  // ─── 複製到分組狀態 ─────────────────────────────────────
+  const [copyTarget, setCopyTarget] = useState<Slide | null>(null)
+  const [copyGid, setCopyGid] = useState<string>('1')
+  const [copying, setCopying] = useState(false)
+
   // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
   // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
   const { uploading, progress, error: uploadError, uploadSingle, clearError } = useImageUpload({
@@ -330,6 +335,21 @@ export default function Slides() {
       setError(err instanceof Error ? err.message : '刪除失敗')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  /** 複製幻燈片到指定分組 */
+  const handleCopySlide = async () => {
+    if (!copyTarget) return
+    setCopying(true)
+    try {
+      await api.post(`/admin/slides/${copyTarget.id}/copy`, { targetGid: copyGid })
+      setCopyTarget(null)
+      await fetchSlides()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '複製失敗')
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -610,6 +630,7 @@ export default function Slides() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">副標題</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">連結</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">按鈕文字</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">排序</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">顯示</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
@@ -688,6 +709,15 @@ export default function Slides() {
                       )}
                     </td>
                     <td className="px-4 py-3">
+                      {item.button_text ? (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-indigo-50 text-indigo-600 font-medium">
+                          {item.button_text}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <input
                         type="number"
                         min={1}
@@ -729,6 +759,18 @@ export default function Slides() {
                         >
                           <span className="text-sm">✏️</span>
                           編輯
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCopyTarget(item)
+                            setCopyGid(item.gid ?? '1')
+                          }}
+                          disabled={actionLoading === item.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                          title="複製到其他分組"
+                        >
+                          <span className="text-sm">📋</span>
+                          複製到
                         </button>
                         <button
                           onClick={() => handleDelete(item.id)}
@@ -1024,6 +1066,66 @@ export default function Slides() {
           setMediaPickerTarget(null)
         }}
       />
+
+      {/* 複製到分組對話框 */}
+      {copyTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h2 className="text-lg font-semibold">📋 複製幻燈片</h2>
+              <button
+                onClick={() => setCopyTarget(null)}
+                className="text-muted-foreground hover:text-foreground text-xl"
+              >
+                ❌
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div className="text-sm text-muted-foreground">
+                將幻燈片 <span className="font-medium text-foreground">「{copyTarget.title || `#${copyTarget.id}`}」</span> 複製到：
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">目標分組</label>
+                <select
+                  value={copyGid}
+                  onChange={(e) => setCopyGid(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
+                >
+                  {uniqueGroups.map((gid) => (
+                    <option key={gid} value={gid}>
+                      {getGroupDisplayName(gid, groupNames)} (ID: {gid})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {copyGid === copyTarget.gid && (
+                <div className="text-xs text-amber-600 bg-amber-50 rounded p-2">
+                  ⚠️ 複製到同一分組將創建重複記錄，排序值自動遞增
+                </div>
+              )}
+              <div className="text-xs text-muted-foreground">
+                複製內容：圖片、移動端圖片、連結、標題、副標題、按鈕文字
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t">
+              <button
+                onClick={() => setCopyTarget(null)}
+                disabled={copying}
+                className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCopySlide}
+                disabled={copying}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {copying ? '⏳ 複製中...' : '📋 確認複製'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

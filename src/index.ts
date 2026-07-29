@@ -1187,6 +1187,15 @@ app.put('/api/v1/admin/slides/:id', async (c) => {
   return extraService.handleUpdateSlide(siteDB(c), id, body);
 });
 
+// 複製幻燈片到指定分組（必須在 :id 路由之後，子路徑模式）
+app.post('/api/v1/admin/slides/:id/copy', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  const body = await c.req.json();
+  return extraService.handleCopySlide(siteDB(c), id, body, currentSiteId(c));
+});
+
 app.delete('/api/v1/admin/slides/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

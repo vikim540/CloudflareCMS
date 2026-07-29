@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.29',
+    date: '2026-07-29 09:38:15',
+    icon: '✨',
+    latest: true,
+    changes: `✨ 幻燈片管理：按鈕文字列 + 複製到分組功能\n\n📋 變更內容\n• 幻燈片列表新增「按鈕文字」列（靛藍色徽章顯示，空值顯示 -）\n• 新增「複製到」功能：可將幻燈片複製到任意分組（跨分組/同組）\n  - 後端新增 POST /api/v1/admin/slides/:id/copy 端點（handleCopySlide）\n  - 複製內容：圖片、移動端圖片、連結、標題、副標題、按鈕文字\n  - 排序值自動取目標分組最大值 + 1\n  - 同組複製時顯示警告提示\n  - 前端彈出分組選擇對話框，確認後刷新列表`,
+  },
+  {
     version: 'v1.9.28',
     date: '2026-07-28 16:13:39',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 Worker 更名 + 媒體庫標記 UI 優化 + 幻燈片連結智能處理\n\n📋 變更內容\n• Worker 名稱 rust-cms → cfstack-cms（wrangler.jsonc + admin/wrangler.jsonc Service Binding 同步更新）\n• 媒體庫標記保護按鈕優化：未標記 hover 顯示 🔐（點擊鎖定）、已標記顯示 🔒（右上角琥珀色徽章）、取消標記按鈕 🔓 + 綠色背景（區分解鎖操作）\n• 幻燈片管理連結智能處理：完整 URL（http/https）保持可點擊超鏈接、相對路徑（站內 API 連結）顯示為純文本 + 🔗 圖標，避免點擊跳轉 cms 域名不存在路徑造成非技術人員誤解`,
   },
   {

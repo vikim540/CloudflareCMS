@@ -356,6 +356,57 @@ export async function handleUpdateSlide(
   return ok('幻燈片更新成功');
 }
 
+/** 複製幻燈片到指定分組（跨分組/同組複製，創建新記錄） */
+export async function handleCopySlide(
+  db: D1Database,
+  id: number,
+  body: { targetGid?: string },
+  acode: string = 'endoscopy',
+): Promise<Response> {
+  const targetGid = body.targetGid?.trim();
+  if (!targetGid) {
+    return err('請指定目標分組', 1001);
+  }
+
+  // 讀取源幻燈片
+  const source = await db.prepare('SELECT * FROM ay_slide WHERE id = ?').bind(id).first<Record<string, unknown>>();
+  if (!source) {
+    return err('源幻燈片不存在', 1004);
+  }
+
+  // 計算目標分組下的排序值（最大值 + 1）
+  const maxResult = await db.prepare(
+    'SELECT MAX(sorting) as max_sorting FROM ay_slide WHERE gid = ?',
+  ).bind(targetGid).first<{ max_sorting: number | null }>();
+  const newSorting = (maxResult?.max_sorting ?? 0) + 1;
+
+  const now = nowStr();
+
+  // 插入複製記錄（保留 pic/pic_mobile/link/title/subtitle/button_text，新 gid + sorting）
+  const result = await db.prepare(
+    `INSERT INTO ay_slide (acode, gid, pic, pic_mobile, link, title, subtitle, button_text, sorting, status, create_time, update_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    acode,
+    targetGid,
+    source.pic ?? '',
+    source.pic_mobile ?? '',
+    source.link ?? '',
+    source.title ?? '',
+    source.subtitle ?? '',
+    source.button_text ?? '',
+    newSorting,
+    source.status ?? '1',
+    now,
+    now,
+  ).run();
+
+  if (result.success) {
+    return okData({ id: result.meta.last_row_id, gid: targetGid, sorting: newSorting }, '複製成功');
+  }
+  return err('複製失敗', 1005);
+}
+
 /** 批量更新幻燈片排序 */
 export async function handleBatchUpdateSlideSorting(
   db: D1Database,
