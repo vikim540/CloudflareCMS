@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.32',
+    date: '2026-07-29 14:35:07',
+    icon: '🔔',
+    latest: true,
+    changes: `🔔 系統更新 Webhook 與表單推送 Webhook 分離\n\n📋 變更內容\n• 新增 system_webhook_url 配置字段（migration 0007），系統版本更新通知推送至獨立群組\n• 後端 handleVersionNotify 優先使用 system_webhook_url，留空時回退到 webhook_url（向後兼容）\n• 前端 Settings 通知配置 tab 將 Webhook 拆分為兩個獨立 section：\n  🚀 系統更新 Webhook（開發群）— 版本更新通知\n  🪝 表單推送 Webhook（客服群）— 留言/表單/評論通知\n• 更新 webhook_url 描述為「表單/留言/評論 Webhook 推送地址（客服群）」\n• 測試按鈕文字標註為「測試表單 Webhook」，明確區分測試對象`,
+  },
+  {
     version: 'v1.9.31',
     date: '2026-07-29 14:23:17',
     icon: '🧹',
-    latest: true,
+    latest: false,
     changes: `🧹 項目清理與文檔校準\n\n📋 變更內容\n• AGENTS.md：wrangler 版本信息修正（Yarn 全局 3.1.0 路徑確認），Worker 名稱統一 cfstack-cms，目錄結構與服務模塊補全，遷移文件編號修正\n• README.md：重寫移除敏感域名信息，更新架構圖與技術棧描述\n• 清理殘留：刪除 package-lock.json（npm 殘留）、Update.md（更新日誌）、FeatureGate.tsx（死代碼）、Quill vendor 本地文件（CDN 加載）\n• cache.ts：clearConfigCache 重命名為 clearApiCacheRemnants 避免與 config.ts 命名衝突\n• package.json：修正數據庫腳本使用正確庫名 endoscopy-cms，新增 db:types 腳本\n• tsconfig.json：移除 Rust 相關 exclude 殘留\n• .gitignore：新增 package-lock.json 排除規則`,
   },
   {
