@@ -63,7 +63,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.9.30',
-    date: '2026-07-29 10:15:00',
+    date: '2026-07-29 10:12:14',
     icon: '🔧',
     latest: true,
     changes: `🔧 wrangler 全局升級 + 路徑遷移 + AGENTS.md 命令簡化\n\n📋 變更內容\n• wrangler 全局升級至 4.115.0（最新版），安裝至新路徑 `D:\\AI\\Cache\\wrangler-home`\n• 原 `D:\\AI\\Cache\\npm-home` 路徑因文件系統損壞（ENOTDIR 幻影路徑）已廢棄\n• 已通過用戶 PATH 環境變量 + 註冊表 doskey 雙重確保全局可用\n• AGENTS.md 常用命令簡化：所有 `& 'D:\\AI\\Cache\\pnpm-home\\wrangler.CMD'` 改為直接 `wrangler`\n• package.json devDependencies wrangler 版本從 ^4.113.0 升級至 ^4.115.0`,
