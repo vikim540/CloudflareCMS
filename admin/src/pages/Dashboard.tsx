@@ -63,7 +63,7 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 const VERSIONS: VersionEntry[] = [
   {
     version: 'v1.9.29',
-    date: '2026-07-29 09:38:15',
+    date: '2026-07-29 09:38:48',
     icon: '✨',
     latest: true,
     changes: `✨ 幻燈片管理：按鈕文字列 + 複製到分組功能\n\n📋 變更內容\n• 幻燈片列表新增「按鈕文字」列（靛藍色徽章顯示，空值顯示 -）\n• 新增「複製到」功能：可將幻燈片複製到任意分組（跨分組/同組）\n  - 後端新增 POST /api/v1/admin/slides/:id/copy 端點（handleCopySlide）\n  - 複製內容：圖片、移動端圖片、連結、標題、副標題、按鈕文字\n  - 排序值自動取目標分組最大值 + 1\n  - 同組複製時顯示警告提示\n  - 前端彈出分組選擇對話框，確認後刷新列表`,
