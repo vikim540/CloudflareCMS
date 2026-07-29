@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.30',
+    date: '2026-07-29 10:15:00',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 wrangler 全局升級 + 路徑遷移 + AGENTS.md 命令簡化\n\n📋 變更內容\n• wrangler 全局升級至 4.115.0（最新版），安裝至新路徑 `D:\\AI\\Cache\\wrangler-home`\n• 原 `D:\\AI\\Cache\\npm-home` 路徑因文件系統損壞（ENOTDIR 幻影路徑）已廢棄\n• 已通過用戶 PATH 環境變量 + 註冊表 doskey 雙重確保全局可用\n• AGENTS.md 常用命令簡化：所有 `& 'D:\\AI\\Cache\\pnpm-home\\wrangler.CMD'` 改為直接 `wrangler`\n• package.json devDependencies wrangler 版本從 ^4.113.0 升級至 ^4.115.0`,
+  },
+  {
     version: 'v1.9.29',
     date: '2026-07-29 09:38:48',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: `✨ 幻燈片管理：按鈕文字列 + 複製到分組功能\n\n📋 變更內容\n• 幻燈片列表新增「按鈕文字」列（靛藍色徽章顯示，空值顯示 -）\n• 新增「複製到」功能：可將幻燈片複製到任意分組（跨分組/同組）\n  - 後端新增 POST /api/v1/admin/slides/:id/copy 端點（handleCopySlide）\n  - 複製內容：圖片、移動端圖片、連結、標題、副標題、按鈕文字\n  - 排序值自動取目標分組最大值 + 1\n  - 同組複製時顯示警告提示\n  - 前端彈出分組選擇對話框，確認後刷新列表`,
   },
   {

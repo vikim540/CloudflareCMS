@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.29**（2026-07-29）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.30**（2026-07-29）
 
 ## 語言選擇優先級
 
@@ -24,7 +24,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | 最新版 | `D:\AI\Cache\npm-home\wrangler.cmd `（如遇到啟動命令非最新版4.112.0+以上  請使用rg操作：reg add "HKCU\Software\Microsoft\Command Processor" /v AutoRun /t REG_SZ /d "doskey wrangler=D:\AI\Cache\npm-home\wrangler.cmd $*" /f ） |
+| wrangler | 4.115.0+ | `D:\AI\Cache\wrangler-home\wrangler.cmd`（v1.9.30 起遷移至此路徑，原 `D:\AI\Cache\npm-home` 路徑因文件系統損壞已廢棄；已通過 PATH + 註冊表 doskey 全局可用：`reg add "HKCU\Software\Microsoft\Command Processor" /v AutoRun /t REG_SZ /d "doskey wrangler=D:\AI\Cache\wrangler-home\wrangler.cmd $*" /f`） |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
@@ -280,30 +280,30 @@ Cloudflarerustcms/
 ```powershell
 # ===== 開發 =====
 # 後端（Worker，端口 8787）
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' dev
+wrangler dev
 
 # 前端（Vite，端口 3000，代理 /api → 127.0.0.1:8787）
 cd admin; npx vite dev
 
 # ===== 部署（先使用Git本地備份使用commit時間對pages的儀表板 的三個tab 版本更新、API 開發手冊、系統信息查看以及更新，然後再部署 先Worker 後 Pages ， 最後提交推送遠程倉庫）=====
 # 1. Worker 部署
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' deploy
+wrangler deploy
 
 # 2. 前端構建（輸出到 deploy 目錄，非 build！）
 cd admin; npx vite build
 
 # 3. Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
-cd admin; & 'D:\AI\Cache\pnpm-home\wrangler.CMD' pages deploy deploy --project-name=cms-admin --commit-dirty=true
+cd admin; wrangler pages deploy deploy --project-name=cms-admin --commit-dirty=true
  
 # ===== 數據庫 =====
 # 遷移（主庫 endoscopy-cms）
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 migrations apply endoscopy-cms --remote
+wrangler d1 migrations apply endoscopy-cms --remote
 
 # 執行 SQL（主庫 endoscopy-cms）
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' d1 execute endoscopy-cms --remote --command "SELECT * FROM ay_config LIMIT 5"
+wrangler d1 execute endoscopy-cms --remote --command "SELECT * FROM ay_config LIMIT 5"
 
 # 生成類型（配置變更後必須運行）
-& 'D:\AI\Cache\pnpm-home\wrangler.CMD' types
+wrangler types
 
 # ===== Git =====
 git add -A; git commit -m '✨ feat: 描述'; git push origin main
