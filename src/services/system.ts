@@ -1064,16 +1064,18 @@ interface BackupScheduleConfig {
   enabled: string;       // '0' | '1'
   frequency: string;     // 'daily' | 'weekly'
   time: string;          // 'HH:mm'
+  weekday: string;       // '0'-'6' (0=週日, 1=週一, ..., 6=週六)，weekly 時使用
   keep: number;          // 保留備份數量
   lastRun: string;       // 上次執行時間 'YYYY-MM-DD HH:mm:ss'
 }
 
 /** 讀取定時備份配置 */
 async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise<BackupScheduleConfig> {
-  const [enabled, frequency, time, keep, lastRun] = await Promise.all([
+  const [enabled, frequency, time, weekday, keep, lastRun] = await Promise.all([
     getConfig(db, kv, 'backup_schedule_enabled', '0'),
     getConfig(db, kv, 'backup_schedule_frequency', 'daily'),
     getConfig(db, kv, 'backup_schedule_time', '03:00'),
+    getConfig(db, kv, 'backup_schedule_weekday', '1'),
     getConfig(db, kv, 'backup_schedule_keep', '7'),
     getConfig(db, kv, 'backup_last_run', ''),
   ]);
@@ -1081,6 +1083,7 @@ async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise
     enabled,
     frequency,
     time,
+    weekday,
     keep: parseInt(keep, 10) || 7,
     lastRun,
   };
@@ -1099,13 +1102,14 @@ export async function handleGetBackupSchedule(
 export async function handleUpdateBackupSchedule(
   db: D1Database,
   kv: KVNamespace,
-  body: { enabled?: string; frequency?: string; time?: string; keep?: number },
+  body: { enabled?: string; frequency?: string; time?: string; weekday?: string; keep?: number },
 ): Promise<Response> {
   const updates: Array<{ name: string; value: string }> = [];
 
   if (body.enabled !== undefined) updates.push({ name: 'backup_schedule_enabled', value: body.enabled });
   if (body.frequency !== undefined) updates.push({ name: 'backup_schedule_frequency', value: body.frequency });
   if (body.time !== undefined) updates.push({ name: 'backup_schedule_time', value: body.time });
+  if (body.weekday !== undefined) updates.push({ name: 'backup_schedule_weekday', value: body.weekday });
   if (body.keep !== undefined) updates.push({ name: 'backup_schedule_keep', value: String(body.keep) });
 
   if (updates.length === 0) {
@@ -1187,6 +1191,11 @@ export async function handleScheduledBackup(
 
   let isDue = false;
 
+  // 當前星期幾 (0=週日, 1=週一, ..., 6=週六)
+  const currentDayOfWeek = now.toLocaleString('en-US', { timeZone: 'Asia/Hong_Kong', weekday: 'short' });
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const currentWeekday = dayMap[currentDayOfWeek] ?? 0;
+
   if (config.frequency === 'daily') {
     // 每日：當天尚未執行且已過排程時間
     const lastRunDate = config.lastRun.slice(0, 10);
@@ -1194,13 +1203,11 @@ export async function handleScheduledBackup(
       isDue = true;
     }
   } else if (config.frequency === 'weekly') {
-    // 每週：距上次執行 ≥ 7 天且已過排程時間
-    if (!config.lastRun) {
-      if (isPastScheduledTime) isDue = true;
-    } else {
-      const lastRunDate = new Date(config.lastRun.replace(' ', 'T') + '+08:00');
-      const daysSince = (now.getTime() - lastRunDate.getTime()) / (1000 * 60 * 60 * 24);
-      if (daysSince >= 7 && isPastScheduledTime) {
+    // 每週：指定星期幾 + 當天尚未執行 + 已過排程時間
+    const schedWeekday = parseInt(config.weekday, 10) || 1;
+    if (currentWeekday === schedWeekday && isPastScheduledTime) {
+      const lastRunDate = config.lastRun.slice(0, 10);
+      if (lastRunDate !== currentDate) {
         isDue = true;
       }
     }

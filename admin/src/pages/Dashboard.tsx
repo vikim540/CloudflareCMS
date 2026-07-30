@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, formatDate } from '../lib/utils'
 
 /** 統計數據結構 */
 interface Stats {
@@ -66,7 +66,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-30 11:23:54',
     icon: '⏰',
     latest: true,
-    changes: `⏰ 定時備份排程 + 備份邏輯恢復單站點\n\n📋 定時備份排程（新功能）\n• Database 界面新增「定時備份排程」設置卡片（非全局配置）\n• 每站點獨立配置：啟用開關、頻率（每天/每週）、執行時間（HH:mm）、保留備份數\n• Cron 每 15 分鐘檢查是否到期，到期自動執行備份\n• 自動清理過期備份（保留最近 N 個，超出自動刪除）\n• 配置存儲在 ay_config（INSERT/UPDATE 自適應，無需 migration）\n• 新增 API：GET/PUT /api/v1/admin/database/backup-schedule\n• 前端顯示上次執行時間 + 當前配置摘要\n\n📋 備份邏輯恢復單站點\n• 恢復「建立備份」僅導出當前站點數據庫（非所有站點）\n• 修正 v1.9.36 錯誤改動：用戶確認每次備份只需當前站點\n• dumpDatabaseTables 返回 tableCount + rowCount 統計\n• 備份日誌記錄站點名 + 表數 + 行數`,
+    changes: `⏰ 定時備份排程 + 備份邏輯恢復單站點\n\n📋 定時備份排程（新功能）\n• Database 界面新增「定時備份排程」設置卡片（非全局配置）\n• 每站點獨立配置：啟用開關、頻率（每天/每週）、星期幾（每週時選擇）、執行時間（HH:mm）、保留備份數\n• Cron 每 15 分鐘檢查是否到期，到期自動執行備份\n• 自動清理過期備份（保留最近 N 個，超出自動刪除）\n• 配置存儲在 ay_config（INSERT/UPDATE 自適應，無需 migration）\n• 新增 API：GET/PUT /api/v1/admin/database/backup-schedule\n• 前端顯示上次執行時間 + 當前配置摘要（含星期幾）\n• 系統信息 Tab 新增「定時備份排程」狀態卡片\n\n📋 備份邏輯恢復單站點\n• 恢復「建立備份」僅導出當前站點數據庫（非所有站點）\n• 修正 v1.9.36 錯誤改動：用戶確認每次備份只需當前站點\n• dumpDatabaseTables 返回 tableCount + rowCount 統計\n• 備份日誌記錄站點名 + 表數 + 行數`,
   },
   {
     version: 'v1.9.36',
@@ -861,6 +861,9 @@ export default function Dashboard() {
     version: null,
   })
   const [scheduledTasks, setScheduledTasks] = useState<{ id: number; title: string; date: string }[]>([])
+  const [backupSchedule, setBackupSchedule] = useState<{
+    enabled: string; frequency: string; time: string; weekday: string; keep: number; lastRun: string
+  } | null>(null)
 
   // 獲取儀表板統計 + Worker 版本元數據（version_metadata 綁定，合併在 stats 響應中）
   useEffect(() => {
@@ -881,6 +884,11 @@ export default function Dashboard() {
     api
       .get<{ id: number; title: string; date: string }[]>('/admin/scheduler/list')
       .then((res) => setScheduledTasks((res.data as { id: number; title: string; date: string }[]) ?? []))
+      .catch(() => {})
+    // 獲取定時備份排程配置（系統信息展示用）
+    api
+      .get<{ enabled: string; frequency: string; time: string; weekday: string; keep: number; lastRun: string }>('/admin/database/backup-schedule')
+      .then((res) => { if (res.data) setBackupSchedule(res.data) })
       .catch(() => {})
   }, [])
 
@@ -1568,6 +1576,53 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                 ) : (
                   <div className="flex items-center justify-center py-6 text-muted-foreground text-sm">
                     <span>📭 目前沒有待發布的定時任務</span>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* 定時備份排程狀態 */}
+            <section>
+              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                <span>💾</span>
+                <span>定時備份排程</span>
+              </h3>
+              <div className="rounded-lg border border-border bg-white p-4">
+                {backupSchedule && backupSchedule.enabled === '1' ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-green-600 font-medium">已啟用</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">頻率:</span>
+                        <span className="font-medium text-foreground">
+                          {backupSchedule.frequency === 'daily'
+                            ? '每天'
+                            : `每${['週日','週一','週二','週三','週四','週五','週六'][parseInt(backupSchedule.weekday, 10) || 1]}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">時間:</span>
+                        <span className="font-mono font-medium text-foreground">{backupSchedule.time}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">保留:</span>
+                        <span className="font-medium text-foreground">{backupSchedule.keep} 個</span>
+                      </div>
+                    </div>
+                    {backupSchedule.lastRun && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span>🕐</span>
+                        <span>上次執行:</span>
+                        <span className="font-mono text-foreground">{formatDate(backupSchedule.lastRun)}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-6 text-muted-foreground text-sm">
+                    <span>⏸️ 定時備份未啟用</span>
                   </div>
                 )}
               </div>

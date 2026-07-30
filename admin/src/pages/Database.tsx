@@ -15,8 +15,25 @@ interface BackupSchedule {
   enabled: string
   frequency: string
   time: string
+  weekday: string
   keep: number
   lastRun: string
+}
+
+/** 星期標籤 */
+const WEEKDAY_LABELS: { value: string; label: string }[] = [
+  { value: '0', label: '週日' },
+  { value: '1', label: '週一' },
+  { value: '2', label: '週二' },
+  { value: '3', label: '週三' },
+  { value: '4', label: '週四' },
+  { value: '5', label: '週五' },
+  { value: '6', label: '週六' },
+]
+
+/** 取得星期標籤 */
+function getWeekdayLabel(weekday: string): string {
+  return WEEKDAY_LABELS.find((w) => w.value === weekday)?.label ?? '週一'
 }
 
 /** 格式化文件大小 */
@@ -50,6 +67,7 @@ export default function DatabasePage() {
     enabled: '0',
     frequency: 'daily',
     time: '03:00',
+    weekday: '1',
     keep: 7,
     lastRun: '',
   })
@@ -160,6 +178,7 @@ export default function DatabasePage() {
         enabled: schedule.enabled,
         frequency: schedule.frequency,
         time: schedule.time,
+        weekday: schedule.weekday,
         keep: schedule.keep,
       })
       setScheduleMsg({ type: 'success', text: '定時備份配置已保存' })
@@ -246,6 +265,23 @@ export default function DatabasePage() {
                 </select>
               </div>
 
+              {/* 星期幾（僅 weekly 顯示） */}
+              {schedule.frequency === 'weekly' && (
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">星期</label>
+                  <select
+                    value={schedule.weekday}
+                    onChange={(e) => setSchedule(s => ({ ...s, weekday: e.target.value }))}
+                    disabled={schedule.enabled !== '1'}
+                    className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    {WEEKDAY_LABELS.map((w) => (
+                      <option key={w.value} value={w.value}>{w.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* 時間 */}
               <div>
                 <label className="block text-xs text-muted-foreground mb-1.5">執行時間</label>
@@ -295,7 +331,10 @@ export default function DatabasePage() {
               {schedule.enabled === '1' && (
                 <span className="flex items-center gap-1 text-green-600">
                   <span>✅</span>
-                  {schedule.frequency === 'daily' ? '每天' : '每週'} {schedule.time} 自動備份，保留最近 {schedule.keep} 個
+                  {schedule.frequency === 'daily'
+                    ? `每天 ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
+                    : `每${getWeekdayLabel(schedule.weekday)} ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
+                  }
                 </span>
               )}
             </div>
