@@ -1877,13 +1877,13 @@ export default function ContentEdit() {
             </div>
 
             {/* 選項 — uiverse.io 風格卡片式 Checkbox */}
-            <div className="flex flex-wrap items-center gap-3 p-4 bg-gray-50/50 rounded-lg border border-gray-100">
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
+            <div className="flex flex-wrap items-center gap-3 p-4 mt-4 bg-gray-50/50 rounded-lg border border-gray-100">
+              <label className="relative inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.istop}
                   onChange={(e) => updateField('istop', e.target.checked)}
-                  className="peer sr-only"
+                  className="peer absolute opacity-0 inset-0 cursor-pointer"
                 />
                 <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-blue-400 peer-checked:bg-blue-500 peer-checked:border-blue-500 peer-checked:shadow-sm peer-checked:shadow-blue-500/30">
                   {form.istop && (
@@ -1894,12 +1894,12 @@ export default function ContentEdit() {
                 </span>
                 <span className="text-sm text-foreground/80 group-hover:text-blue-600 transition-colors">置頂</span>
               </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
+              <label className="relative inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.isrecommend}
                   onChange={(e) => updateField('isrecommend', e.target.checked)}
-                  className="peer sr-only"
+                  className="peer absolute opacity-0 inset-0 cursor-pointer"
                 />
                 <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-emerald-400 peer-checked:bg-emerald-500 peer-checked:border-emerald-500 peer-checked:shadow-sm peer-checked:shadow-emerald-500/30">
                   {form.isrecommend && (
@@ -1910,12 +1910,12 @@ export default function ContentEdit() {
                 </span>
                 <span className="text-sm text-foreground/80 group-hover:text-emerald-600 transition-colors">推薦</span>
               </label>
-              <label className="inline-flex items-center gap-2 cursor-pointer select-none group">
+              <label className="relative inline-flex items-center gap-2 cursor-pointer select-none group">
                 <input
                   type="checkbox"
                   checked={form.isheadline}
                   onChange={(e) => updateField('isheadline', e.target.checked)}
-                  className="peer sr-only"
+                  className="peer absolute opacity-0 inset-0 cursor-pointer"
                 />
                 <span className="flex items-center justify-center w-5 h-5 rounded-md border-2 border-input bg-white transition-all duration-200 group-hover:border-amber-400 peer-checked:bg-amber-500 peer-checked:border-amber-500 peer-checked:shadow-sm peer-checked:shadow-amber-500/30">
                   {form.isheadline && (
