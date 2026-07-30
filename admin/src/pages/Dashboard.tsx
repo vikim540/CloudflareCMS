@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.41',
+    date: '2026-07-30 16:20:00',
+    icon: '🕐',
+    latest: true,
+    changes: `🕐 講座預約時段輸入改為點擊選擇\n\n📋 變更內容\n• 批量新增排期自定義時段：文本輸入改為 TimeSlotPicker 組件（點擊小時+分鐘下拉選擇）\n• 結束時間自動 +1 小時（選 18:30 → 自動生成 18:30-19:30），文案無需手動輸入\n• 符號「:」「-」由前端固定生成，徹底避免 18：00、18:00-、18:00-17:00 等格式錯誤\n• 編輯表單時段也改用 TimeSlotPicker（compact 緊湊模式）\n• 移除 normalizeTimeSlot 正規化函數（不再需要文本正規化）\n• 移除 customTimeInput 狀態和 handleConfirmCustomTime（選擇即生效，無需確認步驟）\n• 歷史記錄氣泡保留，點擊可快速選用\n• 系統信息 Tab Secrets Store 補全 5 個密鑰列表`,
+  },
+  {
     version: 'v1.9.40',
     date: '2026-07-30 15:30:00',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: `🔒 權限 toast 修復 + 講座預約自定義時段完善\n\n📋 變更內容\n• 修復非超管用戶進入 Dashboard 彈出「僅超級管理員可訪問此功能」toast — backup-schedule 端點改為僅超管調用 + silent403 雙保險\n• 修復非 M204 權限用戶在任意頁面彈出「無權限訪問此功能」toast — /admin/forms/active 加入 PUBLIC_READ_PATHS 白名單（側邊欄導航需要，所有登錄用戶可訪問）\n• api.ts 新增 silent403 參數，get/post/put/del 均支持，傳入 true 時 403 響應不觸發全局權限 toast（防禦性加固）\n• 修復講座預約編輯表單 onBlur 無效時段處理 — normalizeTimeSlot 返回 null 時回退為第一個預設時段並提示，與批量表單行為一致\n• 講座預約批量新增排期支持自定義時段輸入（normalizeTimeSlot 正規化全形冒號/空格/分隔符 + 歷史記錄氣泡 + 編輯表單 datalist）`,
   },
   {
@@ -1860,6 +1867,12 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         <code className="font-mono text-foreground text-xs">JWT_SECRET</code>
                         <span className="text-muted-foreground mx-1">·</span>
                         <code className="font-mono text-foreground text-xs">CF_API_TOKEN</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">TURNSTILE_SECRET_KEY</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">S3_ACCESS_KEY</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground text-xs">S3_SECRET_KEY</code>
                         <span className="text-muted-foreground mx-2 text-xs">異步綁定 await get()</span>
                       </td>
                     </tr>

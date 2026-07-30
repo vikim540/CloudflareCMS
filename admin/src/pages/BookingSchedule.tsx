@@ -95,6 +95,12 @@ const TIME_SLOT_PRESETS = [
   '18:30-19:30',
 ]
 
+/** 時段選擇器 — 小時選項（09-22，覆蓋講座常見時段） */
+const HOUR_OPTIONS = Array.from({ length: 14 }, (_, i) => i + 9) // 9 ~ 22
+
+/** 時段選擇器 — 分鐘選項（15 分鐘粒度） */
+const MINUTE_OPTIONS = ['00', '15', '30', '45']
+
 /** 狀態標籤映射 */
 const STATUS_LABELS: Record<string, string> = {
   '1': '可用',
@@ -150,54 +156,75 @@ const CUSTOM_TIME_HISTORY_KEY = 'booking_custom_time_history'
 const MAX_HISTORY_ITEMS = 10
 
 /**
- * 規範化時段字串 — 防止文案輸入格式不一致
+ * 時段選擇器 — 點擊選擇開始時間（小時+分鐘），結束時間自動 +1 小時
  *
- * 處理常見錯誤：
- *   - 全形冒號「：」→ 半形「:」
- *   - 多餘空格
- *   - 尾部分隔符（18:00- / 18:00_ / 18:00~）
- *   - 非標準分隔符（_ ~ —）→ 統一為「-」
- *   - 小時補零（9:00 → 09:00）
- *
- * 返回 null 表示無法解析
+ * 設計目的：避免文案手動輸入符號和數字，防止格式錯誤（18：00、18:00-、18:00-17:00 等）
+ * 符號「:」「-」由前端固定生成，文案只需點擊選擇
  */
-function normalizeTimeSlot(raw: string): string | null {
-  if (!raw) return null
+function TimeSlotPicker({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: string // 當前 time_slot，如 '18:30-19:30'
+  onChange: (slot: string) => void
+  compact?: boolean // 編輯表單用緊湊模式
+}) {
+  // 從 value 解析開始時間的小時和分鐘
+  const startPart = value ? value.split('-')[0] : '09:00'
+  const [hStr, mStr] = startPart.split(':')
+  const startHour = parseInt(hStr, 10) || 9
+  const startMinute = mStr || '00'
 
-  let s = raw.trim()
+  /** 構建時段字串：開始時間 → 結束時間（+1 小時） */
+  const buildSlot = (h: number, m: string): string => {
+    const start = `${String(h).padStart(2, '0')}:${m}`
+    const endH = h + 1
+    const end = `${String(endH).padStart(2, '0')}:${m}`
+    return `${start}-${end}`
+  }
 
-  // 全形冒號 → 半形
-  s = s.replace(/：/g, ':')
+  const selectClass = compact
+    ? 'px-1.5 py-0.5 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-300 bg-white w-16'
+    : 'px-2.5 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white'
 
-  // 去除所有空格
-  s = s.replace(/\s+/g, '')
-
-  // 非標準分隔符統一為「-」
-  s = s.replace(/[_~—]/g, '-')
-
-  // 去除尾部多餘的分隔符
-  s = s.replace(/-+$/, '')
-
-  // 驗證格式：H:mm-H:mm 或 HH:mm-HH:mm
-  const match = s.match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/)
-  if (!match) return null
-
-  const [, h1, m1, h2, m2] = match
-  const hh1 = parseInt(h1, 10)
-  const mm1 = parseInt(m1, 10)
-  const hh2 = parseInt(h2, 10)
-  const mm2 = parseInt(m2, 10)
-
-  // 範圍校驗
-  if (hh1 > 23 || hh2 > 23 || mm1 > 59 || mm2 > 59) return null
-
-  // 開始時間必須早於結束時間
-  const startMin = hh1 * 60 + mm1
-  const endMin = hh2 * 60 + mm2
-  if (startMin >= endMin) return null
-
-  // 補零輸出
-  return `${String(hh1).padStart(2, '0')}:${m1}-${String(hh2).padStart(2, '0')}:${m2}`
+  return (
+    <div className={`flex items-center gap-1.5 ${compact ? '' : 'flex-wrap'}`}>
+      {/* 開始時間：小時 */}
+      <select
+        value={startHour}
+        onChange={(e) => onChange(buildSlot(Number(e.target.value), startMinute))}
+        className={selectClass}
+      >
+        {HOUR_OPTIONS.map((h) => (
+          <option key={h} value={h}>
+            {String(h).padStart(2, '0')}
+          </option>
+        ))}
+      </select>
+      <span className="text-sm font-medium text-muted-foreground">:</span>
+      {/* 開始時間：分鐘 */}
+      <select
+        value={startMinute}
+        onChange={(e) => onChange(buildSlot(startHour, e.target.value))}
+        className={selectClass}
+      >
+        {MINUTE_OPTIONS.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+      {/* 結束時間（自動 +1 小時，只讀顯示） */}
+      <span className="text-sm text-muted-foreground px-1">→</span>
+      <span className={`font-mono font-medium ${compact ? 'text-xs' : 'text-sm'} text-green-700 bg-green-50 px-2 py-0.5 rounded`}>
+        {String(startHour + 1).padStart(2, '0')}:{startMinute}
+      </span>
+      {!compact && (
+        <span className="text-xs text-muted-foreground">（自動 +1 小時）</span>
+      )}
+    </div>
+  )
 }
 
 /** 從 localStorage 載入自定義時段歷史 */
@@ -393,7 +420,6 @@ export default function BookingSchedule() {
 
   // ─── 自定義時段輸入 ────────────────────────────────────
   const [isCustomMode, setIsCustomMode] = useState(false)
-  const [customTimeInput, setCustomTimeInput] = useState('')
   const [customTimeError, setCustomTimeError] = useState('')
   const [customTimeHistory, setCustomTimeHistory] = useState<string[]>(() => loadCustomTimeHistory())
 
@@ -545,7 +571,6 @@ export default function BookingSchedule() {
       special_label: '',
     })
     setIsCustomMode(false)
-    setCustomTimeInput('')
     setCustomTimeError('')
     setBatchError('')
     setCommitProgress(0)
@@ -582,7 +607,6 @@ export default function BookingSchedule() {
       special_label: '',
     }))
     setIsCustomMode(false)
-    setCustomTimeInput('')
     setCustomTimeError('')
     setBatchError('')
   }
@@ -613,49 +637,29 @@ export default function BookingSchedule() {
   const handleSelectTimeSlot = (slot: string) => {
     setBatchForm((f) => ({ ...f, time_slot: slot }))
     setIsCustomMode(false)
-    setCustomTimeInput('')
     setCustomTimeError('')
     setBatchError('')
   }
 
-  /** 切換到自定義時段模式 */
+  /** 切換到自定義時段模式 — 設置默認時段 09:00-10:00 */
   const handleSwitchToCustom = () => {
     setIsCustomMode(true)
-    setBatchForm((f) => ({ ...f, time_slot: '' }))
-    setCustomTimeInput('')
+    setBatchForm((f) => ({ ...f, time_slot: '09:00-10:00' }))
     setCustomTimeError('')
     setBatchError('')
   }
 
-  /** 確認自定義時段輸入 — 規範化 + 校驗 + 存入歷史 */
-  const handleConfirmCustomTime = () => {
-    const raw = customTimeInput.trim()
-    if (!raw) {
-      setCustomTimeError('請輸入時段，格式如 18:00-19:00')
-      setBatchForm((f) => ({ ...f, time_slot: '' }))
-      return
-    }
-    const normalized = normalizeTimeSlot(raw)
-    if (!normalized) {
-      setCustomTimeError(
-        `格式無效：「${raw}」\n正確格式：HH:mm-HH:mm（如 18:00-19:00）\n支援自動轉換：全形冒號、多餘空格、尾部符號`,
-      )
-      setBatchForm((f) => ({ ...f, time_slot: '' }))
-      return
-    }
-    // 校驗通過
-    setBatchForm((f) => ({ ...f, time_slot: normalized }))
-    setCustomTimeInput(normalized)
+  /** 自定義時段變更（TimeSlotPicker 回調） — 存入歷史記錄 */
+  const handleCustomTimeChange = (slot: string) => {
+    setBatchForm((f) => ({ ...f, time_slot: slot }))
     setCustomTimeError('')
     setBatchError('')
-    // 存入歷史記錄
-    setCustomTimeHistory(saveCustomTimeToHistory(normalized))
+    setCustomTimeHistory(saveCustomTimeToHistory(slot))
   }
 
   /** 從歷史記錄中選擇時段 */
   const handleSelectHistoryTime = (slot: string) => {
     setBatchForm((f) => ({ ...f, time_slot: slot }))
-    setCustomTimeInput(slot)
     setCustomTimeError('')
     setBatchError('')
   }
@@ -727,7 +731,6 @@ export default function BookingSchedule() {
       special_label: '',
     }))
     setIsCustomMode(false)
-    setCustomTimeInput('')
     setCustomTimeError('')
     setBatchError('')
   }
@@ -1108,41 +1111,13 @@ export default function BookingSchedule() {
                             className="px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                           />
                         </td>
-                        {/* 時段 */}
+                        {/* 時段 — 點擊選擇，無需手動輸入符號 */}
                         <td className="px-4 py-3">
-                          <input
-                            type="text"
-                            list="booking-time-slots"
+                          <TimeSlotPicker
                             value={editForm.time_slot}
-                            onChange={(e) =>
-                              setEditForm((f) => (f ? { ...f, time_slot: e.target.value } : f))
-                            }
-                            onBlur={(e) => {
-                              const raw = e.target.value
-                              if (!raw) return
-                              const normalized = normalizeTimeSlot(raw)
-                              if (normalized) {
-                                if (normalized !== raw) {
-                                  setEditForm((f) => (f ? { ...f, time_slot: normalized } : f))
-                                }
-                              } else {
-                                // 無效時段：回退到第一個預設值，避免提交無效數據
-                                setEditForm((f) => (f ? { ...f, time_slot: TIME_SLOT_PRESETS[0] } : f))
-                                setCustomTimeError(`編輯時段「${raw}」格式無效，已回退為 ${TIME_SLOT_PRESETS[0]}`)
-                                setTimeout(() => setCustomTimeError(''), 3000)
-                              }
-                            }}
-                            placeholder="HH:mm-HH:mm"
-                            className="w-28 px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                            onChange={(slot) => setEditForm((f) => (f ? { ...f, time_slot: slot } : f))}
+                            compact
                           />
-                          <datalist id="booking-time-slots">
-                            {TIME_SLOT_PRESETS.map((s) => (
-                              <option key={s} value={s} />
-                            ))}
-                            {customTimeHistory.map((s) => (
-                              <option key={s} value={s} />
-                            ))}
-                          </datalist>
                         </td>
                         {/* 服務類型 */}
                         <td className="px-4 py-3">
@@ -1577,46 +1552,17 @@ export default function BookingSchedule() {
                   </label>
                 </div>
 
-                {/* 自定義時段輸入區 */}
+                {/* 自定義時段選擇區 — 點擊小時+分鐘，結束時間自動 +1 小時 */}
                 {isCustomMode && (
                   <div className="mt-3 space-y-2 p-3 border border-dashed rounded-md bg-slate-50/50">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={customTimeInput}
-                        onChange={(e) => {
-                          setCustomTimeInput(e.target.value)
-                          if (customTimeError) setCustomTimeError('')
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleConfirmCustomTime()
-                          }
-                        }}
-                        onBlur={handleConfirmCustomTime}
-                        placeholder="如 18:00-19:00"
-                        className="flex-1 px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground shrink-0">開始時間：</span>
+                      <TimeSlotPicker
+                        value={batchForm.time_slot}
+                        onChange={handleCustomTimeChange}
                       />
-                      <button
-                        type="button"
-                        onClick={handleConfirmCustomTime}
-                        className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity whitespace-nowrap"
-                      >
-                        確認
-                      </button>
                     </div>
-                    {/* 格式提示 */}
-                    <p className="text-xs text-muted-foreground">
-                      格式：HH:mm-HH:mm，自動修正全形冒號「：」、多餘空格、尾部符號
-                    </p>
-                    {/* 錯誤提示 */}
-                    {customTimeError && (
-                      <p className="text-xs text-destructive whitespace-pre-line">
-                        ⚠️ {customTimeError}
-                      </p>
-                    )}
-                    {/* 已確認的時段 */}
+                    {/* 已選時段 */}
                     {batchForm.time_slot && (
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-green-600">✅ 已選時段：</span>
