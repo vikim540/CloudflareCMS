@@ -426,13 +426,19 @@ app.get('/api/v1/slides', async (c) => {
 });
 
 // ===== 公開講座預約 API（僅 GET，供外部廣告網站 https://smile.hkcmereye.com/ 拉取）=====
+// 講座預約僅 smile 站點使用，直接路由到 smile 數據庫，無需 X-Site-Id 標頭
 app.get('/api/v1/booking/calendars', async (c) => {
-  return bookingService.handleListBookingCalendars(siteDB(c));
+  return bookingService.handleListBookingCalendars(c.env.DB_SMILE);
 });
 
 app.get('/api/v1/booking/schedules', async (c) => {
   const params = new URL(c.req.url).searchParams;
-  return bookingService.handleListBookingSchedules(siteDB(c), params);
+  return bookingService.handleListBookingSchedules(c.env.DB_SMILE, params);
+});
+
+// 公開服務列表（供前端動態構建下拉選單 + 地點聯動過濾）
+app.get('/api/v1/booking/services', async (c) => {
+  return bookingService.handleListBookingServices();
 });
 
 // 內鏈關鍵詞列表（供前端網站 tagLink 功能使用）
@@ -1751,7 +1757,23 @@ app.get('/api/v1/admin/database/backups', async (c) => {
 app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, {
+
+  // 收集所有站點數據庫（確保備份覆蓋全部站點，而非僅當前站點）
+  const sites: { siteId: string; db: D1Database }[] = [];
+  const registry = parseSiteRegistry(c.env.SITE_REGISTRY ?? '{}');
+  for (const [siteId, entry] of Object.entries(registry)) {
+    if (entry.binding) {
+      const envBindings = c.env as unknown as Record<string, D1Database>;
+      const db = envBindings[entry.binding];
+      if (db) sites.push({ siteId, db });
+    }
+  }
+  // 確保主庫始終在列表中（即使 SITE_REGISTRY 未配置）
+  if (!sites.find((s) => s.siteId === 'endoscopy')) {
+    sites.unshift({ siteId: 'endoscopy', db: c.env.DB });
+  }
+
+  return systemService.handleCreateBackup(primaryDB(c), sites, c.env.CONFIG_CACHE, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
 });

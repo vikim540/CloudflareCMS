@@ -352,43 +352,39 @@ export default function BookingCalendar() {
   }
 
   return (
-    <div className="p-6">
-      {/* 頁首 */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">日曆圖片管理</h1>
-        <div className="flex items-center gap-2">
-          {calendars.length > 0 && (
-            <button
-              onClick={() => {
-                setBatchDeleteMode(!batchDeleteMode)
-                setSelectedIds(new Set())
-                setShowBatchDeleteConfirm(false)
-              }}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-4 py-2 border rounded-md transition-colors text-sm',
-                batchDeleteMode
-                  ? 'bg-red-50 text-red-600 border-red-300 hover:bg-red-100'
-                  : 'bg-white text-foreground border-border hover:bg-accent',
-              )}
-            >
-              <span className="mr-1">{batchDeleteMode ? '✖️' : '🗑️'}</span>
-              {batchDeleteMode ? '退出批量' : '批量管理'}
-            </button>
-          )}
+    <>
+      {/* 操作按鈕 */}
+      <div className="flex items-center justify-end gap-2 mb-4">
+        {calendars.length > 0 && (
           <button
-            onClick={openCreate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+            onClick={() => {
+              setBatchDeleteMode(!batchDeleteMode)
+              setSelectedIds(new Set())
+              setShowBatchDeleteConfirm(false)
+            }}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-4 py-2 border rounded-md transition-colors text-sm',
+              batchDeleteMode
+                ? 'bg-red-50 text-red-600 border-red-300 hover:bg-red-100'
+                : 'bg-white text-foreground border-border hover:bg-accent',
+            )}
           >
-            <span className="mr-1">➕</span>
-            新增日曆圖片
+            <span className="mr-1">{batchDeleteMode ? '✖️' : '🗑️'}</span>
+            {batchDeleteMode ? '退出批量' : '批量管理'}
           </button>
-        </div>
+        )}
+        <button
+          onClick={openCreate}
+          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+        >
+          <span className="mr-1">➕</span>
+          新增日曆圖片
+        </button>
       </div>
 
       {/* 錯誤提示 */}
       {error && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <span className="shrink-0">⚠️</span>
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
           {error}
         </div>
       )}
@@ -904,6 +900,6 @@ export default function BookingCalendar() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

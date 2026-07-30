@@ -1,7 +1,23 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { api } from '../lib/api'
 import { cn, getPageNumbers } from '../lib/utils'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
+
+/**
+ * 講座預約排期管理
+ *
+ * 服務類型與地點約束（對齊前端 Vue 組件 preaching-seat.vue）：
+ *   '1' = SMILE Pro 2.0  → 旺角('1') + 中環('2')，需用戶選擇
+ *   '2' = SMILE+ICL       → 僅中環('2')，自動鎖定
+ *   '3' = 老花矯視        → 僅旺角('1')，自動鎖定
+ *
+ * 時段格式：'HH:mm-HH:mm'（如 '13:30-14:30'）
+ *
+ * 批量新增工作流（v2 — 暫存 + 單時段）：
+ *   1. 選擇服務+地點 → 2. 月曆勾選日期 → 3. 單選時段（顯示在日曆數字下方）
+ *   → 4. 預保存（暫存到 localStorage，不怕意外關閉）→ 5. 切換服務/地點繼續
+ *   → 6. 確認完成（N 條）→ 一次性提交所有暫存批次
+ */
 
 /** 預約排期數據結構 */
 interface BookingSchedule {
@@ -10,7 +26,8 @@ interface BookingSchedule {
   location: string
   booking_date: string
   time_slot: string
-  max_seats: number
+  is_special: string
+  special_label: string
   status: string
   sorting: number
 }
@@ -21,23 +38,37 @@ interface EditForm {
   location: string
   booking_date: string
   time_slot: string
-  max_seats: number
+  is_special: string
+  special_label: string
   status: string
 }
 
-/** 批量新增表單 */
+/** 批量新增表單（單時段） */
 interface BatchForm {
   service_type: string
+  location: string
   dates: string[]
-  time_slots: string[]
-  max_seats: number
+  time_slot: string
+  is_special: string
+  special_label: string
+}
+
+/** 預保存的暫存批次 */
+interface StagedBatch {
+  id: string
+  service_type: string
+  location: string
+  dates: string[]
+  time_slot: string
+  is_special: string
+  special_label: string
 }
 
 /** 服務類型選項 */
 const SERVICE_TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: '1', label: 'Smile Pro旺角' },
-  { value: '2', label: 'Smile Pro中環' },
-  { value: '3', label: 'Smile中環' },
+  { value: '1', label: 'SMILE Pro 2.0' },
+  { value: '2', label: 'SMILE+ICL' },
+  { value: '3', label: '老花矯視' },
 ]
 
 /** 地點標籤映射 */
@@ -46,8 +77,23 @@ const LOCATION_LABELS: Record<string, string> = {
   '2': '中環',
 }
 
-/** 時段選項 */
-const TIME_SLOT_OPTIONS = ['上午', '下午']
+/**
+ * 服務類型 → 允許的地點列表
+ * SMILE Pro 2.0 支持旺角+中環，SMILE+ICL 僅中環，老花矯視僅旺角
+ */
+const SERVICE_LOCATION_CONSTRAINTS: Record<string, string[]> = {
+  '1': ['1', '2'],
+  '2': ['2'],
+  '3': ['1'],
+}
+
+/** 預設時段選項（對齊日曆圖片中的實際時段） */
+const TIME_SLOT_PRESETS = [
+  '13:30-14:30',
+  '14:30-15:30',
+  '15:30-16:30',
+  '18:30-19:30',
+]
 
 /** 狀態標籤映射 */
 const STATUS_LABELS: Record<string, string> = {
@@ -55,14 +101,174 @@ const STATUS_LABELS: Record<string, string> = {
   '0': '停用',
 }
 
-/** 根據服務類型推導地點：type '1' → 旺角(1), type '2'/'3' → 中環(2) */
-function deriveLocation(serviceType: string): string {
-  return serviceType === '1' ? '1' : '2'
+/** 星期標頭 */
+const WEEK_DAYS = ['日', '一', '二', '三', '四', '五', '六']
+
+/** localStorage 暫存 key */
+const STAGING_KEY = 'booking_batch_staging'
+
+/**
+ * 根據服務類型推導地點
+ * Service 1 需用戶選擇，Service 2 → 中環, Service 3 → 旺角
+ */
+function deriveLocation(serviceType: string, explicitLocation?: string): string {
+  const allowed = SERVICE_LOCATION_CONSTRAINTS[serviceType]
+  if (!allowed) return '1'
+  if (allowed.length === 1) return allowed[0]
+  if (explicitLocation && allowed.includes(explicitLocation)) return explicitLocation
+  return allowed[0]
 }
 
 /** 取得服務類型標籤 */
 function getServiceTypeLabel(type: string): string {
   return SERVICE_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
+}
+
+/** 格式化日期為 YYYY-MM-DD */
+function formatDateStr(year: number, month: number, day: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/** 取得今天的日期字串 */
+function getTodayStr(): string {
+  const now = new Date()
+  return formatDateStr(now.getFullYear(), now.getMonth(), now.getDate())
+}
+
+/** 生成暫存批次唯一 ID */
+function genBatchId(): string {
+  return `batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** 提取時段開始時間（用於日曆簡短顯示） */
+function slotStart(timeSlot: string): string {
+  return timeSlot.split('-')[0] || timeSlot
+}
+
+// ============================================================================
+// 月曆日期選擇器組件（增強：顯示時段 + 標記暫存日期）
+// ============================================================================
+function MonthCalendar({
+  selectedDates,
+  onToggleDate,
+  currentTimeSlot,
+  stagedDateInfo,
+}: {
+  selectedDates: Set<string>
+  onToggleDate: (date: string) => void
+  /** 當前選中的時段（顯示在已選日期下方） */
+  currentTimeSlot?: string
+  /** 已暫存的日期 → 時段映射（用綠色標記） */
+  stagedDateInfo?: Map<string, string>
+}) {
+  const [viewDate, setViewDate] = useState(() => {
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1)
+  })
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+
+  const firstDayOfWeek = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+
+  const cells: (number | null)[] = []
+  for (let i = 0; i < firstDayOfWeek; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const todayStr = getTodayStr()
+  const monthLabel = `${year}年${month + 1}月`
+
+  return (
+    <div className="border rounded-lg p-3">
+      <div className="flex items-center justify-between mb-3">
+        <button
+          type="button"
+          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          className="px-2 py-1 text-sm rounded hover:bg-accent transition-colors"
+        >
+          ◀
+        </button>
+        <span className="font-medium text-sm">{monthLabel}</span>
+        <button
+          type="button"
+          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          className="px-2 py-1 text-sm rounded hover:bg-accent transition-colors"
+        >
+          ▶
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-1">
+        {WEEK_DAYS.map((d) => (
+          <div key={d} className="text-center text-xs text-muted-foreground py-1 font-medium">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, i) => {
+          if (day === null) return <div key={i} />
+          const dateStr = formatDateStr(year, month, day)
+          const isSelected = selectedDates.has(dateStr)
+          const isPast = dateStr < todayStr
+          const isToday = dateStr === todayStr
+          const stagedSlot = stagedDateInfo?.get(dateStr)
+          // 當前選中日期顯示 currentTimeSlot，暫存日期顯示 stagedSlot
+          const showSlot = isSelected && currentTimeSlot
+            ? currentTimeSlot
+            : stagedSlot && !isSelected
+              ? stagedSlot
+              : null
+
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onToggleDate(dateStr)}
+              disabled={isPast}
+              className={cn(
+                'min-h-[52px] flex flex-col items-center justify-start pt-1.5 rounded text-sm transition-colors',
+                isSelected
+                  ? 'bg-primary text-primary-foreground font-bold'
+                  : stagedSlot
+                    ? 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+                    : isPast
+                      ? 'text-muted-foreground/30 cursor-not-allowed'
+                      : isToday
+                        ? 'border-2 border-primary text-primary hover:bg-primary/10'
+                        : 'hover:bg-accent border border-transparent',
+              )}
+            >
+              <span>{day}</span>
+              {showSlot && (
+                <span
+                  className={cn(
+                    'text-[10px] leading-tight mt-0.5 px-1 rounded',
+                    isSelected ? 'bg-white/20' : 'bg-green-100 text-green-600',
+                  )}
+                >
+                  {slotStart(showSlot)}
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* 圖例 */}
+      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded bg-primary" /> 已選
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-3 h-3 rounded bg-green-50 border border-green-200" /> 已暫存
+        </span>
+      </div>
+    </div>
+  )
 }
 
 const PAGE_SIZE = 20
@@ -76,6 +282,7 @@ export default function BookingSchedule() {
 
   // ─── 篩選狀態 ──────────────────────────────────────────
   const [filterServiceType, setFilterServiceType] = useState<string>('all')
+  const [filterLocation, setFilterLocation] = useState<string>('all')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
 
@@ -91,13 +298,38 @@ export default function BookingSchedule() {
   const [batchOpen, setBatchOpen] = useState(false)
   const [batchForm, setBatchForm] = useState<BatchForm>({
     service_type: '1',
+    location: '1',
     dates: [],
-    time_slots: ['上午', '下午'],
-    max_seats: 10,
+    time_slot: '',
+    is_special: '0',
+    special_label: '',
   })
-  const [batchDateInput, setBatchDateInput] = useState('')
   const [batchSaving, setBatchSaving] = useState(false)
   const [batchError, setBatchError] = useState('')
+  const [commitProgress, setCommitProgress] = useState(0)
+
+  // ─── 暫存批次（localStorage 持久化）─────────────────────
+  const [stagedBatches, setStagedBatches] = useState<StagedBatch[]>(() => {
+    try {
+      const stored = localStorage.getItem(STAGING_KEY)
+      return stored ? (JSON.parse(stored) as StagedBatch[]) : []
+    } catch {
+      return []
+    }
+  })
+
+  // 暫存持久化到 localStorage
+  useEffect(() => {
+    try {
+      if (stagedBatches.length > 0) {
+        localStorage.setItem(STAGING_KEY, JSON.stringify(stagedBatches))
+      } else {
+        localStorage.removeItem(STAGING_KEY)
+      }
+    } catch {
+      // localStorage 不可用時靜默失敗
+    }
+  }, [stagedBatches])
 
   // ─── 行內編輯 ──────────────────────────────────────────
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -109,7 +341,45 @@ export default function BookingSchedule() {
   const [refreshCounter, setRefreshCounter] = useState(0)
   const refresh = useCallback(() => setRefreshCounter((c) => c + 1), [])
 
-  /** 載入排期列表（依賴篩選、分頁、refreshCounter） */
+  /** 當前篩選服務類型允許的地點選項 */
+  const filterLocationOptions = useMemo(() => {
+    if (filterServiceType === 'all') {
+      return Object.entries(LOCATION_LABELS).map(([value, label]) => ({ value, label }))
+    }
+    const allowed = SERVICE_LOCATION_CONSTRAINTS[filterServiceType] ?? []
+    return allowed.map((v) => ({ value: v, label: LOCATION_LABELS[v] ?? v }))
+  }, [filterServiceType])
+
+  /** 批量表單中當前服務類型允許的地點選項 */
+  const batchLocationOptions = useMemo(() => {
+    const allowed = SERVICE_LOCATION_CONSTRAINTS[batchForm.service_type] ?? []
+    return allowed.map((v) => ({ value: v, label: LOCATION_LABELS[v] ?? v }))
+  }, [batchForm.service_type])
+
+  /** 批量表單中服務類型是否需要選擇地點（SMILE Pro 2.0 需要選） */
+  const batchNeedsLocationSelect = batchLocationOptions.length > 1
+
+  /** 當前批次預覽條數 */
+  const currentBatchCount = batchForm.dates.length
+
+  /** 所有暫存批次的總條數 */
+  const totalStagedCount = useMemo(
+    () => stagedBatches.reduce((sum, b) => sum + b.dates.length, 0),
+    [stagedBatches],
+  )
+
+  /** 暫存日期 → 時段映射（供月曆標記） */
+  const stagedDateInfo = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const batch of stagedBatches) {
+      for (const date of batch.dates) {
+        map.set(date, batch.time_slot)
+      }
+    }
+    return map
+  }, [stagedBatches])
+
+  /** 載入排期列表 */
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -121,7 +391,9 @@ export default function BookingSchedule() {
         params.set('pagesize', String(PAGE_SIZE))
         if (filterServiceType !== 'all') {
           params.set('service_type', filterServiceType)
-          params.set('location', deriveLocation(filterServiceType))
+        }
+        if (filterLocation !== 'all') {
+          params.set('location', filterLocation)
         }
         if (filterDateFrom) params.set('date_from', filterDateFrom)
         if (filterDateTo) params.set('date_to', filterDateTo)
@@ -143,11 +415,12 @@ export default function BookingSchedule() {
     return () => {
       cancelled = true
     }
-  }, [page, filterServiceType, filterDateFrom, filterDateTo, refreshCounter])
+  }, [page, filterServiceType, filterLocation, filterDateFrom, filterDateTo, refreshCounter])
 
   /** 重置篩選 */
   const handleResetFilter = () => {
     setFilterServiceType('all')
+    setFilterLocation('all')
     setFilterDateFrom('')
     setFilterDateTo('')
     setPage(1)
@@ -176,72 +449,197 @@ export default function BookingSchedule() {
   const openBatch = () => {
     setBatchForm({
       service_type: '1',
+      location: '1',
       dates: [],
-      time_slots: ['上午', '下午'],
-      max_seats: 10,
+      time_slot: '',
+      is_special: '0',
+      special_label: '',
     })
-    setBatchDateInput('')
     setBatchError('')
+    setCommitProgress(0)
     setBatchOpen(true)
   }
 
-  const handleAddBatchDate = () => {
-    if (!batchDateInput) return
-    if (batchForm.dates.includes(batchDateInput)) {
-      setBatchError('此日期已添加')
-      return
+  /** 安全關閉對話框（有暫存時提示） */
+  const handleCloseBatch = () => {
+    if (batchSaving) return
+    if (stagedBatches.length > 0) {
+      if (
+        !window.confirm(
+          `您有 ${totalStagedCount} 條暫存的排期尚未提交，確定要關閉嗎？\n（暫存數據會保留，下次打開時仍可看到）`,
+        )
+      ) {
+        return
+      }
     }
-    setBatchForm((f) => ({ ...f, dates: [...f.dates, batchDateInput].sort() }))
-    setBatchDateInput('')
+    setBatchOpen(false)
+  }
+
+  /** 批量表單切換服務類型 — 自動校正地點 + 清除已選日期/時段 */
+  const handleBatchServiceChange = (st: string) => {
+    const allowed = SERVICE_LOCATION_CONSTRAINTS[st] ?? []
+    const newLocation = allowed[0] ?? '1'
+    setBatchForm((f) => ({
+      ...f,
+      service_type: st,
+      location: newLocation,
+      // 切換服務時清除已選日期和時段，避免跨服務數據污染
+      dates: [],
+      time_slot: '',
+      is_special: '0',
+      special_label: '',
+    }))
     setBatchError('')
   }
 
-  const handleRemoveBatchDate = (date: string) => {
+  /** 月曆點選日期 */
+  const handleToggleDate = (date: string) => {
+    setBatchForm((f) => {
+      const has = f.dates.includes(date)
+      return {
+        ...f,
+        dates: has
+          ? f.dates.filter((d) => d !== date)
+          : [...f.dates, date].sort(),
+      }
+    })
+    setBatchError('')
+  }
+
+  const handleRemoveDate = (date: string) => {
     setBatchForm((f) => ({ ...f, dates: f.dates.filter((d) => d !== date) }))
   }
 
-  const handleToggleTimeSlot = (slot: string) => {
-    setBatchForm((f) => {
-      const has = f.time_slots.includes(slot)
-      return {
-        ...f,
-        time_slots: has
-          ? f.time_slots.filter((s) => s !== slot)
-          : [...f.time_slots, slot],
-      }
-    })
+  const handleClearDates = () => {
+    setBatchForm((f) => ({ ...f, dates: [] }))
   }
 
-  const handleBatchCreate = async () => {
+  /** 單選時段 */
+  const handleSelectTimeSlot = (slot: string) => {
+    setBatchForm((f) => ({ ...f, time_slot: slot }))
+    setBatchError('')
+  }
+
+  /**
+   * 預保存：將當前選擇暫存到 staging（localStorage）
+   * 清空日期和時段但保留服務/地點，方便繼續下一批
+   */
+  const handlePreSave = () => {
     if (batchForm.dates.length === 0) {
-      setBatchError('請至少選擇一個日期')
+      setBatchError('請至少在月曆中選擇一個日期')
       return
     }
-    if (batchForm.time_slots.length === 0) {
-      setBatchError('請至少選擇一個時段')
+    if (!batchForm.time_slot) {
+      setBatchError('請選擇一個時段')
       return
     }
-    if (batchForm.max_seats < 1) {
-      setBatchError('最大座位數必須大於 0')
+
+    // 重複日期檢測：相同服務+地點+日期
+    const dupes: string[] = []
+    for (const batch of stagedBatches) {
+      if (batch.service_type === batchForm.service_type && batch.location === batchForm.location) {
+        const overlap = batchForm.dates.filter((d) => batch.dates.includes(d))
+        if (overlap.length > 0) dupes.push(...overlap)
+      }
+    }
+    if (dupes.length > 0) {
+      if (
+        !window.confirm(
+          `以下日期在暫存中已存在相同服務+地點的排期：\n${dupes.join(', ')}\n是否繼續添加？（將產生重複排期）`,
+        )
+      ) {
+        return
+      }
+    }
+
+    const newBatch: StagedBatch = {
+      id: genBatchId(),
+      service_type: batchForm.service_type,
+      location: batchForm.location,
+      dates: [...batchForm.dates].sort(),
+      time_slot: batchForm.time_slot,
+      is_special: batchForm.is_special,
+      special_label: batchForm.is_special === '1' ? batchForm.special_label : '',
+    }
+    setStagedBatches((prev) => [...prev, newBatch])
+
+    // 清空當前選擇但保留服務/地點，方便繼續下一批
+    setBatchForm((f) => ({
+      ...f,
+      dates: [],
+      time_slot: '',
+      is_special: '0',
+      special_label: '',
+    }))
+    setBatchError('')
+  }
+
+  /** 移除單個暫存批次 */
+  const handleRemoveStagedBatch = (id: string) => {
+    setStagedBatches((prev) => prev.filter((b) => b.id !== id))
+  }
+
+  /** 清空所有暫存 */
+  const handleClearStaging = () => {
+    if (stagedBatches.length === 0) return
+    if (!window.confirm(`確定要清空所有 ${totalStagedCount} 條暫存排期嗎？`)) return
+    setStagedBatches([])
+  }
+
+  /**
+   * 確認完成：一次性提交所有暫存批次到後端
+   * 成功的批次從暫存中移除，失敗的保留
+   */
+  const handleCommitAll = async () => {
+    if (stagedBatches.length === 0) {
+      setBatchError('沒有暫存的排期可提交')
       return
     }
     setBatchSaving(true)
     setBatchError('')
-    try {
-      await api.post('/admin/booking/schedules/batch', {
-        service_type: batchForm.service_type,
-        dates: batchForm.dates,
-        time_slots: batchForm.time_slots,
-        max_seats: batchForm.max_seats,
-      })
+    setCommitProgress(0)
+
+    let successCount = 0
+    let failCount = 0
+    const failedBatches: StagedBatch[] = []
+
+    for (let i = 0; i < stagedBatches.length; i++) {
+      const batch = stagedBatches[i]
+      setCommitProgress(i + 1)
+      try {
+        await api.post('/admin/booking/schedules/batch', {
+          service_type: batch.service_type,
+          location: batch.location,
+          dates: batch.dates,
+          time_slots: [batch.time_slot],
+          is_special: batch.is_special,
+          special_label: batch.is_special === '1' ? batch.special_label : '',
+        })
+        successCount += batch.dates.length
+      } catch {
+        failCount += batch.dates.length
+        failedBatches.push(batch)
+      }
+    }
+
+    // 只保留失敗的批次
+    setStagedBatches(failedBatches)
+
+    if (failCount === 0) {
+      // 全部成功
       setBatchOpen(false)
       setPage(1)
       refresh()
-    } catch (err) {
-      setBatchError(err instanceof Error ? err.message : '批量新增失敗')
-    } finally {
-      setBatchSaving(false)
+    } else {
+      // 部分失敗
+      setBatchError(
+        `成功提交 ${successCount} 條，${failCount} 條失敗。失敗的排期已保留在暫存中，可重試。`,
+      )
+      refresh()
     }
+
+    setBatchSaving(false)
+    setCommitProgress(0)
   }
 
   // ─── 行內編輯處理 ──────────────────────────────────────
@@ -252,7 +650,8 @@ export default function BookingSchedule() {
       location: item.location,
       booking_date: item.booking_date,
       time_slot: item.time_slot,
-      max_seats: item.max_seats,
+      is_special: item.is_special || '0',
+      special_label: item.special_label || '',
       status: item.status,
     })
     setEditError('')
@@ -264,19 +663,24 @@ export default function BookingSchedule() {
     setEditError('')
   }
 
-  /** 編輯時切換服務類型，自動推導地點 */
+  /** 編輯時切換服務類型，自動校正地點 */
   const handleEditServiceTypeChange = (st: string) => {
-    setEditForm((f) => (f ? { ...f, service_type: st, location: deriveLocation(st) } : f))
+    const allowed = SERVICE_LOCATION_CONSTRAINTS[st] ?? []
+    const newLocation = allowed.length === 1 ? allowed[0] : (editForm?.location ?? allowed[0])
+    setEditForm((f) => (f ? { ...f, service_type: st, location: newLocation } : f))
   }
+
+  /** 編輯時的地点選項 */
+  const editLocationOptions = useMemo(() => {
+    if (!editForm) return []
+    const allowed = SERVICE_LOCATION_CONSTRAINTS[editForm.service_type] ?? []
+    return allowed.map((v) => ({ value: v, label: LOCATION_LABELS[v] ?? v }))
+  }, [editForm])
 
   const handleSaveEdit = async () => {
     if (!editForm || editingId === null) return
     if (!editForm.booking_date) {
       setEditError('請選擇日期')
-      return
-    }
-    if (editForm.max_seats < 1) {
-      setEditError('最大座位數必須大於 0')
       return
     }
     setEditSaving(true)
@@ -287,7 +691,8 @@ export default function BookingSchedule() {
         location: editForm.location,
         booking_date: editForm.booking_date,
         time_slot: editForm.time_slot,
-        max_seats: editForm.max_seats,
+        is_special: editForm.is_special,
+        special_label: editForm.is_special === '1' ? editForm.special_label : '',
         status: editForm.status,
       })
       cancelEdit()
@@ -299,17 +704,15 @@ export default function BookingSchedule() {
     }
   }
 
-  // ─── 狀態切換（表格中直接切換） ────────────────────────
+  // ─── 狀態切換 ──────────────────────────────────────────
   const handleToggleStatus = async (item: BookingSchedule) => {
     const newStatus = item.status === '1' ? '0' : '1'
-    // 樂觀更新
     setSchedules((prev) =>
       prev.map((s) => (s.id === item.id ? { ...s, status: newStatus } : s)),
     )
     try {
       await api.put(`/admin/booking/schedules/${item.id}`, { status: newStatus })
     } catch {
-      // 失敗時回滾
       setSchedules((prev) =>
         prev.map((s) => (s.id === item.id ? { ...s, status: item.status } : s)),
       )
@@ -323,7 +726,6 @@ export default function BookingSchedule() {
     setActionLoading(id)
     try {
       await api.del(`/admin/booking/schedules/${id}`)
-      // 從選中集合中移除
       setSelectedIds((prev) => {
         const next = new Set(prev)
         next.delete(id)
@@ -356,32 +758,35 @@ export default function BookingSchedule() {
   // ─── 衍生變量 ──────────────────────────────────────────
   const allSelected = schedules.length > 0 && schedules.every((s) => selectedIds.has(s.id))
   const someSelected = selectedIds.size > 0 && !allSelected
-  const batchPreviewCount = batchForm.dates.length * batchForm.time_slots.length
+  const sortedSelectedDates = useMemo(() => [...batchForm.dates].sort(), [batchForm.dates])
 
   return (
-    <div className="p-6">
-      {/* 頁首 */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">預約排期管理</h1>
+    <>
+      {/* 操作按鈕 */}
+      <div className="flex items-center justify-end gap-2 mb-4">
         <button
           onClick={openBatch}
           className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
         >
           <span className="mr-1">➕</span>
           批量新增排期
+          {totalStagedCount > 0 && (
+            <span className="ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs bg-orange-500 text-white rounded-full font-medium">
+              {totalStagedCount}
+            </span>
+          )}
         </button>
       </div>
 
       {/* 錯誤提示 */}
       {error && (
-        <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-destructive/10 text-destructive rounded-md text-sm">
-          <span className="shrink-0">⚠️</span>
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-md text-sm">
           {error}
         </div>
       )}
 
       {/* 篩選欄 */}
-      <div className="mb-4 flex items-center gap-3 flex-wrap p-4 bg-white rounded-lg border">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         {/* 服務類型篩選 */}
         <div className="flex items-center gap-2">
           <label className="text-sm text-muted-foreground whitespace-nowrap">服務類型</label>
@@ -389,6 +794,7 @@ export default function BookingSchedule() {
             value={filterServiceType}
             onChange={(e) => {
               setFilterServiceType(e.target.value)
+              setFilterLocation('all')
               setPage(1)
               setSelectedIds(new Set())
             }}
@@ -396,6 +802,26 @@ export default function BookingSchedule() {
           >
             <option value="all">全部</option>
             {SERVICE_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 地點篩選 */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground whitespace-nowrap">地點</label>
+          <select
+            value={filterLocation}
+            onChange={(e) => {
+              setFilterLocation(e.target.value)
+              setPage(1)
+            }}
+            className="px-3 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
+          >
+            <option value="all">全部</option>
+            {filterLocationOptions.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -498,7 +924,7 @@ export default function BookingSchedule() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">時段</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">服務類型</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">地點</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">最大座位數</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">特別場</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">狀態</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
                 </tr>
@@ -510,13 +936,8 @@ export default function BookingSchedule() {
                   if (isEditing && editForm) {
                     return (
                       <tr key={item.id} className="border-b last:border-0 bg-blue-50/40">
-                        {/* checkbox（編輯時禁用） */}
                         <td className="px-4 py-3 text-center">
-                          <input
-                            type="checkbox"
-                            disabled
-                            className="w-4 h-4 rounded opacity-40"
-                          />
+                          <input type="checkbox" disabled className="w-4 h-4 rounded opacity-40" />
                         </td>
                         {/* 日期 */}
                         <td className="px-4 py-3">
@@ -538,10 +959,8 @@ export default function BookingSchedule() {
                             }
                             className="px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
                           >
-                            {TIME_SLOT_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
+                            {TIME_SLOT_PRESETS.map((s) => (
+                              <option key={s} value={s}>{s}</option>
                             ))}
                           </select>
                         </td>
@@ -559,25 +978,49 @@ export default function BookingSchedule() {
                             ))}
                           </select>
                         </td>
-                        {/* 地點（自動推導，只讀） */}
+                        {/* 地點 */}
                         <td className="px-4 py-3">
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                            {LOCATION_LABELS[editForm.location] ?? editForm.location}
-                          </span>
+                          {editLocationOptions.length > 1 ? (
+                            <select
+                              value={editForm.location}
+                              onChange={(e) =>
+                                setEditForm((f) => (f ? { ...f, location: e.target.value } : f))
+                              }
+                              className="px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                            >
+                              {editLocationOptions.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                              {LOCATION_LABELS[editForm.location] ?? editForm.location}
+                            </span>
+                          )}
                         </td>
-                        {/* 最大座位數 */}
+                        {/* 特別場 */}
                         <td className="px-4 py-3">
-                          <input
-                            type="number"
-                            min={1}
-                            value={editForm.max_seats}
-                            onChange={(e) =>
-                              setEditForm((f) =>
-                                f ? { ...f, max_seats: Number(e.target.value) || 0 } : f,
-                              )
-                            }
-                            className="w-20 px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-                          />
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={editForm.is_special === '1'}
+                              onChange={(e) =>
+                                setEditForm((f) => (f ? { ...f, is_special: e.target.checked ? '1' : '0' } : f))
+                              }
+                              className="w-4 h-4 rounded accent-primary"
+                            />
+                            {editForm.is_special === '1' && (
+                              <input
+                                type="text"
+                                value={editForm.special_label}
+                                onChange={(e) =>
+                                  setEditForm((f) => (f ? { ...f, special_label: e.target.value } : f))
+                                }
+                                placeholder="LBV特別場"
+                                className="px-2 py-1 border rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-300 w-24"
+                              />
+                            )}
+                          </div>
                         </td>
                         {/* 狀態 */}
                         <td className="px-4 py-3">
@@ -592,7 +1035,7 @@ export default function BookingSchedule() {
                             <option value="0">停用</option>
                           </select>
                         </td>
-                        {/* 操作：保存 / 取消 */}
+                        {/* 操作 */}
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <button
@@ -632,7 +1075,6 @@ export default function BookingSchedule() {
                         selectedIds.has(item.id) && 'bg-blue-50/40',
                       )}
                     >
-                      {/* checkbox */}
                       <td className="px-4 py-3 text-center">
                         <input
                           type="checkbox"
@@ -659,8 +1101,16 @@ export default function BookingSchedule() {
                           {LOCATION_LABELS[item.location] ?? item.location}
                         </span>
                       </td>
-                      {/* 最大座位數 */}
-                      <td className="px-4 py-3 text-muted-foreground">{item.max_seats}</td>
+                      {/* 特別場 */}
+                      <td className="px-4 py-3">
+                        {item.is_special === '1' ? (
+                          <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-600">
+                            ⭐ {item.special_label || '特別場'}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </td>
                       {/* 狀態 */}
                       <td className="px-4 py-3">
                         <button
@@ -767,11 +1217,19 @@ export default function BookingSchedule() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white">
-              <h2 className="text-lg font-semibold">📅 批量新增排期</h2>
+            <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 bg-white z-10">
+              <h2 className="text-lg font-semibold">
+                📅 批量新增排期
+                {totalStagedCount > 0 && (
+                  <span className="ml-2 text-sm font-normal text-orange-600">
+                    （已暫存 {totalStagedCount} 條）
+                  </span>
+                )}
+              </h2>
               <button
-                onClick={() => !batchSaving && setBatchOpen(false)}
-                className="p-1 rounded hover:bg-accent transition-colors"
+                onClick={handleCloseBatch}
+                disabled={batchSaving}
+                className="p-1 rounded hover:bg-accent transition-colors disabled:opacity-50"
               >
                 ❌
               </button>
@@ -786,9 +1244,7 @@ export default function BookingSchedule() {
                 </label>
                 <select
                   value={batchForm.service_type}
-                  onChange={(e) =>
-                    setBatchForm((f) => ({ ...f, service_type: e.target.value }))
-                  }
+                  onChange={(e) => handleBatchServiceChange(e.target.value)}
                   className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm bg-white"
                 >
                   {SERVICE_TYPE_OPTIONS.map((o) => (
@@ -797,50 +1253,87 @@ export default function BookingSchedule() {
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  地點將自動推導為：
-                  <span className="font-medium text-foreground">
-                    {LOCATION_LABELS[deriveLocation(batchForm.service_type)]}
-                  </span>
-                </p>
               </div>
 
-              {/* 日期選擇（多選） */}
+              {/* 地點（SMILE Pro 2.0 需選擇，其他自動鎖定） */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">
-                  日期 <span className="text-destructive">*</span>
-                  <span className="ml-1 text-xs text-muted-foreground font-normal">
-                    （可選擇多個日期）
-                  </span>
+                  地點 <span className="text-destructive">*</span>
+                  {!batchNeedsLocationSelect && (
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                     （此服務僅支持 {LOCATION_LABELS[batchForm.location]}，自動鎖定）
+                    </span>
+                  )}
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="date"
-                    value={batchDateInput}
-                    onChange={(e) => setBatchDateInput(e.target.value)}
-                    className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddBatchDate}
-                    disabled={!batchDateInput}
-                    className="shrink-0 inline-flex items-center gap-1 px-3 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
-                  >
-                    ➕ 新增日期
-                  </button>
+                {batchNeedsLocationSelect ? (
+                  <div className="flex gap-4">
+                    {batchLocationOptions.map((o) => (
+                      <label
+                        key={o.value}
+                        className={cn(
+                          'inline-flex items-center gap-2 px-4 py-2 border rounded-md cursor-pointer transition-colors text-sm',
+                          batchForm.location === o.value
+                            ? 'border-primary bg-primary/5 text-primary'
+                            : 'hover:bg-accent',
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="batch-location"
+                          checked={batchForm.location === o.value}
+                          onChange={() => setBatchForm((f) => ({ ...f, location: o.value }))}
+                          className="w-4 h-4 accent-primary"
+                        />
+                        {o.label}
+                      </label>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-2 bg-slate-50 border rounded-md text-sm text-muted-foreground">
+                    📍 {LOCATION_LABELS[batchForm.location]}
+                  </div>
+                )}
+              </div>
+
+              {/* 月曆日期選擇 */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium">
+                    日期 <span className="text-destructive">*</span>
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                     （點擊月曆選擇多個日期）
+                    </span>
+                  </label>
+                  {batchForm.dates.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearDates}
+                      className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      清空
+                    </button>
+                  )}
                 </div>
-                {/* 已選日期列表 */}
-                {batchForm.dates.length > 0 && (
+                <MonthCalendar
+                  selectedDates={new Set(batchForm.dates)}
+                  onToggleDate={handleToggleDate}
+                  currentTimeSlot={batchForm.time_slot || undefined}
+                  stagedDateInfo={stagedDateInfo}
+                />
+                {sortedSelectedDates.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {batchForm.dates.map((d) => (
+                    {sortedSelectedDates.map((d) => (
                       <span
                         key={d}
                         className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium"
                       >
                         {d}
+                        {batchForm.time_slot && (
+                          <span className="text-blue-400">{slotStart(batchForm.time_slot)}</span>
+                        )}
                         <button
                           type="button"
-                          onClick={() => handleRemoveBatchDate(d)}
+                          onClick={() => handleRemoveDate(d)}
                           className="hover:text-red-600 transition-colors"
                           title="移除"
                         >
@@ -852,17 +1345,17 @@ export default function BookingSchedule() {
                 )}
               </div>
 
-              {/* 時段選擇（多選） */}
+              {/* 時段選擇（單選） */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">
                   時段 <span className="text-destructive">*</span>
                   <span className="ml-1 text-xs text-muted-foreground font-normal">
-                    （可勾選多個）
+                    （單選 — 同一服務同一日期僅一個時段）
                   </span>
                 </label>
-                <div className="flex gap-4">
-                  {TIME_SLOT_OPTIONS.map((slot) => {
-                    const checked = batchForm.time_slots.includes(slot)
+                <div className="flex flex-wrap gap-3">
+                  {TIME_SLOT_PRESETS.map((slot) => {
+                    const checked = batchForm.time_slot === slot
                     return (
                       <label
                         key={slot}
@@ -874,10 +1367,11 @@ export default function BookingSchedule() {
                         )}
                       >
                         <input
-                          type="checkbox"
+                          type="radio"
+                          name="batch-time-slot"
                           checked={checked}
-                          onChange={() => handleToggleTimeSlot(slot)}
-                          className="w-4 h-4 rounded accent-primary"
+                          onChange={() => handleSelectTimeSlot(slot)}
+                          className="w-4 h-4 accent-primary"
                         />
                         {slot}
                       </label>
@@ -886,31 +1380,107 @@ export default function BookingSchedule() {
                 </div>
               </div>
 
-              {/* 最大座位數 */}
-              <div>
-                <label className="block text-sm font-medium mb-1.5">最大座位數</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={batchForm.max_seats}
-                  onChange={(e) =>
-                    setBatchForm((f) => ({
-                      ...f,
-                      max_seats: Number(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
-                />
+              {/* 特別場標記 */}
+              <div className="px-4 py-3 border rounded-md bg-orange-50/40">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={batchForm.is_special === '1'}
+                    onChange={(e) =>
+                      setBatchForm((f) => ({
+                        ...f,
+                        is_special: e.target.checked ? '1' : '0',
+                        special_label: e.target.checked ? (f.special_label || 'LBV特別場') : '',
+                      }))
+                    }
+                    className="w-4 h-4 rounded accent-primary"
+                  />
+                  <span className="text-sm font-medium">⭐ 特別場（如 LBV）</span>
+                </label>
+                {batchForm.is_special === '1' && (
+                  <input
+                    type="text"
+                    value={batchForm.special_label}
+                    onChange={(e) =>
+                      setBatchForm((f) => ({ ...f, special_label: e.target.value }))
+                    }
+                    placeholder="特別場標籤（如 LBV特別場）"
+                    className="mt-2 w-full px-3 py-1.5 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  />
+                )}
               </div>
 
-              {/* 預覽 */}
-              {batchPreviewCount > 0 && (
+              {/* 當前批次預覽 */}
+              {currentBatchCount > 0 && (
                 <div className="px-4 py-3 bg-blue-50 text-blue-700 rounded-lg text-sm flex items-center gap-2">
                   <span>💡</span>
-                  將創建 <span className="font-bold">{batchPreviewCount}</span> 條排期
-                  <span className="text-blue-500 text-xs">
-                    （{batchForm.dates.length} 個日期 × {batchForm.time_slots.length} 個時段）
-                  </span>
+                  當前批次：<span className="font-bold">{currentBatchCount}</span> 個日期
+                  {batchForm.time_slot && (
+                    <span className="text-blue-500 text-xs">× 時段 {batchForm.time_slot}</span>
+                  )}
+                </div>
+              )}
+
+              {/* 暫存批次面板 */}
+              {stagedBatches.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 border-b">
+                    <span className="text-sm font-medium text-green-700">
+                      📋 暫存批次（{stagedBatches.length} 批，共 {totalStagedCount} 條）
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearStaging}
+                      disabled={batchSaving}
+                      className="text-xs text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+                    >
+                      清空全部
+                    </button>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto divide-y">
+                    {stagedBatches.map((batch) => (
+                      <div
+                        key={batch.id}
+                        className="flex items-start justify-between gap-2 px-4 py-2.5 hover:bg-accent/30 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">
+                              {getServiceTypeLabel(batch.service_type)} - {LOCATION_LABELS[batch.location]}
+                            </span>
+                            <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-600">
+                              {batch.time_slot}
+                            </span>
+                            {batch.is_special === '1' && (
+                              <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-600">
+                                ⭐ {batch.special_label || '特別場'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {batch.dates.length} 個日期：{batch.dates.join(', ')}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStagedBatch(batch.id)}
+                          disabled={batchSaving}
+                          className="shrink-0 p-1 text-red-500 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                          title="移除此批次"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 提交進度 */}
+              {batchSaving && (
+                <div className="px-4 py-2 bg-blue-50 text-blue-600 text-sm flex items-center gap-2 rounded-lg">
+                  <span className="animate-spin inline-block">🔄</span>
+                  提交中... {commitProgress}/{stagedBatches.length} 批
                 </div>
               )}
 
@@ -924,26 +1494,42 @@ export default function BookingSchedule() {
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
+            <div className="flex items-center justify-between gap-2 px-5 py-4 border-t sticky bottom-0 bg-white">
+              {/* 左側：關閉 */}
               <button
-                onClick={() => setBatchOpen(false)}
+                onClick={handleCloseBatch}
                 disabled={batchSaving}
                 className="px-4 py-2 text-sm border rounded-md hover:bg-accent transition-colors disabled:opacity-50"
               >
-                取消
+                關閉
               </button>
-              <button
-                onClick={handleBatchCreate}
-                disabled={batchSaving || batchPreviewCount === 0}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
-              >
-                {batchSaving && <span className="animate-spin inline-block">🔄</span>}
-                {batchSaving ? '創建中...' : `確認新增（${batchPreviewCount} 條）`}
-              </button>
+
+              {/* 右側：預保存 + 確認完成 */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePreSave}
+                  disabled={batchSaving || currentBatchCount === 0 || !batchForm.time_slot}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm border-2 border-green-500 text-green-600 rounded-md hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  title="將當前選擇暫存（不清空服務/地點，可繼續下一批）"
+                >
+                  📌 預保存（{currentBatchCount} 條）
+                </button>
+                <button
+                  onClick={handleCommitAll}
+                  disabled={batchSaving || totalStagedCount === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                  title="提交所有暫存批次到數據庫"
+                >
+                  {batchSaving && <span className="animate-spin inline-block">🔄</span>}
+                  {batchSaving
+                    ? `提交中...`
+                    : `確認完成（${totalStagedCount} 條）`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

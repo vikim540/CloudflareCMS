@@ -869,6 +869,8 @@ const BACKUP_TABLES = [
   'ay_area',
   'ay_role_area',
   'ay_media_mark',
+  'ay_booking_calendar',
+  'ay_booking_schedule',
 ];
 
 /** 列出備份文件 (從 R2/S3 存儲) */
@@ -911,13 +913,84 @@ export async function handleListBackups(
   }
 }
 
-/** 創建數據庫備份 (導出全部表為 SQL 並上傳到 R2) */
+/** 站點數據庫條目（用於多站點備份） */
+interface SiteDbEntry {
+  siteId: string;
+  db: D1Database;
+}
+
+/**
+ * 導出單個數據庫的所有表為 SQL 語句
+ * @returns SQL 字符串數組（不含事務包裝）
+ */
+async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<string[]> {
+  const parts: string[] = [];
+  parts.push('-- ============================================================');
+  parts.push(`-- Site: ${siteId}`);
+  parts.push('-- ============================================================');
+  parts.push('');
+
+  for (const table of BACKUP_TABLES) {
+    // 從 sqlite_master 獲取 CREATE TABLE 語句
+    const schemaRow = await db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
+      .bind(table)
+      .first<{ sql: string }>();
+
+    parts.push('-- ------------------------------------------------------------');
+    parts.push(`-- Table: ${table}`);
+    parts.push('-- ------------------------------------------------------------');
+
+    if (schemaRow?.sql) {
+      parts.push(`DROP TABLE IF EXISTS ${table};`);
+      parts.push(schemaRow.sql + ';');
+      parts.push('');
+    }
+
+    // 查詢所有數據行
+    const dataResult = await db.prepare(`SELECT * FROM "${table}"`).all();
+
+    if (dataResult.results.length > 0) {
+      const columns = Object.keys(dataResult.results[0] as Record<string, unknown>);
+      for (const row of dataResult.results) {
+        const record = row as Record<string, unknown>;
+        const values = columns.map((c) => escapeSqlValue(record[c]));
+        parts.push(
+          `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});`,
+        );
+      }
+      parts.push('');
+    }
+  }
+
+  // 備份索引
+  const indexResult = await db
+    .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
+    .all<{ sql: string }>();
+
+  if (indexResult.results.length > 0) {
+    parts.push('-- ------------------------------------------------------------');
+    parts.push(`-- Indexes (${siteId})`);
+    parts.push('-- ------------------------------------------------------------');
+    for (const idx of indexResult.results) {
+      if (idx.sql) {
+        parts.push(idx.sql + ';');
+      }
+    }
+    parts.push('');
+  }
+
+  return parts;
+}
+
+/** 創建數據庫備份 (導出所有站點的全部表為 SQL 並上傳到 R2) */
 export async function handleCreateBackup(
-  db: D1Database,
+  primaryDb: D1Database,
+  sites: SiteDbEntry[],
   kv: KVNamespace,
   s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv, s3Secrets);
+  const s3Config = await getS3Config(primaryDb, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
@@ -929,66 +1002,35 @@ export async function handleCreateBackup(
     const backupName = `backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
-    // 生成 SQL 內容
+    // 生成 SQL 內容 — 遍歷所有站點數據庫
     const parts: string[] = [];
     parts.push('-- ============================================================');
-    parts.push('-- Cloudflare CMS Database Backup');
+    parts.push('-- Cloudflare CMS Database Backup (All Sites)');
     parts.push(`-- Generated: ${now}`);
-    parts.push(`-- Tables: ${BACKUP_TABLES.length}`);
+    parts.push(`-- Sites: ${sites.map((s) => s.siteId).join(', ')}`);
+    parts.push(`-- Tables per site: ${BACKUP_TABLES.length}`);
     parts.push('-- ============================================================');
     parts.push('');
     parts.push('PRAGMA foreign_keys=OFF;');
     parts.push('BEGIN TRANSACTION;');
     parts.push('');
 
-    for (const table of BACKUP_TABLES) {
-      // 從 sqlite_master 獲取 CREATE TABLE 語句
-      const schemaRow = await db
-        .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?")
-        .bind(table)
-        .first<{ sql: string }>();
+    let totalTables = 0;
+    let totalRows = 0;
 
-      parts.push('-- ------------------------------------------------------------');
-      parts.push(`-- Table: ${table}`);
-      parts.push('-- ------------------------------------------------------------');
-
-      if (schemaRow?.sql) {
-        parts.push(`DROP TABLE IF EXISTS ${table};`);
-        parts.push(schemaRow.sql + ';');
-        parts.push('');
+    for (const site of sites) {
+      const siteParts = await dumpDatabaseTables(site.db, site.siteId);
+      parts.push(...siteParts);
+      // 統計
+      for (const table of BACKUP_TABLES) {
+        try {
+          const countResult = await site.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`).first<{ cnt: number }>();
+          if (countResult && countResult.cnt > 0) {
+            totalTables++;
+            totalRows += countResult.cnt;
+          }
+        } catch { /* 表可能不存在於此站點，跳過 */ }
       }
-
-      // 查詢所有數據行
-      const dataResult = await db.prepare(`SELECT * FROM ${table}`).all();
-
-      if (dataResult.results.length > 0) {
-        const columns = Object.keys(dataResult.results[0] as Record<string, unknown>);
-        for (const row of dataResult.results) {
-          const record = row as Record<string, unknown>;
-          const values = columns.map((c) => escapeSqlValue(record[c]));
-          parts.push(
-            `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${values.join(', ')});`,
-          );
-        }
-        parts.push('');
-      }
-    }
-
-    // 備份索引
-    const indexResult = await db
-      .prepare("SELECT sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
-      .all<{ sql: string }>();
-
-    if (indexResult.results.length > 0) {
-      parts.push('-- ------------------------------------------------------------');
-      parts.push('-- Indexes');
-      parts.push('-- ------------------------------------------------------------');
-      for (const idx of indexResult.results) {
-        if (idx.sql) {
-          parts.push(idx.sql + ';');
-        }
-      }
-      parts.push('');
     }
 
     parts.push('COMMIT;');
@@ -1002,11 +1044,11 @@ export async function handleCreateBackup(
     // 上傳到 R2/S3
     await s3PutObject(s3Config, backupKey, data, 'application/sql');
 
-    // 記錄備份日誌
+    // 記錄備份日誌（寫入主庫）
     try {
-      await db.prepare(
+      await primaryDb.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB)`, '127.0.0.1', now, 'system').run();
+      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${sites.length} 站點, ${totalTables} 表, ${totalRows} 行)`, '127.0.0.1', now, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     return okData(
@@ -1014,7 +1056,11 @@ export async function handleCreateBackup(
         filename: backupName,
         key: backupKey,
         size: data.byteLength,
+        sizeKB: (data.byteLength / 1024).toFixed(2),
         createdAt: now,
+        sites: sites.map((s) => s.siteId),
+        totalTables,
+        totalRows,
       },
       '備份創建成功',
     );

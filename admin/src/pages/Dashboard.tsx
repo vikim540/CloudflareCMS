@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.36',
+    date: '2026-07-30 09:28:57',
+    icon: '📅',
+    latest: true,
+    changes: `📅 批量排期工作流優化 + 數據庫備份修復\n\n📋 批量排期工作流重構\n• 時段選擇從多選改為單選（radio）— 同一服務同一日期僅一個時段，符合實際業務\n• 月曆增強：已選日期下方即時顯示時段開始時間，已暫存日期綠色標記\n• 新增「預保存」按鈕 — 暫存當前批次到 localStorage（不怕意外關閉）\n• 原「確認新增」改為「確認完成（N 條）」— 一次性提交所有暫存批次\n• 切換服務類型時自動清除已選日期/時段，防跨服務數據污染\n• 重複日期檢測：相同服務+地點+日期時彈窗確認\n• 暫存批次管理面板：查看/移除單個批次/清空全部\n• 關閉對話框時提示未提交的暫存數量\n• 提交進度指示器（當前/總批數）\n• 服務類型重新定義：1=SMILE Pro 2.0(旺角+中環)、2=SMILE+ICL(僅中環)、3=老花矯視(僅旺角)\n• 時段格式改為 HH:mm-HH:mm（如 13:30-14:30），取代上午/下午\n• 新增特別場標記（is_special + special_label，如 LBV特別場）\n• 新增公開 API /api/v1/booking/services（服務列表+地點聯動+時段預設）\n\n📋 數據庫備份修復\n• 修復備份僅導出當前站點數據庫的問題（siteDB → 遍歷所有站點）\n• 備份現包含全部站點：endoscopy + smile + vision\n• BACKUP_TABLES 新增 ay_booking_calendar + ay_booking_schedule\n• 備份日誌增加站點數/表數/行數統計\n• 新增 migration 0003_booking_refine.sql（is_special + special_label 字段）`,
+  },
+  {
     version: 'v1.9.35',
     date: '2026-07-29 17:44:54',
     icon: '📅',
-    latest: true,
+    latest: false,
     changes: `📅 講座預約管理功能（僅 smile 站點）\n\n📋 變更內容\n• 新增兩張數據表：ay_booking_calendar（日曆圖片，WebP）+ ay_booking_schedule（預約排期）\n• 日曆圖片管理：圖片上傳（WebP 壓縮）+ 標題（同時用作 alt/title）+ 拖拽排序 + 批量刪除\n• 預約排期管理：服務類型篩選 + 日期範圍篩選 + 批量新增（日期×時段組合）+ 行內編輯 + 批量刪除\n• 服務類型：Smile Pro旺角 / Smile Pro中環 / Smile中環，地點根據服務類型自動推導\n• 公開 API 僅 GET（供 https://smile.hkcmereye.com/ 拉取）：/api/v1/booking/calendars + /api/v1/booking/schedules\n• 管理 API 需 JWT + M302 權限（POST/PUT/DELETE 僅內部操作，不對外暴露）\n• 菜單掛在 M300 多媒體下（M302），僅 smile 站點可見（前端 currentSiteId 過濾）\n• 新增遷移文件 0002_booking.sql（冪等語法）`,
   },
   {
@@ -697,6 +704,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/tags', desc: '文章標籤搜索（?q=標籤詞 → 返回匹配文章列表；無 q → 返回所有標籤）', auth: false },
   { method: 'GET', path: '/api/v1/booking/calendars', desc: '講座日曆圖片列表（僅 smile 站點，v1.9.35+）', auth: false },
   { method: 'GET', path: '/api/v1/booking/schedules', desc: '講座預約排期列表 (?service_type=&location=, 僅 smile 站點, v1.9.35+)', auth: false },
+  { method: 'GET', path: '/api/v1/booking/services', desc: '講座服務列表（服務+地點聯動+時段預設，v1.9.36+）', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
   { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
@@ -1190,57 +1198,168 @@ export default function Dashboard() {
               </div>
             </section>
 
-            {/* 3. 接口列表 */}
+            {/* 3. 接口列表 — 公開優先展示，需認證折疊收納 */}
             <section>
               <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
                 <span>📋</span>
                 <span>接口列表</span>
+                <span className="text-xs font-normal text-muted-foreground ml-2">
+                  （公開 {API_ENDPOINTS.filter((e) => !e.auth).length} 個 · 需認證 {API_ENDPOINTS.filter((e) => e.auth).length} 個）
+                </span>
               </h3>
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full text-sm">
-                  <thead className="bg-secondary text-secondary-foreground">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold">方法</th>
-                      <th className="px-4 py-3 text-left font-semibold">路徑</th>
-                      <th className="px-4 py-3 text-left font-semibold">說明</th>
-                      <th className="px-4 py-3 text-center font-semibold">認證</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {API_ENDPOINTS.map((ep) => (
-                      <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
-                        <td className="px-4 py-2.5">
-                          <span
-                            className={cn(
-                              'inline-block px-2 py-0.5 rounded text-xs font-bold border',
-                              methodStyle(ep.method),
-                            )}
-                          >
-                            {ep.method}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <code className="text-xs font-mono text-foreground">{ep.path}</code>
-                        </td>
-                        <td className="px-4 py-2.5 text-muted-foreground">{ep.desc}</td>
-                        <td className="px-4 py-2.5 text-center">
-                          {ep.auth ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-amber-700">
-                              <span>🔒</span>
-                              <span>需認證</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-xs text-green-700">
-                              <span>🌐</span>
-                              <span>公開</span>
-                            </span>
-                          )}
-                        </td>
+
+              {/* 3a. 公開接口 — 按業務分組，前端廣告網站優先 */}
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-green-700 mb-2 flex items-center gap-1.5">
+                  <span>🌐</span>
+                  <span>公開接口（無需認證，供前端網站直接調用）</span>
+                </h4>
+                <div className="overflow-x-auto rounded-lg border border-green-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-green-50 text-green-800">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left font-semibold">方法</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">路徑</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">說明</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {/* 內容管理 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">📝 內容管理</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path.includes('/contents')).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2">
+                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span>
+                          </td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path === '/api/v1/search').map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path === '/api/v1/tags').map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 多媒體 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">🖼️ 多媒體（幻燈片 / 單頁 / 友情連結）</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && (ep.path.includes('/slides') || ep.path.includes('/singles') || ep.path.includes('/links'))).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 講座預約 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">📅 講座預約（僅 smile 站點）</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path.includes('/booking')).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 表單提交 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">📋 表單提交</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path.startsWith('/api/v1/f/')).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 欄目與內鏈 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">🗂️ 欄目與內鏈</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && (ep.path.includes('/sorts') || ep.path.includes('/internallinks'))).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 認證相關 */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-green-800">🔑 認證（登錄 / Turnstile 配置）</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && ep.path.includes('/auth')).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+
+                      {/* 其他（站點信息 / 公司信息 — 幾乎未使用） */}
+                      <tr className="bg-green-50/50">
+                        <td colSpan={3} className="px-4 py-1.5 text-xs font-bold text-muted-foreground">⚙️ 其他（站點信息 / 公司信息 — 極少使用）</td>
+                      </tr>
+                      {API_ENDPOINTS.filter((ep) => !ep.auth && (ep.path === '/api/v1/site' || ep.path === '/api/v1/company')).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors opacity-60">
+                          <td className="px-4 py-2"><span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span></td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+
+              {/* 3b. 需認證接口 — 折疊收納 */}
+              <details className="rounded-lg border border-amber-200 overflow-hidden">
+                <summary className="px-4 py-3 bg-amber-50 text-amber-800 font-semibold text-sm cursor-pointer hover:bg-amber-100 transition-colors select-none flex items-center gap-2">
+                  <span>🔒</span>
+                  <span>需認證接口（後台管理，JWT Bearer Token）</span>
+                  <span className="ml-auto text-xs font-normal text-amber-600">
+                    {API_ENDPOINTS.filter((e) => e.auth).length} 個接口 · 點擊展開/收起
+                  </span>
+                </summary>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary text-secondary-foreground">
+                      <tr>
+                        <th className="px-4 py-2.5 text-left font-semibold">方法</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">路徑</th>
+                        <th className="px-4 py-2.5 text-left font-semibold">說明</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {API_ENDPOINTS.filter((ep) => ep.auth).map((ep) => (
+                        <tr key={`${ep.method}-${ep.path}`} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-2">
+                            <span className={cn('inline-block px-2 py-0.5 rounded text-xs font-bold border', methodStyle(ep.method))}>{ep.method}</span>
+                          </td>
+                          <td className="px-4 py-2"><code className="text-xs font-mono text-foreground">{ep.path}</code></td>
+                          <td className="px-4 py-2 text-muted-foreground">{ep.desc}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
             </section>
 
             {/* 4. 快速開始 */}

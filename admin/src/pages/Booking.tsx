@@ -20,17 +20,22 @@ export default function Booking() {
   const [activeTab, setActiveTab] = useState<TabKey>('calendar')
 
   return (
-    <div className="space-y-4">
+    <div className="p-6">
+      {/* 頁首 */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold">講座預約管理</h1>
+      </div>
+
       {/* Tab 切換欄 */}
-      <div className="flex items-center gap-1 border-b">
+      <div className="flex gap-1 mb-4 border-b overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+              'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
               activeTab === tab.key
-                ? 'border-primary text-primary'
+                ? 'border-primary text-foreground'
                 : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
@@ -41,10 +46,8 @@ export default function Booking() {
       </div>
 
       {/* Tab 內容 */}
-      <div>
-        {activeTab === 'calendar' && <BookingCalendar />}
-        {activeTab === 'schedule' && <BookingSchedule />}
-      </div>
+      {activeTab === 'calendar' && <BookingCalendar />}
+      {activeTab === 'schedule' && <BookingSchedule />}
     </div>
   )
 }
