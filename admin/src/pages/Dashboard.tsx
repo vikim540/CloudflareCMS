@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.46',
+    date: '2026-07-30 17:05:39',
+    icon: '🗜️',
+    latest: true,
+    changes: `🗜️ 備份文件 gzip 壓縮 + 站點 Tab 切換 + UI 優化\n\n📋 變更內容\n• SQL 備份文件 gzip 壓縮：使用 Cloudflare Workers 原生 CompressionStream 壓縮，文件名從 .sql 改為 .sql.gz，可大幅減小存儲空間（典型壓縮率 60-80%）\n• 下載自動解壓：下載 .sql.gz 文件時後端自動 DecompressionStream 解壓，返回原始 .sql 文件，用戶無需手動解壓\n• 向後兼容：舊格式 .sql 文件仍可正常列出、下載、刪除\n• 備份列表站點 Tab 切換：按站點前綴分組，支持「全部」+ 各站點獨立 Tab，切換時隱藏站點列，顯示各站備份數量\n• 壓縮標記：備份列表文件名前顯示 🗜️ 圖標 + 綠色 gzip 徽章\n• UI 優化：排除日誌 checkbox 放大為卡片式設計（帶描述文字）\n• 定時配置區重設計：分為三個清晰區塊 — 📋 備份排程 / 📦 備份內容 / 🧹 日誌自動清理，每區塊有標題+描述，消除「排除日誌」與「日誌清理」的混淆\n• 日誌清理狀態標記：保留天數 >0 顯示綠色 ✅ 標籤，=0 顯示灰色 ⚠️ 標籤`,
+  },
+  {
     version: 'v1.9.45',
     date: '2026-07-30 16:48:51',
     icon: '🧹',
-    latest: true,
+    latest: false,
     changes: `🧹 備份排除日誌 + 日誌清理機制\n\n📋 變更內容\n• 備份排除日誌數據：dumpDatabaseTables 新增 excludeLogData 參數，為 true 時 ay_syslog 僅導出 CREATE TABLE（表結構），不導出 INSERT 數據行，可大幅減小備份文件大小（endoscopy 站點從 343KB 降至約 177KB）\n• 手動備份：建立備份按鈕旁新增「排除日誌數據」checkbox，勾選後備份不含日誌數據\n• 定時備份：配置區新增「備份排除日誌數據」開關（backup_exclude_logs 配置項）\n• 日誌清理機制：新增 handleCleanupLogs（手動）+ handleScheduledLogCleanup（自動），按天數刪除舊日誌\n• 日誌統計 API：GET /admin/database/log-stats 返回總數、級別分佈、最早/最新記錄\n• 手動清理 API：POST /admin/database/cleanup-logs?days=30\n• 自動清理：Cron 定時備份後執行，每天最多一次，log_retention_days=0 時不自動清理\n• 前端 Database.tsx 新增「日誌管理」卡片：統計數據展示 + 手動清理按鈕 + 保留天數輸入`,
   },
   {
@@ -851,11 +858,11 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/users/:id/sites', desc: '用戶已分配的站點列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/users/:id/sites', desc: '設置用戶站點分配', auth: true },
   // 數據庫備份 (超管, v1.9.37+)
-  { method: 'GET', path: '/api/v1/admin/database/backups', desc: '備份文件列表', auth: true },
-  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（?excludeLogs=1 排除日誌數據）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/backups', desc: '備份文件列表（含壓縮標記，v1.9.46+）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（?excludeLogs=1 排除日誌，gzip 壓縮 .sql.gz，v1.9.46+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backup-schedule', desc: '定時備份排程配置（v1.9.37+）', auth: true },
   { method: 'PUT', path: '/api/v1/admin/database/backup-schedule', desc: '更新定時備份排程（v1.9.37+）', auth: true },
-  { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份文件', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份（.sql.gz 自動解壓返回 .sql，v1.9.46+）', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/database/backups/:filename', desc: '刪除備份文件', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/log-stats', desc: '日誌統計（總數/級別/時間範圍，v1.9.45+）', auth: true },
   { method: 'POST', path: '/api/v1/admin/database/cleanup-logs', desc: '清理舊日誌（?days=30，v1.9.45+）', auth: true },

@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.45**（2026-07-30）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.46**（2026-07-30）
 
 ## 語言選擇優先級
 
@@ -308,9 +308,10 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 - **P2 輸入長度校驗**：`FIELD_LENGTH_LIMITS` 常量定義 18 個字段最大長度（新聞網站場景，略寬），`validateFieldLengths()` 超長返回明確錯誤。請求體大小限制 2MB（排除 `multipart/form-data` 文件上傳）
 - **P3 文件上傳 MIME 白名單**：`src/services/storage.ts` 的 `ALLOWED_MIME_TYPES` Set，僅允許圖片/視頻/音頻/PDF/文本/ZIP，非白名單返回 1001 錯誤
 
-### 數據庫備份（v1.9.37，v1.9.43 多站點改進，v1.9.44 表存在性修復，v1.9.45 日誌管理）
+### 數據庫備份（v1.9.37，v1.9.43 多站點改進，v1.9.44 表存在性修復，v1.9.45 日誌管理，v1.9.46 gzip 壓縮 + 站點 Tab）
 
-- **文件命名**：`{siteId}_backup_YYYYMMDDHHmmss.sql`（v1.9.43 前為 `backup_YYYYMMDDHHmmss.sql`，無站點前綴）
+- **文件命名**：`{siteId}_backup_YYYYMMDDHHmmss.sql.gz`（v1.9.46 起 gzip 壓縮；v1.9.43 前為 `backup_YYYYMMDDHHmmss.sql`，無站點前綴）
+- **gzip 壓縮**（v1.9.46 新增）：使用 Cloudflare Workers 原生 `CompressionStream('gzip')` 壓縮 SQL 內容，存儲為 `.sql.gz`，典型壓縮率 60-80%。下載時使用 `DecompressionStream('gzip')` 自動解壓返回原始 `.sql` 文件。舊格式 `.sql` 文件完全向後兼容
 - **存儲路徑**：R2/S3 `backups/` 目錄下，所有站點備份混合存儲，通過文件名站點前綴區分
 - **定時備份**：Cron 每 15 分鐘檢查，遍歷所有註冊站點數據庫（`listRegisteredSites`），各站獨立判斷是否到期
 - **保留策略**（v1.9.43 修復）：`applyBackupRetention` 按站點前綴分組，**每站獨立保留 N 份**（原邏輯全局統一保留 N 份，3 站同時備份時 keep=7 實際每站僅保留約 2 份）
@@ -323,7 +324,7 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
   - **日誌統計**：`GET /api/v1/admin/database/log-stats` 返回總數、級別分佈、最早/最新記錄時間
   - **自動清理**：`handleScheduledLogCleanup` 在每次定時備份後執行，每天最多一次，保留最近 N 天日誌（`log_retention_days` 配置，0=不自動清理）
   - **配置項**：`backup_exclude_logs`（備份排除日誌）、`log_retention_days`（日誌保留天數）、`log_last_cleanup`（上次清理時間）
-  - **前端**：Database.tsx 頁面新增「日誌管理」卡片，展示統計數據 + 手動清理按鈕；定時備份配置區新增排除日誌開關 + 日誌保留天數輸入
+  - **前端**：Database.tsx 頁面新增「日誌管理」卡片，展示統計數據 + 手動清理按鈕；定時備份配置區分為三個清晰區塊（備份排程 / 備份內容 / 日誌自動清理）；備份列表按站點 Tab 切換，顯示壓縮標記（🗜️ + gzip 徽章）
 
 ---
 
