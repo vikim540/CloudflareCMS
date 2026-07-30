@@ -242,6 +242,7 @@ const PUBLIC_READ_PATHS = new Set([
   '/api/v1/admin/models/all',  // 側邊欄動態模型項目（所有用戶需載入）
   '/api/v1/admin/menus',       // 權限選擇器菜單樹（角色管理頁需要）
   '/api/v1/admin/sorts/all',   // 下拉選單欄目列表（輕量級引用數據）
+  '/api/v1/admin/forms/active', // 側邊欄活躍表單列表（所有用戶需載入用於導航）
 ]);
 
 function requireMenuPermission(menuUrl: string): MiddlewareHandler<AppEnv> {

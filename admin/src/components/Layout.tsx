@@ -74,7 +74,8 @@ const LABEL_MCODE_MAP: Record<string, string> = {
   '菜單管理': 'M506',
   '系統日誌': 'M507',
   '多站點管理': 'M508',
-  // 「資料庫管理」「存儲設置」無對應菜單 → 不在映射中，默認僅超管可見
+  // 「資料庫管理」無對應菜單 → 不在映射中，默認僅超管可見
+  // 存儲配置已合併至系統設置（/settings）存儲配置 tab，不再單獨設頁
 }
 
 /** 內容模型列表的統一權限鍵（ay_menu M201 = 文章列表） */
@@ -143,7 +144,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: '/sites', label: '多站點管理', icon: '🌐' },
       // 以下兩項無對應菜單 mcode，默認僅超級管理員可見
       { to: '/database', label: '資料庫管理', icon: '🖥️' },
-      { to: '/storage', label: '存儲設置', icon: '💾' },
     ],
   },
 ]
@@ -201,7 +201,7 @@ function LayoutInner() {
   // 載入活躍表單列表（用於側邊欄擴展內容動態注入）
   useEffect(() => {
     api
-      .get<ActiveForm[]>('/admin/forms/active')
+      .get<ActiveForm[]>('/admin/forms/active', true)
       .then((res) => setActiveForms(res.data ?? []))
       .catch(() => {
         /* 載入失敗時靜默處理，側邊欄不顯示表單子項 */

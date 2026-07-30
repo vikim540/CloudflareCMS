@@ -18,7 +18,6 @@ import FormManager from './pages/FormManager'
 import SiteInfo from './pages/SiteInfo'
 import Company from './pages/Company'
 import Settings from './pages/Settings'
-import Storage from './pages/Storage'
 import MediaLibrary from './pages/MediaLibrary'
 import Models from './pages/Models'
 import ExtFields from './pages/ExtFields'
@@ -115,7 +114,6 @@ export default function App() {
             <Route path="extfields" element={<RequirePermission mcode="M206"><ExtFields /></RequirePermission>} />
             <Route path="trash" element={<RequirePermission mcode="M208"><Trash /></RequirePermission>} />
             {/* 以下為超管專用路由，無 mcode 映射，僅超管可訪問 */}
-            <Route path="storage" element={<RequirePermission mcode="__super__"><Storage /></RequirePermission>} />
             <Route path="users" element={<RequirePermission mcode="M504"><Users /></RequirePermission>} />
             <Route path="roles" element={<RequirePermission mcode="M505"><Roles /></RequirePermission>} />
             <Route path="menus" element={<RequirePermission mcode="M506"><Menus /></RequirePermission>} />

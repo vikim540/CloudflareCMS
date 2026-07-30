@@ -145,6 +145,89 @@ function slotStart(timeSlot: string): string {
   return timeSlot.split('-')[0] || timeSlot
 }
 
+/** localStorage 自定義時段歷史記錄 key */
+const CUSTOM_TIME_HISTORY_KEY = 'booking_custom_time_history'
+const MAX_HISTORY_ITEMS = 10
+
+/**
+ * 規範化時段字串 — 防止文案輸入格式不一致
+ *
+ * 處理常見錯誤：
+ *   - 全形冒號「：」→ 半形「:」
+ *   - 多餘空格
+ *   - 尾部分隔符（18:00- / 18:00_ / 18:00~）
+ *   - 非標準分隔符（_ ~ —）→ 統一為「-」
+ *   - 小時補零（9:00 → 09:00）
+ *
+ * 返回 null 表示無法解析
+ */
+function normalizeTimeSlot(raw: string): string | null {
+  if (!raw) return null
+
+  let s = raw.trim()
+
+  // 全形冒號 → 半形
+  s = s.replace(/：/g, ':')
+
+  // 去除所有空格
+  s = s.replace(/\s+/g, '')
+
+  // 非標準分隔符統一為「-」
+  s = s.replace(/[_~—]/g, '-')
+
+  // 去除尾部多餘的分隔符
+  s = s.replace(/-+$/, '')
+
+  // 驗證格式：H:mm-H:mm 或 HH:mm-HH:mm
+  const match = s.match(/^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/)
+  if (!match) return null
+
+  const [, h1, m1, h2, m2] = match
+  const hh1 = parseInt(h1, 10)
+  const mm1 = parseInt(m1, 10)
+  const hh2 = parseInt(h2, 10)
+  const mm2 = parseInt(m2, 10)
+
+  // 範圍校驗
+  if (hh1 > 23 || hh2 > 23 || mm1 > 59 || mm2 > 59) return null
+
+  // 開始時間必須早於結束時間
+  const startMin = hh1 * 60 + mm1
+  const endMin = hh2 * 60 + mm2
+  if (startMin >= endMin) return null
+
+  // 補零輸出
+  return `${String(hh1).padStart(2, '0')}:${m1}-${String(hh2).padStart(2, '0')}:${m2}`
+}
+
+/** 從 localStorage 載入自定義時段歷史 */
+function loadCustomTimeHistory(): string[] {
+  try {
+    const stored = localStorage.getItem(CUSTOM_TIME_HISTORY_KEY)
+    return stored ? (JSON.parse(stored) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+/** 保存自定義時段到歷史記錄（去重 + 最近優先） */
+function saveCustomTimeToHistory(slot: string): string[] {
+  try {
+    const history = loadCustomTimeHistory()
+    const filtered = history.filter((s) => s !== slot)
+    const updated = [slot, ...filtered].slice(0, MAX_HISTORY_ITEMS)
+    localStorage.setItem(CUSTOM_TIME_HISTORY_KEY, JSON.stringify(updated))
+    return updated
+  } catch {
+    return loadCustomTimeHistory()
+  }
+}
+
+/** 判斷時段是否為預設值 */
+function isPresetTimeSlot(slot: string): boolean {
+  return TIME_SLOT_PRESETS.includes(slot)
+}
+
 // ============================================================================
 // 月曆日期選擇器組件（增強：顯示時段 + 標記暫存日期）
 // ============================================================================
@@ -308,6 +391,12 @@ export default function BookingSchedule() {
   const [batchError, setBatchError] = useState('')
   const [commitProgress, setCommitProgress] = useState(0)
 
+  // ─── 自定義時段輸入 ────────────────────────────────────
+  const [isCustomMode, setIsCustomMode] = useState(false)
+  const [customTimeInput, setCustomTimeInput] = useState('')
+  const [customTimeError, setCustomTimeError] = useState('')
+  const [customTimeHistory, setCustomTimeHistory] = useState<string[]>(() => loadCustomTimeHistory())
+
   // ─── 暫存批次（localStorage 持久化）─────────────────────
   const [stagedBatches, setStagedBatches] = useState<StagedBatch[]>(() => {
     try {
@@ -455,6 +544,9 @@ export default function BookingSchedule() {
       is_special: '0',
       special_label: '',
     })
+    setIsCustomMode(false)
+    setCustomTimeInput('')
+    setCustomTimeError('')
     setBatchError('')
     setCommitProgress(0)
     setBatchOpen(true)
@@ -489,6 +581,9 @@ export default function BookingSchedule() {
       is_special: '0',
       special_label: '',
     }))
+    setIsCustomMode(false)
+    setCustomTimeInput('')
+    setCustomTimeError('')
     setBatchError('')
   }
 
@@ -514,10 +609,70 @@ export default function BookingSchedule() {
     setBatchForm((f) => ({ ...f, dates: [] }))
   }
 
-  /** 單選時段 */
+  /** 單選時段（預設） */
   const handleSelectTimeSlot = (slot: string) => {
     setBatchForm((f) => ({ ...f, time_slot: slot }))
+    setIsCustomMode(false)
+    setCustomTimeInput('')
+    setCustomTimeError('')
     setBatchError('')
+  }
+
+  /** 切換到自定義時段模式 */
+  const handleSwitchToCustom = () => {
+    setIsCustomMode(true)
+    setBatchForm((f) => ({ ...f, time_slot: '' }))
+    setCustomTimeInput('')
+    setCustomTimeError('')
+    setBatchError('')
+  }
+
+  /** 確認自定義時段輸入 — 規範化 + 校驗 + 存入歷史 */
+  const handleConfirmCustomTime = () => {
+    const raw = customTimeInput.trim()
+    if (!raw) {
+      setCustomTimeError('請輸入時段，格式如 18:00-19:00')
+      setBatchForm((f) => ({ ...f, time_slot: '' }))
+      return
+    }
+    const normalized = normalizeTimeSlot(raw)
+    if (!normalized) {
+      setCustomTimeError(
+        `格式無效：「${raw}」\n正確格式：HH:mm-HH:mm（如 18:00-19:00）\n支援自動轉換：全形冒號、多餘空格、尾部符號`,
+      )
+      setBatchForm((f) => ({ ...f, time_slot: '' }))
+      return
+    }
+    // 校驗通過
+    setBatchForm((f) => ({ ...f, time_slot: normalized }))
+    setCustomTimeInput(normalized)
+    setCustomTimeError('')
+    setBatchError('')
+    // 存入歷史記錄
+    setCustomTimeHistory(saveCustomTimeToHistory(normalized))
+  }
+
+  /** 從歷史記錄中選擇時段 */
+  const handleSelectHistoryTime = (slot: string) => {
+    setBatchForm((f) => ({ ...f, time_slot: slot }))
+    setCustomTimeInput(slot)
+    setCustomTimeError('')
+    setBatchError('')
+  }
+
+  /** 移除歷史記錄中的時段 */
+  const handleRemoveHistoryTime = (slot: string) => {
+    const updated = customTimeHistory.filter((s) => s !== slot)
+    setCustomTimeHistory(updated)
+    try {
+      if (updated.length > 0) {
+        localStorage.setItem(CUSTOM_TIME_HISTORY_KEY, JSON.stringify(updated))
+      } else {
+        localStorage.removeItem(CUSTOM_TIME_HISTORY_KEY)
+      }
+    } catch {
+      // localStorage 不可用時靜默失敗
+    }
   }
 
   /**
@@ -571,6 +726,9 @@ export default function BookingSchedule() {
       is_special: '0',
       special_label: '',
     }))
+    setIsCustomMode(false)
+    setCustomTimeInput('')
+    setCustomTimeError('')
     setBatchError('')
   }
 
@@ -952,17 +1110,39 @@ export default function BookingSchedule() {
                         </td>
                         {/* 時段 */}
                         <td className="px-4 py-3">
-                          <select
+                          <input
+                            type="text"
+                            list="booking-time-slots"
                             value={editForm.time_slot}
                             onChange={(e) =>
                               setEditForm((f) => (f ? { ...f, time_slot: e.target.value } : f))
                             }
-                            className="px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
-                          >
+                            onBlur={(e) => {
+                              const raw = e.target.value
+                              if (!raw) return
+                              const normalized = normalizeTimeSlot(raw)
+                              if (normalized) {
+                                if (normalized !== raw) {
+                                  setEditForm((f) => (f ? { ...f, time_slot: normalized } : f))
+                                }
+                              } else {
+                                // 無效時段：回退到第一個預設值，避免提交無效數據
+                                setEditForm((f) => (f ? { ...f, time_slot: TIME_SLOT_PRESETS[0] } : f))
+                                setCustomTimeError(`編輯時段「${raw}」格式無效，已回退為 ${TIME_SLOT_PRESETS[0]}`)
+                                setTimeout(() => setCustomTimeError(''), 3000)
+                              }
+                            }}
+                            placeholder="HH:mm-HH:mm"
+                            className="w-28 px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                          />
+                          <datalist id="booking-time-slots">
                             {TIME_SLOT_PRESETS.map((s) => (
-                              <option key={s} value={s}>{s}</option>
+                              <option key={s} value={s} />
                             ))}
-                          </select>
+                            {customTimeHistory.map((s) => (
+                              <option key={s} value={s} />
+                            ))}
+                          </datalist>
                         </td>
                         {/* 服務類型 */}
                         <td className="px-4 py-3">
@@ -1345,7 +1525,7 @@ export default function BookingSchedule() {
                 )}
               </div>
 
-              {/* 時段選擇（單選） */}
+              {/* 時段選擇（單選 + 自定義） */}
               <div>
                 <label className="block text-sm font-medium mb-1.5">
                   時段 <span className="text-destructive">*</span>
@@ -1355,7 +1535,7 @@ export default function BookingSchedule() {
                 </label>
                 <div className="flex flex-wrap gap-3">
                   {TIME_SLOT_PRESETS.map((slot) => {
-                    const checked = batchForm.time_slot === slot
+                    const checked = !isCustomMode && batchForm.time_slot === slot
                     return (
                       <label
                         key={slot}
@@ -1377,7 +1557,105 @@ export default function BookingSchedule() {
                       </label>
                     )
                   })}
+                  {/* 自定義時段 */}
+                  <label
+                    className={cn(
+                      'inline-flex items-center gap-2 px-4 py-2 border rounded-md cursor-pointer transition-colors text-sm',
+                      isCustomMode
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'hover:bg-accent',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="batch-time-slot"
+                      checked={isCustomMode}
+                      onChange={handleSwitchToCustom}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    ✏️ 自定義
+                  </label>
                 </div>
+
+                {/* 自定義時段輸入區 */}
+                {isCustomMode && (
+                  <div className="mt-3 space-y-2 p-3 border border-dashed rounded-md bg-slate-50/50">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={customTimeInput}
+                        onChange={(e) => {
+                          setCustomTimeInput(e.target.value)
+                          if (customTimeError) setCustomTimeError('')
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleConfirmCustomTime()
+                          }
+                        }}
+                        onBlur={handleConfirmCustomTime}
+                        placeholder="如 18:00-19:00"
+                        className="flex-1 px-3 py-1.5 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleConfirmCustomTime}
+                        className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity whitespace-nowrap"
+                      >
+                        確認
+                      </button>
+                    </div>
+                    {/* 格式提示 */}
+                    <p className="text-xs text-muted-foreground">
+                      格式：HH:mm-HH:mm，自動修正全形冒號「：」、多餘空格、尾部符號
+                    </p>
+                    {/* 錯誤提示 */}
+                    {customTimeError && (
+                      <p className="text-xs text-destructive whitespace-pre-line">
+                        ⚠️ {customTimeError}
+                      </p>
+                    )}
+                    {/* 已確認的時段 */}
+                    {batchForm.time_slot && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-green-600">✅ 已選時段：</span>
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                          {batchForm.time_slot}
+                        </span>
+                      </div>
+                    )}
+                    {/* 歷史記錄氣泡 */}
+                    {customTimeHistory.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-xs text-muted-foreground mr-1">🕘 最近使用：</span>
+                        {customTimeHistory.map((slot) => (
+                          <span
+                            key={slot}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-600 rounded-full border border-blue-100 hover:bg-blue-100 transition-colors group"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectHistoryTime(slot)}
+                              className="leading-none"
+                              title="點擊選用此時段"
+                            >
+                              {slot}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveHistoryTime(slot)}
+                              className="text-blue-300 hover:text-red-500 transition-colors leading-none"
+                              title="刪除此歷史記錄"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 特別場標記 */}

@@ -1,6 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../lib/api'
+import { api, getUserInfo } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
 
 /** 統計數據結構 */
@@ -62,10 +62,24 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.40',
+    date: '2026-07-30 15:30:00',
+    icon: '🔒',
+    latest: true,
+    changes: `🔒 權限 toast 修復 + 講座預約自定義時段完善\n\n📋 變更內容\n• 修復非超管用戶進入 Dashboard 彈出「僅超級管理員可訪問此功能」toast — backup-schedule 端點改為僅超管調用 + silent403 雙保險\n• 修復非 M204 權限用戶在任意頁面彈出「無權限訪問此功能」toast — /admin/forms/active 加入 PUBLIC_READ_PATHS 白名單（側邊欄導航需要，所有登錄用戶可訪問）\n• api.ts 新增 silent403 參數，get/post/put/del 均支持，傳入 true 時 403 響應不觸發全局權限 toast（防禦性加固）\n• 修復講座預約編輯表單 onBlur 無效時段處理 — normalizeTimeSlot 返回 null 時回退為第一個預設時段並提示，與批量表單行為一致\n• 講座預約批量新增排期支持自定義時段輸入（normalizeTimeSlot 正規化全形冒號/空格/分隔符 + 歷史記錄氣泡 + 編輯表單 datalist）`,
+  },
+  {
+    version: 'v1.9.39',
+    date: '2026-07-30 14:00:00',
+    icon: '💾',
+    latest: false,
+    changes: `💾 存儲配置界面合併 + S3 憑證展示優化\n\n📋 變更內容\n• 刪除獨立的 /storage 頁面（Storage.tsx），功能完整合併至系統設置（/settings）存儲配置 tab\n• 側邊欄移除「存儲設置」菜單項，存儲配置統一在系統設置管理\n• S3 憑證字段（s3_access_key / s3_secret_key）增強展示：✅ 已配置 / ⚠️ 未配置 狀態徽章\n• Secret Key 改用密碼框（type=password），防肩窺\n• 憑證字段提示文字：「存儲於 Secrets Store，輸入新值可更新，保持 *** 或留空表示不修改」\n• 存儲配置 tab 新增 R2 配置指南（Cloudflare R2 端點/密鑰/桶名說明）\n• 存儲配置 tab 新增「測試連接」+「上傳測試」按鈕（解鎖後可用，調用 /admin/storage/test + /admin/storage/upload）\n• 安全加固：S3 存儲配置分組（sorting 70-79）僅超管可見，非超管用戶隱藏存儲配置 tab\n• 後端 storage API 路由不變（requireSuperAdmin），前端改從 Settings 調用\n• API 開發手冊新增存儲管理端點列表（config/test/upload）`,
+  },
+  {
     version: 'v1.9.38',
     date: '2026-07-30 12:05:00',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 修復分站點備份 403 AccessDenied\n\n📋 問題根因\n• v1.9.37b 錯誤改動：S3 配置改從主庫讀取，但各站點 R2 endpoint 不同（不同 Cloudflare 帳號的桶）\n• smile 庫 endpoint（3cdadbb...）與主庫 endpoint（3d2ecef...）不同\n• 主庫 endpoint + Secrets Store 憑證不匹配 → S3 ListObjects 返回 403\n\n📋 修復方案\n• 恢復按站點讀取 S3 配置（siteDB(c)），各站點用自己的 endpoint + 憑證\n• getS3Config 改進：Secrets Store 返回 null 時回退到 D1 明文憑證（兼容分站點獨立配置）\n• 影響範圍：僅備份功能恢復正常，其他 S3 操作不受影響`,
   },
   {
@@ -720,7 +734,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/booking/schedules', desc: '講座預約排期列表 (?service_type=&location=, 僅 smile 站點, v1.9.35+)', auth: false },
   { method: 'GET', path: '/api/v1/booking/services', desc: '講座服務列表（服務+地點聯動+時段預設，v1.9.36+）', auth: false },
   { method: 'POST', path: '/api/v1/f/:token', desc: '表單提交（隱蔽化端點，16位隨機 token）', auth: false },
-  { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄，M204）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/forms/active', desc: '活躍表單列表（側邊欄導航，公開讀取白名單）', auth: true },
   { method: 'GET', path: '/api/v1/admin/forms/config', desc: '表單配置列表（M210）', auth: true },
   { method: 'POST', path: '/api/v1/admin/forms/config', desc: '新建表單', auth: true },
   { method: 'PUT', path: '/api/v1/admin/forms/config/:id', desc: '更新表單配置', auth: true },
@@ -808,6 +822,11 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/database/backup-schedule', desc: '更新定時備份排程（v1.9.37+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份文件', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/database/backups/:filename', desc: '刪除備份文件', auth: true },
+  // 存儲管理 (超管, v1.9.39+ 合併至系統設置)
+  { method: 'GET', path: '/api/v1/admin/storage/config', desc: '存儲配置（憑證 *** 遮罩）', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/storage/config', desc: '更新存儲配置（密鑰寫入 Secrets Store）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/storage/test', desc: '測試 S3 連接', auth: true },
+  { method: 'POST', path: '/api/v1/admin/storage/upload', desc: '測試文件上傳', auth: true },
 ]
 
 /** 錯誤碼對照 */
@@ -892,11 +911,13 @@ export default function Dashboard() {
       .get<{ id: number; title: string; date: string }[]>('/admin/scheduler/list')
       .then((res) => setScheduledTasks((res.data as { id: number; title: string; date: string }[]) ?? []))
       .catch(() => {})
-    // 獲取定時備份排程配置（系統信息展示用）
-    api
-      .get<{ enabled: string; frequency: string; time: string; weekday: string; keep: number; lastRun: string }>('/admin/database/backup-schedule')
-      .then((res) => { if (res.data) setBackupSchedule(res.data) })
-      .catch(() => {})
+    // 獲取定時備份排程配置（僅超管可訪問，silent403 防禦性跳過 toast）
+    if (getUserInfo()?.isSuper) {
+      api
+        .get<{ enabled: string; frequency: string; time: string; weekday: string; keep: number; lastRun: string }>('/admin/database/backup-schedule', true)
+        .then((res) => { if (res.data) setBackupSchedule(res.data) })
+        .catch(() => {})
+    }
   }, [])
 
   // 版本更新自動通知 — 偵測最新版本，POST /notify/version-check

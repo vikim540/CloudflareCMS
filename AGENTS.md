@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.35**（2026-07-29）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.40**（2026-07-30）
 
 ## 語言選擇優先級
 
@@ -76,7 +76,7 @@ Cloudflarerustcms/
 │   │   ├── contexts/           # SiteContext（站點切換 + 過渡動畫）
 │   │   ├── hooks/              # useFeatureFlags / useImageUpload / useBatchSorting
 │   │   ├── lib/                # api.ts / imageCompress.ts / utils.ts / quill/（編輯器插件）
-│   │   └── pages/              # 26 個頁面組件
+│   │   └── pages/              # 25 個頁面組件（v1.9.39 合併存儲設置至系統設置，v1.9.40 權限 toast 修復）
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
@@ -161,6 +161,7 @@ Cloudflarerustcms/
 - **管理**：`/api/v1/admin/{resource}`（JWT `requireAuth` + `requireMenuPermission`，300 req/min）
   - `database` / `storage` 路由僅超管可用 `requireSuperAdmin`
   - `flags` / `stats` / `upload` / `notify` / `vectorize` 路由僅需登錄（無菜單權限限制）
+  - **存儲配置管理**（v1.9.39+）：S3 配置通過 `/admin/configs` API 管理（M503 權限），S3 憑證（s3_access_key / s3_secret_key）以 `***` 遮罩注入配置列表，寫入時路由至 Secrets Store。前端存儲配置 tab 僅超管可見（隱藏非超管的存儲配置 tab + 過濾 sorting 70-79 配置項）。`/admin/storage/*` 路由保留用於連接測試、上傳測試、媒體庫操作等
 
 ---
 
@@ -188,6 +189,20 @@ Cloudflarerustcms/
 ### 回收站路由特殊處理
 
 `/api/v1/admin/contents/trash`、`/contents/:id/restore`、`/contents/:id/permanent` 使用 **M208** 權限（非 M201 文章列表），在中間件中按路徑動態判斷。
+
+### 公開讀取端點白名單（v1.9.40）
+
+`PUBLIC_READ_PATHS` 集合定義側邊欄/下拉選單需要的輕量級引用數據端點，所有登錄用戶可 GET 訪問（跳過 `requireMenuPermission` 檢查）：
+- `/api/v1/admin/models/all` — 側邊欄動態模型項目
+- `/api/v1/admin/menus` — 權限選擇器菜單樹
+- `/api/v1/admin/sorts/all` — 下拉選單欄目列表
+- `/api/v1/admin/forms/active` — 側邊欄活躍表單列表（v1.9.40 新增，修復非 M204 用戶 toast 問題）
+
+POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數據。
+
+### silent403 機制（v1.9.40）
+
+`api.ts` 的 `request()` 函數新增 `silent403` 參數，`api.get/post/put/del` 均支持。傳入 `true` 時，403 響應不觸發全局 `permissionDeniedCallback` toast（但仍 throw Error 由調用方 `.catch()` 處理）。用於頁面掛載時預期的 403 場景（如非超管用戶調用超管專用端點），避免誤導性權限提示。
 
 ### 關鍵文件
 
@@ -273,6 +288,7 @@ Cloudflarerustcms/
 - **綁定**：wrangler.jsonc `secrets_store_secrets` 配置，異步訪問（`await env.JWT_SECRET_STORE.get()`），與原同步 `env.JWT_SECRET` 不兼容
 - **Store**：`default_secrets_store`（ID: `aef7c32e26c84aedb4b2a5938128ca23`），CLI 管理 `wrangler secrets-store secret create <store-id> --name <name> --value <value> --scopes workers --remote`
 - **代碼變更**：`requireAuth`、`handleLogin`、`handleCreateSite` 均改為 `await c.env.JWT_SECRET_STORE.get()` / `await c.env.CF_API_TOKEN_STORE.get()` / `await c.env.TURNSTILE_SECRET_STORE.get()`；S3 憑證通過 `S3Secrets` 參數傳遞（`S3_ACCESS_KEY_STORE` / `S3_SECRET_KEY_STORE`），`config.ts` 注入虛擬配置項（`***` 遮罩），寫入路由至 Secrets Store（`put()`）
+- **前端展示**（v1.9.39+）：S3 憑證字段在系統設置存儲配置 tab 顯示 ✅ 已配置 / ⚠️ 未配置 狀態徽章，Secret Key 使用密碼框，提示「存儲於 Secrets Store，輸入新值可更新」。CMS 可直接修改 Secrets Store 中的 S3 憑證（通過 config API `put()` 寫入）
 - **SecretsStoreSecretWritable**：`@cloudflare/workers-types` v5 僅聲明 `get()`，運行時亦支持 `put()`，`storage.ts` 導出 `SecretsStoreSecretWritable` 接口補充類型聲明
 
 ### 全局錯誤追蹤（v1.7.0）

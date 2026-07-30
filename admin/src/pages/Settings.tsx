@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { api } from '../lib/api'
+import { api, getUserInfo, getCurrentSiteId } from '../lib/api'
 import { LoadingState, ErrorState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 import { useFeatureFlags } from '../hooks/useFeatureFlags'
@@ -114,6 +114,15 @@ export default function Settings() {
   // 搜索引擎推送折疊狀態（默認折疊，很少改動）
   const [seoCollapsed, setSeoCollapsed] = useState(true)
   const [activeTab, setActiveTab] = useState<string>('flags')
+
+  // S3 存儲測試狀態
+  const [testStorageLoading, setTestStorageLoading] = useState(false)
+  const [testStorageResult, setTestStorageResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const [uploadLoading, setUploadLoading] = useState(false)
+  const [uploadResult, setUploadResult] = useState<{ ok: boolean; msg: string; url?: string } | null>(null)
+
+  // 超級管理員判斷（S3 存儲配置僅超管可見）
+  const isSuperAdmin = getUserInfo()?.isSuper ?? false
 
   /** 拉取全部配置 */
   const fetchConfigs = useCallback(async () => {
@@ -256,6 +265,61 @@ export default function Settings() {
     }
   }
 
+  /** 測試 S3 存儲連接（超管專用） */
+  const handleTestStorage = async () => {
+    setTestStorageLoading(true)
+    setTestStorageResult(null)
+    try {
+      const res = await api.post<{ connected: boolean; endpoint?: string; bucket?: string; region?: string }>('/admin/storage/test')
+      if (res.code === 0) {
+        const d = res.data
+        setTestStorageResult({
+          ok: true,
+          msg: `連接成功！Endpoint: ${d?.endpoint ?? '(未知)'}, Bucket: ${d?.bucket ?? '(未知)'}, Region: ${d?.region ?? 'auto'}`,
+        })
+      } else {
+        setTestStorageResult({ ok: false, msg: res.msg || '連接失敗' })
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '連接失敗'
+      setTestStorageResult({ ok: false, msg })
+    } finally {
+      setTestStorageLoading(false)
+    }
+  }
+
+  /** 測試 S3 文件上傳（超管專用） */
+  const handleStorageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadLoading(true)
+    setUploadResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const token = localStorage.getItem('cms_token')
+      const resp = await fetch(
+        `${import.meta.env.VITE_API_BASE || '/api/v1'}/admin/storage/upload`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'X-Site-Id': getCurrentSiteId() },
+          body: formData,
+        },
+      )
+      const json = await resp.json()
+      if (json.code === 0) {
+        setUploadResult({ ok: true, msg: '上傳成功', url: json.data.url })
+      } else {
+        setUploadResult({ ok: false, msg: json.msg || '上傳失敗' })
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '上傳失敗'
+      setUploadResult({ ok: false, msg })
+    } finally {
+      setUploadLoading(false)
+    }
+  }
+
   /** 依分組切割配置 */
   const groupedConfigs = useMemo(() => {
     const groups: { group: ConfigGroup; items: Config[] }[] = []
@@ -265,6 +329,8 @@ export default function Settings() {
       if (HIDDEN_CONFIGS.has(config.name)) continue
       // sorting 10-19 是站點信息，由單獨頁面管理
       if (config.sorting >= 10 && config.sorting <= 19) continue
+      // S3 存儲配置（sorting 70-79）僅超管可見
+      if (!isSuperAdmin && config.sorting >= 70 && config.sorting <= 79) continue
 
       if (!mailEnabled) {
         if (config.sorting >= 90 && config.sorting <= 99) continue
@@ -291,7 +357,7 @@ export default function Settings() {
       .filter((g) => g.items.length > 0)
       .sort((a, b) => a.group.min - b.group.min)
     return { groups: visibleGroups, others }
-  }, [configs, mailEnabled, webhookEnabled])
+  }, [configs, mailEnabled, webhookEnabled, isSuperAdmin])
 
   /** 渲染單個配置行 */
   const renderConfigRow = (config: Config, disabled = false) => {
@@ -332,6 +398,57 @@ export default function Settings() {
             stripProtocol={multiValueOpts.stripProtocol}
             disabled={disabled}
           />
+        </div>
+      )
+    }
+
+    // S3 憑證字段特殊渲染：顯示配置狀態 + 密碼框 + Secrets Store 提示
+    const S3_CREDENTIAL_FIELDS = new Set(['s3_access_key', 's3_secret_key'])
+    if (S3_CREDENTIAL_FIELDS.has(config.name)) {
+      const isSecret = config.name === 's3_secret_key'
+      const isConfigured = val === '***' || (config.name in changes && val !== '' && val !== '***')
+      return (
+        <div
+          key={config.id}
+          className={cn(
+            'flex items-center justify-between gap-4 py-3 border-b last:border-b-0',
+            hasChange && 'bg-amber-50/50 -mx-4 px-4',
+            disabled && 'opacity-50 pointer-events-none',
+          )}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{config.description || config.name}</span>
+              {isConfigured ? (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">
+                  ✅ 已配置
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">
+                  ⚠️ 未配置
+                </span>
+              )}
+              {hasChange && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-200 text-amber-800">
+                  已修改
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground font-mono">{config.name}</span>
+            <p className="text-[10px] text-blue-500 mt-0.5">
+              🔐 存儲於 Secrets Store，輸入新值可更新，保持 *** 或留空表示不修改
+            </p>
+          </div>
+          <div className="shrink-0">
+            <input
+              type={isSecret ? 'password' : 'text'}
+              value={val}
+              onChange={(e) => updateValue(config.name, e.target.value)}
+              disabled={disabled}
+              className="w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted disabled:cursor-not-allowed font-mono"
+              placeholder="輸入新值以更新憑證"
+            />
+          </div>
         </div>
       )
     }
@@ -480,6 +597,28 @@ export default function Settings() {
         {/* 配置項（折疊時隱藏） */}
         {!isCollapsed && (
           <>
+            {/* S3 R2 配置指南 */}
+            {isS3Group && (
+              <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 mt-0.5 shrink-0">☁️</span>
+                  <div className="text-sm text-blue-900">
+                    <p className="font-medium mb-1">Cloudflare R2 配置指南</p>
+                    <p className="text-blue-700 mb-2">
+                      在 Cloudflare Dashboard → R2 → 管理 API 中創建 API Token，然後填入以下信息：
+                    </p>
+                    <ul className="text-blue-700 space-y-0.5 ml-4 text-xs">
+                      <li>• <b>端點</b>: <code>https://{'<account_id>'}.r2.cloudflarestorage.com</code></li>
+                      <li>• <b>區域</b>: auto</li>
+                      <li>• <b>Access Key</b>: R2 API Token 的 Access Key ID（存儲於 Secrets Store）</li>
+                      <li>• <b>Secret Key</b>: R2 API Token 的 Secret Access Key（存儲於 Secrets Store）</li>
+                      <li>• <b>Bucket</b>: 在 R2 中創建的存儲桶名稱</li>
+                      <li>• <b>公共 URL</b>: R2 自定義域名或 r2.dev 子域名</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="px-4">
               {items.map((config) => renderConfigRow(config, isLocked))}
             </div>
@@ -487,6 +626,53 @@ export default function Settings() {
             {isLocked && (
               <div className="px-4 py-2.5 bg-gray-50 text-center text-xs text-muted-foreground border-t">
                 🔒 敏感信息已鎖定防誤觸，點擊「解鎖修改」按鈕進行編輯
+              </div>
+            )}
+            {/* S3 存儲測試（超管解鎖後可用） */}
+            {isS3Group && !isLocked && (
+              <div className="px-4 py-3 border-t space-y-3 bg-secondary/10">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground mr-1">存儲測試：</span>
+                  <button
+                    type="button"
+                    onClick={handleTestStorage}
+                    disabled={testStorageLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {testStorageLoading ? (
+                      <span className="animate-spin inline-block text-sm">🔄</span>
+                    ) : (
+                      <span className="text-sm">🧪</span>
+                    )}
+                    測試連接
+                  </button>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    {uploadLoading ? (
+                      <span className="animate-spin inline-block text-sm">🔄</span>
+                    ) : (
+                      <span className="text-sm">📤</span>
+                    )}
+                    上傳測試
+                    <input type="file" onChange={handleStorageUpload} className="hidden" disabled={uploadLoading} />
+                  </label>
+                </div>
+                {testStorageResult && (
+                  <div className={cn('rounded-md p-2.5 text-xs', testStorageResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>
+                    {testStorageResult.msg}
+                  </div>
+                )}
+                {uploadResult && (
+                  <div className={cn('rounded-md p-2.5 text-xs', uploadResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700')}>
+                    {uploadResult.msg}
+                    {uploadResult.url && (
+                      <div className="mt-1">
+                        <a href={uploadResult.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">
+                          {uploadResult.url}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {/* 通知配置分組：測試按鈕 */}
@@ -619,7 +805,7 @@ export default function Settings() {
 
       {/* Tab 導航 */}
       <div className="flex items-center gap-1 mb-6 border-b">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.key !== 'storage' || isSuperAdmin).map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}

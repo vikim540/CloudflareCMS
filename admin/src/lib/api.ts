@@ -228,6 +228,7 @@ function buildTechReport(params: {
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  silent403 = false,
 ): Promise<ApiResponse<T>> {
   const token = getToken()
   const method = options.method || 'GET'
@@ -274,11 +275,11 @@ async function request<T>(
     throw new Error(errMsg)
   }
 
-  // 403 = 權限拒絕 → 不登出，僅提示無權限
+  // 403 = 權限拒絕 → 不登出，僅提示無權限（silent403 時靜默跳過 toast）
   if (res.status === 403) {
     const json = await res.json().catch(() => ({ msg: '無權限訪問此功能' })) as ApiResponse<T>
     const msg = json.msg || '無權限訪問此功能'
-    if (permissionDeniedCallback) {
+    if (!silent403 && permissionDeniedCallback) {
       permissionDeniedCallback(msg)
     }
     throw new Error(msg)
@@ -320,10 +321,10 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path, { method: 'GET' }),
-  post: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
-  put: <T>(path: string, body?: unknown) =>
-    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
-  del: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  get: <T>(path: string, silent403 = false) => request<T>(path, { method: 'GET' }, silent403),
+  post: <T>(path: string, body?: unknown, silent403 = false) =>
+    request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }, silent403),
+  put: <T>(path: string, body?: unknown, silent403 = false) =>
+    request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }, silent403),
+  del: <T>(path: string, silent403 = false) => request<T>(path, { method: 'DELETE' }, silent403),
 }
