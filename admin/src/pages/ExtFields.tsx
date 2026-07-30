@@ -126,20 +126,20 @@ export default function ExtFields() {
     return flatCategories.filter((c) => c.mcode === form.mcode)
   }, [flatCategories, form.mcode])
 
-  /** 載入模型列表（用於篩選和表單下拉） */
+  /** 載入模型列表（用於篩選和表單下拉）— 使用 /all 白名單端點，避免非模型管理權限用戶觸發 403 toast */
   const fetchModels = useCallback(async () => {
     try {
-      const res = await api.get<Model[]>('/admin/models')
+      const res = await api.get<Model[]>('/admin/models/all')
       setModels(res.data ?? [])
     } catch {
       /* 忽略模型載入錯誤 */
     }
   }, [])
 
-  /** 載入欄目樹（用於「適用欄目」多選） */
+  /** 載入欄目樹（用於「適用欄目」多選）— 使用 /all 白名單端點，避免非 M202 用戶觸發 403 toast */
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await api.get<Category[]>('/admin/sorts')
+      const res = await api.get<Category[]>('/admin/sorts/all')
       setCategories(res.data ?? [])
     } catch {
       /* 忽略欄目載入錯誤 */

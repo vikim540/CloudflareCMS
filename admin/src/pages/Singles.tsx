@@ -39,10 +39,10 @@ export default function Singles() {
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [sortSaving, setSortSaving] = useState<number | null>(null)
 
-  /** 載入欄目樹（僅一次） */
+  /** 載入欄目樹（僅一次）— 使用 /all 白名單端點，避免非 M202 用戶觸發 403 toast */
   useEffect(() => {
     api
-      .get<Category[]>('/admin/sorts')
+      .get<Category[]>('/admin/sorts/all')
       .then((res) => setCategories(res.data ?? []))
       .catch(() => {})
   }, [])

@@ -270,10 +270,10 @@ export default function Categories() {
       onError: () => fetchTree(),
     })
 
-  /** 拉取模型列表（用於欄目綁定下拉） */
+  /** 拉取模型列表（用於欄目綁定下拉）— 使用 /all 白名單端點，避免非模型管理權限用戶觸發 403 toast */
   const fetchModels = useCallback(async () => {
     try {
-      const res = await api.get<ContentModel[]>('/admin/models')
+      const res = await api.get<ContentModel[]>('/admin/models/all')
       setModels(res.data ?? [])
     } catch {
       /* 忽略模型載入錯誤 */

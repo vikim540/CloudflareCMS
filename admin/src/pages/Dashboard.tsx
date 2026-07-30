@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.42',
+    date: '2026-07-30 16:01:41',
+    icon: '🔒',
+    latest: true,
+    changes: `🔒 回收站等頁面權限 toast 修復 + wrangler 升級\n\n📋 變更內容\n• 修復非 M202 權限用戶進入回收站（M208）彈出「無權限訪問此功能」toast — Trash 頁面載入欄目樹改用 /admin/sorts/all 白名單端點（原 /admin/sorts 需 M202 權限）\n• 舉一反三修復同類問題：Singles（M203）、ExtFields（M206）、Categories（M202）頁面的欄目樹/模型列表載入均改用 /all 白名單端點\n• 根因：頁面載入引用數據（下拉選單）調用了需其他菜單權限的端點，403 響應觸發全局 toast，即使頁面主數據正常載入\n• wrangler 從 4.111.0 升級至 4.115.0（修復 pnpm 跨盤 EBUSY 問題，使用同盤 store-dir 安裝）\n• AGENTS.md 新增開發規範：前端載入引用數據必須使用 /all 白名單端點`,
+  },
+  {
     version: 'v1.9.41',
     date: '2026-07-30 16:20:00',
     icon: '🕐',
-    latest: true,
+    latest: false,
     changes: `🕐 講座預約時段輸入改為點擊選擇\n\n📋 變更內容\n• 批量新增排期自定義時段：文本輸入改為 TimeSlotPicker 組件（點擊小時+分鐘下拉選擇）\n• 結束時間自動 +1 小時（選 18:30 → 自動生成 18:30-19:30），文案無需手動輸入\n• 符號「:」「-」由前端固定生成，徹底避免 18：00、18:00-、18:00-17:00 等格式錯誤\n• 編輯表單時段也改用 TimeSlotPicker（compact 緊湊模式）\n• 移除 normalizeTimeSlot 正規化函數（不再需要文本正規化）\n• 移除 customTimeInput 狀態和 handleConfirmCustomTime（選擇即生效，無需確認步驟）\n• 歷史記錄氣泡保留，點擊可快速選用\n• 系統信息 Tab Secrets Store 補全 5 個密鑰列表`,
   },
   {

@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.41**（2026-07-30）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.42**（2026-07-30）
 
 ## 語言選擇優先級
 
@@ -24,7 +24,7 @@
 
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
-| wrangler | ^4.115.0（package.json） | ⚠️ 必須使用 `npx wrangler` 調用（直接 `wrangler` 命中 Yarn 全局 3.1.0，路徑 `D:\Program Files\nodejs\Yarn\bin\wrangler.cmd`，過時不可用）。本地 `node_modules/wrangler` 實際 4.111.0，package.json 已聲明 ^4.115.0，需 `pnpm install` 升級。注意：TRAE 沙箱環境無法寫入 D 盤真實文件系統，全局升級需在用戶自己的終端執行 |
+| wrangler | ^4.115.0（package.json） | ⚠️ 必須使用 `npx wrangler` 調用（直接 `wrangler` 命中 Yarn 全局 3.1.0，路徑 `D:\Program Files\nodejs\Yarn\bin\wrangler.cmd`，過時不可用）。本地 `node_modules/wrangler` 已升級至 4.115.0。⚠️ TRAE 沙箱中 pnpm 跨盤符號連結會觸發 EBUSY，需使用 `pnpm install --store-dir='F:\mysite\AI\idea\Cloudflarerustcms\.pnpm-store'` 同盤安裝 |
 | pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
@@ -198,6 +198,8 @@ Cloudflarerustcms/
 - `/api/v1/admin/sorts/all` — 下拉選單欄目列表
 - `/api/v1/admin/forms/active` — 側邊欄活躍表單列表（v1.9.40 新增，修復非 M204 用戶 toast 問題）
 
+> **v1.9.42 重點修復**：前端頁面載入引用數據（欄目樹、模型列表）時，必須使用 `/all` 白名單端點，禁止使用需菜單權限的端點（如 `/admin/sorts` 需 M202、`/admin/models` 需模型管理權限）。否則非授權用戶進入頁面時，引用數據請求返回 403 觸發全局 toast，即使頁面主數據正常載入。受影響頁面：Trash（M208）、Singles（M203）、ExtFields（M206）、Categories（M202）
+
 POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數據。
 
 ### silent403 機制（v1.9.40）
@@ -361,6 +363,7 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 11. **版本更新後 Dashboard 自動推送釘釘 webhook 通知（KV 去重，無需手動）？**
 12. **新增內容寫入接口是否整合 sanitizeHtml/stripHtmlTags 淨化？（XSS 防禦）**
 13. **新增上傳端點是否检查 MIME 白名單？（文件上傳安全）**
+14. **前端載入引用數據（欄目樹/模型列表）是否使用 `/all` 白名單端點？（避免非授權用戶 403 toast）**
 
 ---
 
