@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.44',
+    date: '2026-07-30 16:28:35',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 修復非 smile 站點數據庫備份失敗\n\n📋 變更內容\n• 修復 vision/endoscopy 站點手動備份報錯「no such table: ay_booking_calendar」— dumpDatabaseTables 遍歷 BACKUP_TABLES 時，先查 sqlite_master 確認表存在，不存在則 continue 跳過\n• 根因：BACKUP_TABLES 硬編碼包含 ay_booking_calendar / ay_booking_schedule（僅 smile 站點有這兩張表），其他站點 SELECT * 報 SQLITE_ERROR\n• 原邏輯缺陷：schemaRow?.sql 判斷了表是否存在並輸出 CREATE 語句，但 SELECT * 查數據時未跳過不存在的表`,
+  },
+  {
     version: 'v1.9.43',
     date: '2026-07-30 16:14:01',
     icon: '💾',
-    latest: true,
+    latest: false,
     changes: `💾 數據庫備份多站點改進\n\n📋 變更內容\n• 備份文件命名加站點前綴：backup_YYYYMMDDHHmmss.sql → {siteId}_backup_YYYYMMDDHHmmss.sql（如 endoscopy_backup_20260730160000.sql）\n• 修復保留策略嚴重 bug：applyBackupRetention 原邏輯全局統一保留 N 份，3 站同時備份時 keep=7 實際每站僅保留約 2 份 → 改為按站點前綴分組，每站獨立保留 N 份\n• 前端備份列表新增「站點」列，藍色徽章顯示站點 ID，舊格式文件顯示灰色「舊格式」標籤\n• 向後兼容：舊格式 backup_*.sql 文件仍可列出、下載、刪除，保留清理也按 keepCount 獨立管理\n• 定時備份已支持多站點：Cron 遍歷所有註冊站點數據庫，各站獨立判斷是否到期（v1.9.37 已有，本次確認）`,
   },
   {

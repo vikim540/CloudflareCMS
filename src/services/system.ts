@@ -946,15 +946,16 @@ async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<{ par
       .bind(table)
       .first<{ sql: string }>();
 
+    // 表不存在則跳過（如 ay_booking_calendar 僅 smile 站點有）
+    if (!schemaRow?.sql) continue;
+
     parts.push('-- ------------------------------------------------------------');
     parts.push(`-- Table: ${table}`);
     parts.push('-- ------------------------------------------------------------');
 
-    if (schemaRow?.sql) {
-      parts.push(`DROP TABLE IF EXISTS ${table};`);
-      parts.push(schemaRow.sql + ';');
-      parts.push('');
-    }
+    parts.push(`DROP TABLE IF EXISTS ${table};`);
+    parts.push(schemaRow.sql + ';');
+    parts.push('');
 
     // 查詢所有數據行
     const dataResult = await db.prepare(`SELECT * FROM "${table}"`).all();

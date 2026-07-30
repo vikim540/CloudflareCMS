@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.43**（2026-07-30）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.44**（2026-07-30）
 
 ## 語言選擇優先級
 
@@ -316,6 +316,7 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 - **保留策略**（v1.9.43 修復）：`applyBackupRetention` 按站點前綴分組，**每站獨立保留 N 份**（原邏輯全局統一保留 N 份，3 站同時備份時 keep=7 實際每站僅保留約 2 份）
 - **配置存儲**：`ay_config` 表，每站點獨立（enabled / frequency / time / weekday / keep / last_run）
 - **向後兼容**：舊格式 `backup_*.sql` 文件仍可列出、下載、刪除，保留清理也按 keepCount 獨立管理
+- **表存在性檢查**（v1.9.44 修復）：`dumpDatabaseTables` 遍歷 `BACKUP_TABLES` 時，先查 `sqlite_master` 確認表存在，不存在則 `continue` 跳過。修復 vision/endoscopy 站點備份失敗問題（`ay_booking_calendar` / `ay_booking_schedule` 僅 smile 站點有，其他站點 `SELECT * FROM "ay_booking_calendar"` 報 `no such table`）
 
 ---
 
