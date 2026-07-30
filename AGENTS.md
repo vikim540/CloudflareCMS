@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.44**（2026-07-30）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.45**（2026-07-30）
 
 ## 語言選擇優先級
 
@@ -308,15 +308,22 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 - **P2 輸入長度校驗**：`FIELD_LENGTH_LIMITS` 常量定義 18 個字段最大長度（新聞網站場景，略寬），`validateFieldLengths()` 超長返回明確錯誤。請求體大小限制 2MB（排除 `multipart/form-data` 文件上傳）
 - **P3 文件上傳 MIME 白名單**：`src/services/storage.ts` 的 `ALLOWED_MIME_TYPES` Set，僅允許圖片/視頻/音頻/PDF/文本/ZIP，非白名單返回 1001 錯誤
 
-### 數據庫備份（v1.9.37，v1.9.43 多站點改進）
+### 數據庫備份（v1.9.37，v1.9.43 多站點改進，v1.9.44 表存在性修復，v1.9.45 日誌管理）
 
 - **文件命名**：`{siteId}_backup_YYYYMMDDHHmmss.sql`（v1.9.43 前為 `backup_YYYYMMDDHHmmss.sql`，無站點前綴）
 - **存儲路徑**：R2/S3 `backups/` 目錄下，所有站點備份混合存儲，通過文件名站點前綴區分
 - **定時備份**：Cron 每 15 分鐘檢查，遍歷所有註冊站點數據庫（`listRegisteredSites`），各站獨立判斷是否到期
 - **保留策略**（v1.9.43 修復）：`applyBackupRetention` 按站點前綴分組，**每站獨立保留 N 份**（原邏輯全局統一保留 N 份，3 站同時備份時 keep=7 實際每站僅保留約 2 份）
-- **配置存儲**：`ay_config` 表，每站點獨立（enabled / frequency / time / weekday / keep / last_run）
+- **配置存儲**：`ay_config` 表，每站點獨立（enabled / frequency / time / weekday / keep / last_run / excludeLogs / logRetentionDays / lastLogCleanup）
 - **向後兼容**：舊格式 `backup_*.sql` 文件仍可列出、下載、刪除，保留清理也按 keepCount 獨立管理
 - **表存在性檢查**（v1.9.44 修復）：`dumpDatabaseTables` 遍歷 `BACKUP_TABLES` 時，先查 `sqlite_master` 確認表存在，不存在則 `continue` 跳過。修復 vision/endoscopy 站點備份失敗問題（`ay_booking_calendar` / `ay_booking_schedule` 僅 smile 站點有，其他站點 `SELECT * FROM "ay_booking_calendar"` 報 `no such table`）
+- **備份排除日誌數據**（v1.9.45 新增）：`dumpDatabaseTables` 接受 `excludeLogData` 參數，為 `true` 時 `ay_syslog` 僅導出 `CREATE TABLE` 語句（表結構），不導出 `INSERT` 數據行。手動備份通過 query param `?excludeLogs=1` 觸發，定時備份通過 `backup_exclude_logs` 配置項控制。`BACKUP_EXCLUDABLE_DATA_TABLES` Set 定義可排除數據的表（目前僅 `ay_syslog`）
+- **日誌清理機制**（v1.9.45 新增）：
+  - **手動清理**：`POST /api/v1/admin/database/cleanup-logs?days=30` 刪除 N 天前的舊日誌，返回刪除數量
+  - **日誌統計**：`GET /api/v1/admin/database/log-stats` 返回總數、級別分佈、最早/最新記錄時間
+  - **自動清理**：`handleScheduledLogCleanup` 在每次定時備份後執行，每天最多一次，保留最近 N 天日誌（`log_retention_days` 配置，0=不自動清理）
+  - **配置項**：`backup_exclude_logs`（備份排除日誌）、`log_retention_days`（日誌保留天數）、`log_last_cleanup`（上次清理時間）
+  - **前端**：Database.tsx 頁面新增「日誌管理」卡片，展示統計數據 + 手動清理按鈕；定時備份配置區新增排除日誌開關 + 日誌保留天數輸入
 
 ---
 

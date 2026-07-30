@@ -874,6 +874,9 @@ const BACKUP_TABLES = [
   'ay_booking_schedule',
 ];
 
+/** 備份時可排除數據的表（僅導出 schema，不導出行數據） */
+const BACKUP_EXCLUDABLE_DATA_TABLES = new Set(['ay_syslog']);
+
 /** 列出備份文件 (從 R2/S3 存儲) */
 export async function handleListBackups(
   db: D1Database,
@@ -927,12 +930,20 @@ export async function handleListBackups(
 
 /**
  * 導出單個數據庫的所有表為 SQL 語句
+ * @param excludeLogData 為 true 時，ay_syslog 僅導出表結構（CREATE TABLE），不導出數據行
  * @returns SQL 字符串數組（不含事務包裝）
  */
-async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<{ parts: string[]; tableCount: number; rowCount: number }> {
+async function dumpDatabaseTables(
+  db: D1Database,
+  siteId: string,
+  excludeLogData = false,
+): Promise<{ parts: string[]; tableCount: number; rowCount: number }> {
   const parts: string[] = [];
   parts.push('-- ============================================================');
   parts.push(`-- Site: ${siteId}`);
+  if (excludeLogData) {
+    parts.push('-- Note: Log data (ay_syslog) excluded — schema only');
+  }
   parts.push('-- ============================================================');
   parts.push('');
 
@@ -951,11 +962,19 @@ async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<{ par
 
     parts.push('-- ------------------------------------------------------------');
     parts.push(`-- Table: ${table}`);
+    if (excludeLogData && BACKUP_EXCLUDABLE_DATA_TABLES.has(table)) {
+      parts.push(`-- (schema only, data excluded)`);
+    }
     parts.push('-- ------------------------------------------------------------');
 
     parts.push(`DROP TABLE IF EXISTS ${table};`);
     parts.push(schemaRow.sql + ';');
     parts.push('');
+
+    // 排除日誌數據時，僅導出 schema，跳過 SELECT *
+    if (excludeLogData && BACKUP_EXCLUDABLE_DATA_TABLES.has(table)) {
+      continue;
+    }
 
     // 查詢所有數據行
     const dataResult = await db.prepare(`SELECT * FROM "${table}"`).all();
@@ -1001,6 +1020,7 @@ export async function handleCreateBackup(
   kv: KVNamespace,
   siteId: string,
   s3Secrets?: S3Secrets,
+  options?: { excludeLogData?: boolean },
 ): Promise<Response> {
   const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
@@ -1014,8 +1034,10 @@ export async function handleCreateBackup(
     const backupName = `${siteId}_backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
+    const excludeLogData = options?.excludeLogData ?? false;
+
     // 生成 SQL 內容 — 僅導出當前站點
-    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId, excludeLogData);
 
     const parts: string[] = [];
     parts.push('-- ============================================================');
@@ -1023,6 +1045,9 @@ export async function handleCreateBackup(
     parts.push(`-- Generated: ${now}`);
     parts.push(`-- Site: ${siteId}`);
     parts.push(`-- Tables: ${tableCount} (with data)`);
+    if (excludeLogData) {
+      parts.push('-- Log data (ay_syslog) excluded — schema only');
+    }
     parts.push('-- ============================================================');
     parts.push('');
     parts.push('PRAGMA foreign_keys=OFF;');
@@ -1044,7 +1069,7 @@ export async function handleCreateBackup(
     try {
       await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', now, 'system').run();
+      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', now, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     return okData(
@@ -1057,6 +1082,7 @@ export async function handleCreateBackup(
         site: siteId,
         totalTables: tableCount,
         totalRows: rowCount,
+        excludeLogData,
       },
       '備份創建成功',
     );
@@ -1079,17 +1105,23 @@ interface BackupScheduleConfig {
   weekday: string;       // '0'-'6' (0=週日, 1=週一, ..., 6=週六)，weekly 時使用
   keep: number;          // 保留備份數量
   lastRun: string;       // 上次執行時間 'YYYY-MM-DD HH:mm:ss'
+  excludeLogs: string;   // '0' | '1' 備份時排除日誌數據
+  logRetentionDays: number; // 日誌保留天數（0 = 不自動清理）
+  lastLogCleanup: string;   // 上次日誌清理時間
 }
 
 /** 讀取定時備份配置 */
 async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise<BackupScheduleConfig> {
-  const [enabled, frequency, time, weekday, keep, lastRun] = await Promise.all([
+  const [enabled, frequency, time, weekday, keep, lastRun, excludeLogs, logRetentionDays, lastLogCleanup] = await Promise.all([
     getConfig(db, kv, 'backup_schedule_enabled', '0'),
     getConfig(db, kv, 'backup_schedule_frequency', 'daily'),
     getConfig(db, kv, 'backup_schedule_time', '03:00'),
     getConfig(db, kv, 'backup_schedule_weekday', '1'),
     getConfig(db, kv, 'backup_schedule_keep', '7'),
     getConfig(db, kv, 'backup_last_run', ''),
+    getConfig(db, kv, 'backup_exclude_logs', '0'),
+    getConfig(db, kv, 'log_retention_days', '30'),
+    getConfig(db, kv, 'log_last_cleanup', ''),
   ]);
   return {
     enabled,
@@ -1098,6 +1130,9 @@ async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise
     weekday,
     keep: parseInt(keep, 10) || 7,
     lastRun,
+    excludeLogs,
+    logRetentionDays: parseInt(logRetentionDays, 10) || 0,
+    lastLogCleanup,
   };
 }
 
@@ -1114,7 +1149,7 @@ export async function handleGetBackupSchedule(
 export async function handleUpdateBackupSchedule(
   db: D1Database,
   kv: KVNamespace,
-  body: { enabled?: string; frequency?: string; time?: string; weekday?: string; keep?: number },
+  body: { enabled?: string; frequency?: string; time?: string; weekday?: string; keep?: number; excludeLogs?: string; logRetentionDays?: number },
 ): Promise<Response> {
   const updates: Array<{ name: string; value: string }> = [];
 
@@ -1123,6 +1158,8 @@ export async function handleUpdateBackupSchedule(
   if (body.time !== undefined) updates.push({ name: 'backup_schedule_time', value: body.time });
   if (body.weekday !== undefined) updates.push({ name: 'backup_schedule_weekday', value: body.weekday });
   if (body.keep !== undefined) updates.push({ name: 'backup_schedule_keep', value: String(body.keep) });
+  if (body.excludeLogs !== undefined) updates.push({ name: 'backup_exclude_logs', value: body.excludeLogs });
+  if (body.logRetentionDays !== undefined) updates.push({ name: 'log_retention_days', value: String(body.logRetentionDays) });
 
   if (updates.length === 0) {
     return err('沒有需要更新的字段', 1001);
@@ -1268,7 +1305,8 @@ export async function handleScheduledBackup(
     const backupName = `${siteId}_backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
-    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
+    const excludeLogData = config.excludeLogs === '1';
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId, excludeLogData);
 
     const parts: string[] = [];
     parts.push('-- ============================================================');
@@ -1276,6 +1314,9 @@ export async function handleScheduledBackup(
     parts.push(`-- Generated: ${nowHk}`);
     parts.push(`-- Site: ${siteId}`);
     parts.push(`-- Tables: ${tableCount} (with data)`);
+    if (excludeLogData) {
+      parts.push('-- Log data (ay_syslog) excluded — schema only');
+    }
     parts.push('-- ============================================================');
     parts.push('');
     parts.push('PRAGMA foreign_keys=OFF;');
@@ -1305,7 +1346,7 @@ export async function handleScheduledBackup(
     try {
       await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', nowHk, 'system').run();
+      ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', nowHk, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     // 清理過期備份（按站點獨立保留）
@@ -1313,9 +1354,178 @@ export async function handleScheduledBackup(
     if (deleted > 0) {
       console.log(`[ScheduledBackup] ${siteId}: 清理了 ${deleted} 個過期備份`);
     }
+
+    // 定時日誌清理（v1.9.45）：每天最多執行一次，保留最近 N 天日誌
+    await handleScheduledLogCleanup(db, kv, config.logRetentionDays, siteId);
   } catch (e) {
     console.error(`[ScheduledBackup] ${siteId}: 備份失敗:`, e);
   }
+}
+
+// ============================================================================
+// 日誌清理機制 (v1.9.45)
+// 支持手動清理 + Cron 定時自動清理，保留最近 N 天日誌
+// ============================================================================
+
+/**
+ * 手動清理舊日誌 (API 響應)
+ * @param days 保留最近 N 天日誌，刪除更早的記錄
+ */
+export async function handleCleanupLogs(
+  db: D1Database,
+  kv: KVNamespace,
+  days: number,
+): Promise<Response> {
+  if (!days || days < 1) {
+    return err('保留天數必須大於 0', 1001);
+  }
+  if (days > 365) {
+    return err('保留天數不能超過 365', 1001);
+  }
+
+  try {
+    // 計算截止日期（香港時區）
+    const now = new Date();
+    const hkStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' });
+    const cutoff = new Date(hkStr);
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = cutoff.toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' });
+
+    // 先查詢將要刪除的記錄數
+    const countResult = await db
+      .prepare('SELECT COUNT(*) as cnt FROM ay_syslog WHERE create_time < ?')
+      .bind(cutoffStr)
+      .first<{ cnt: number }>();
+    const deleteCount = countResult?.cnt ?? 0;
+
+    if (deleteCount === 0) {
+      return okData({ deleted: 0, cutoff: cutoffStr }, '沒有需要清理的舊日誌');
+    }
+
+    // 執行刪除
+    await db.prepare('DELETE FROM ay_syslog WHERE create_time < ?').bind(cutoffStr).run();
+
+    // 記錄清理操作本身（使用當前時間）
+    const nowHk = nowStr();
+    try {
+      await db.prepare(
+        'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
+      ).bind('admin', `日誌清理: 刪除 ${deleteCount} 條 ${days} 天前的舊日誌（截止 ${cutoffStr}）`, '127.0.0.1', nowHk, 'system').run();
+    } catch { /* 日誌寫入失敗不影響主流程 */ }
+
+    // 清除配置緩存
+    await kv.delete('config:all');
+
+    return okData({ deleted: deleteCount, cutoff: cutoffStr }, `成功清理 ${deleteCount} 條舊日誌`);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知錯誤';
+    return err(`日誌清理失敗: ${msg}`, 1005);
+  }
+}
+
+/**
+ * 獲取日誌統計信息 (API 響應)
+ * 返回總日誌數、各級別數量、最早/最新記錄時間
+ */
+export async function handleGetLogStats(db: D1Database): Promise<Response> {
+  try {
+    const totalResult = await db.prepare('SELECT COUNT(*) as total FROM ay_syslog').first<{ total: number }>();
+
+    // 分級別統計（單獨查詢避免 compound SELECT 過多）
+    const levelResult = await db
+      .prepare('SELECT level, COUNT(*) as cnt FROM ay_syslog GROUP BY level ORDER BY cnt DESC')
+      .all<{ level: string; cnt: number }>();
+
+    const earliestResult = await db
+      .prepare('SELECT create_time FROM ay_syslog ORDER BY id ASC LIMIT 1')
+      .first<{ create_time: string }>();
+
+    const latestResult = await db
+      .prepare('SELECT create_time FROM ay_syslog ORDER BY id DESC LIMIT 1')
+      .first<{ create_time: string }>();
+
+    return okData({
+      total: totalResult?.total ?? 0,
+      levels: levelResult.results,
+      earliest: earliestResult?.create_time ?? '',
+      latest: latestResult?.create_time ?? '',
+    }, '成功');
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '未知錯誤';
+    return err(`獲取日誌統計失敗: ${msg}`, 1005);
+  }
+}
+
+/**
+ * 定時日誌清理（Cron 調用，每天最多執行一次）
+ * 在 handleScheduledBackup 之後調用，利用已有的定時備份觸發週期
+ */
+async function handleScheduledLogCleanup(
+  db: D1Database,
+  kv: KVNamespace,
+  retentionDays: number,
+  siteId: string,
+): Promise<void> {
+  // logRetentionDays = 0 表示不自動清理
+  if (retentionDays <= 0) return;
+
+  try {
+    // 檢查今天是否已經清理過（每天最多一次）
+    const now = new Date();
+    const hkStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' });
+    const today = hkStr.slice(0, 10);
+
+    // 讀取上次清理日期
+    const lastCleanup = await getConfig(db, kv, 'log_last_cleanup', '');
+    if (lastCleanup.slice(0, 10) === today) return; // 今天已清理
+
+    // 計算截止日期
+    const cutoff = new Date(hkStr);
+    cutoff.setDate(cutoff.getDate() - retentionDays);
+    const cutoffStr = cutoff.toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' });
+
+    // 先查詢將要刪除的記錄數
+    const countResult = await db
+      .prepare('SELECT COUNT(*) as cnt FROM ay_syslog WHERE create_time < ?')
+      .bind(cutoffStr)
+      .first<{ cnt: number }>();
+    const deleteCount = countResult?.cnt ?? 0;
+
+    if (deleteCount === 0) {
+      // 沒有需要清理的記錄，仍然更新 last_cleanup 避免重複查詢
+      await updateLogCleanupTimestamp(db, kv, hkStr);
+      return;
+    }
+
+    // 執行刪除
+    await db.prepare('DELETE FROM ay_syslog WHERE create_time < ?').bind(cutoffStr).run();
+
+    // 更新清理時間戳
+    await updateLogCleanupTimestamp(db, kv, hkStr);
+
+    // 記錄清理日誌
+    try {
+      await db.prepare(
+        'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
+      ).bind('admin', `定時日誌清理: 刪除 ${deleteCount} 條 ${retentionDays} 天前的舊日誌（${siteId} 站點）`, '127.0.0.1', hkStr, 'system').run();
+    } catch { /* 日誌寫入失敗不影響主流程 */ }
+
+    console.log(`[LogCleanup] ${siteId}: 清理了 ${deleteCount} 條舊日誌（保留 ${retentionDays} 天）`);
+  } catch (e) {
+    console.error(`[LogCleanup] ${siteId}: 日誌清理失敗:`, e);
+  }
+}
+
+/** 更新日誌清理時間戳到 ay_config */
+async function updateLogCleanupTimestamp(db: D1Database, kv: KVNamespace, timestamp: string): Promise<void> {
+  const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('log_last_cleanup').first<{ id: number }>();
+  if (existing) {
+    await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(timestamp, 'log_last_cleanup').run();
+  } else {
+    await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+      .bind('log_last_cleanup', timestamp, '1', 95, '上次日誌清理執行時間').run();
+  }
+  await kv.delete('config:all');
 }
 
 /** 下載備份文件 (從 R2/S3 存儲) */

@@ -19,6 +19,17 @@ interface BackupSchedule {
   weekday: string
   keep: number
   lastRun: string
+  excludeLogs: string
+  logRetentionDays: number
+  lastLogCleanup: string
+}
+
+/** 日誌統計信息 */
+interface LogStats {
+  total: number
+  levels: { level: string; cnt: number }[]
+  earliest: string
+  latest: string
 }
 
 /** 星期標籤 */
@@ -63,6 +74,9 @@ export default function DatabasePage() {
   const [creating, setCreating] = useState(false)
   const [actionFile, setActionFile] = useState<string | null>(null)
 
+  // 備份選項：是否排除日誌數據
+  const [excludeLogs, setExcludeLogs] = useState(false)
+
   // 定時備份配置
   const [schedule, setSchedule] = useState<BackupSchedule>({
     enabled: '0',
@@ -71,10 +85,20 @@ export default function DatabasePage() {
     weekday: '1',
     keep: 7,
     lastRun: '',
+    excludeLogs: '0',
+    logRetentionDays: 30,
+    lastLogCleanup: '',
   })
   const [scheduleLoading, setScheduleLoading] = useState(true)
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleMsg, setScheduleMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // 日誌統計與清理
+  const [logStats, setLogStats] = useState<LogStats | null>(null)
+  const [logStatsLoading, setLogStatsLoading] = useState(false)
+  const [cleanupDays, setCleanupDays] = useState(30)
+  const [cleaning, setCleaning] = useState(false)
+  const [cleanupMsg, setCleanupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   /** 載入備份列表 */
   const fetchBackups = useCallback(async () => {
@@ -105,22 +129,59 @@ export default function DatabasePage() {
     }
   }, [])
 
+  /** 載入日誌統計 */
+  const fetchLogStats = useCallback(async () => {
+    setLogStatsLoading(true)
+    try {
+      const res = await api.get<LogStats>('/admin/database/log-stats')
+      if (res.data) {
+        setLogStats(res.data)
+      }
+    } catch {
+      // 靜默失敗，日誌統計為輔助信息
+    } finally {
+      setLogStatsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchBackups()
     fetchSchedule()
-  }, [fetchBackups, fetchSchedule])
+    fetchLogStats()
+  }, [fetchBackups, fetchSchedule, fetchLogStats])
 
   /** 建立備份 */
   const handleCreateBackup = async () => {
     setCreating(true)
     setError('')
     try {
-      await api.post('/admin/database/backup', {})
+      await api.post(`/admin/database/backup${excludeLogs ? '?excludeLogs=1' : ''}`, {})
       await fetchBackups()
     } catch (err) {
       setError(err instanceof Error ? err.message : '建立備份失敗')
     } finally {
       setCreating(false)
+    }
+  }
+
+  /** 手動清理舊日誌 */
+  const handleCleanupLogs = async () => {
+    if (!window.confirm(`確定要清理 ${cleanupDays} 天前的舊日誌嗎？此操作不可撤銷。`)) return
+    setCleaning(true)
+    setCleanupMsg(null)
+    try {
+      const res = await api.post<{ deleted: number; cutoff: string }>(`/admin/database/cleanup-logs?days=${cleanupDays}`, {})
+      const deleted = res.data?.deleted ?? 0
+      setCleanupMsg({
+        type: 'success',
+        text: deleted > 0 ? `成功清理 ${deleted} 條舊日誌` : '沒有需要清理的舊日誌',
+      })
+      // 重新載入日誌統計
+      await fetchLogStats()
+    } catch (err) {
+      setCleanupMsg({ type: 'error', text: err instanceof Error ? err.message : '清理失敗' })
+    } finally {
+      setCleaning(false)
     }
   }
 
@@ -181,6 +242,8 @@ export default function DatabasePage() {
         time: schedule.time,
         weekday: schedule.weekday,
         keep: schedule.keep,
+        excludeLogs: schedule.excludeLogs,
+        logRetentionDays: schedule.logRetentionDays,
       })
       setScheduleMsg({ type: 'success', text: '定時備份配置已保存' })
       // 重新載入以獲取最新的 lastRun
@@ -203,14 +266,26 @@ export default function DatabasePage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">管理資料庫備份文件，可建立、下載或刪除備份</p>
         </div>
-        <button
-          onClick={handleCreateBackup}
-          disabled={creating}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
-        >
-          {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
-          {creating ? '備份中...' : '建立備份'}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* 排除日誌數據選項 */}
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={excludeLogs}
+              onChange={(e) => setExcludeLogs(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            <span>排除日誌數據</span>
+          </label>
+          <button
+            onClick={handleCreateBackup}
+            disabled={creating}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
+          >
+            {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
+            {creating ? '備份中...' : '建立備份'}
+          </button>
+        </div>
       </div>
 
       {/* 定時備份設置卡片 */}
@@ -321,6 +396,59 @@ export default function DatabasePage() {
               </button>
             </div>
 
+            {/* 第二行：日誌相關配置 */}
+            <div className="flex flex-wrap items-end gap-4 pt-3 border-t">
+              {/* 備份排除日誌 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">備份排除日誌數據</label>
+                <button
+                  type="button"
+                  onClick={() => setSchedule(s => ({ ...s, excludeLogs: s.excludeLogs === '1' ? '0' : '1' }))}
+                  disabled={schedule.enabled !== '1'}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+                    schedule.excludeLogs === '1' ? 'bg-primary' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      schedule.excludeLogs === '1' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {schedule.excludeLogs === '1' ? '✅ 排除（僅備份表結構）' : '包含日誌數據'}
+                </span>
+              </div>
+
+              {/* 日誌保留天數 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">日誌自動清理</label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground">保留最近</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={schedule.logRetentionDays}
+                    onChange={(e) => setSchedule(s => ({ ...s, logRetentionDays: parseInt(e.target.value, 10) || 0 }))}
+                    disabled={schedule.enabled !== '1'}
+                    className="w-16 px-2 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <span className="text-xs text-muted-foreground">天（0=不自動清理）</span>
+                </div>
+              </div>
+
+              {/* 上次日誌清理時間 */}
+              {schedule.lastLogCleanup && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1">
+                    <span>🧹</span>
+                    上次清理: <span className="font-mono text-foreground">{formatDate(schedule.lastLogCleanup)}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+
             {/* 上次執行時間 + 提示消息 */}
             <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
               {schedule.lastRun && (
@@ -353,6 +481,85 @@ export default function DatabasePage() {
             )}
           </div>
         )}
+      </div>
+
+      {/* 日誌管理卡片 */}
+      <div className="mb-6 bg-white rounded-lg border overflow-hidden">
+        <div className="px-4 py-3 border-b bg-secondary/30">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <span>🧹</span>
+            日誌管理
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              （系統操作日誌統計與清理）
+            </span>
+          </h2>
+        </div>
+
+        <div className="p-4">
+          {/* 日誌統計 */}
+          {logStatsLoading ? (
+            <div className="py-4"><LoadingState text="載入日誌統計..." /></div>
+          ) : logStats ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-secondary/20 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-primary">{logStats.total}</div>
+                <div className="text-xs text-muted-foreground mt-1">總日誌數</div>
+              </div>
+              <div className="bg-secondary/20 rounded-lg p-3 text-center">
+                <div className="text-sm font-mono text-foreground">{logStats.earliest || '—'}</div>
+                <div className="text-xs text-muted-foreground mt-1">最早記錄</div>
+              </div>
+              <div className="bg-secondary/20 rounded-lg p-3 text-center">
+                <div className="text-sm font-mono text-foreground">{logStats.latest || '—'}</div>
+                <div className="text-xs text-muted-foreground mt-1">最新記錄</div>
+              </div>
+              <div className="bg-secondary/20 rounded-lg p-3 text-center">
+                <div className="text-sm text-foreground">
+                  {logStats.levels.slice(0, 3).map(l => `${l.level}: ${l.cnt}`).join(' · ') || '—'}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">級別分佈</div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* 手動清理區 */}
+          <div className="flex flex-wrap items-end gap-3 pt-3 border-t">
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">手動清理舊日誌</label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">刪除</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={cleanupDays}
+                  onChange={(e) => setCleanupDays(parseInt(e.target.value, 10) || 30)}
+                  className="w-16 px-2 py-1.5 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="text-xs text-muted-foreground">天前的日誌</span>
+              </div>
+            </div>
+            <button
+              onClick={handleCleanupLogs}
+              disabled={cleaning}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-300 text-red-600 rounded-md hover:bg-red-50 disabled:opacity-50 transition-colors"
+            >
+              {cleaning ? <span className="animate-spin inline-block">🔄</span> : <span>🧹</span>}
+              {cleaning ? '清理中...' : '立即清理'}
+            </button>
+
+            {cleanupMsg && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs ${
+                cleanupMsg.type === 'success'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-destructive/10 text-destructive border border-destructive/20'
+              }`}>
+                <span>{cleanupMsg.type === 'success' ? '✅' : '⚠️'}</span>
+                {cleanupMsg.text}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 錯誤提示 */}

@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.45',
+    date: '2026-07-30 16:48:51',
+    icon: '🧹',
+    latest: true,
+    changes: `🧹 備份排除日誌 + 日誌清理機制\n\n📋 變更內容\n• 備份排除日誌數據：dumpDatabaseTables 新增 excludeLogData 參數，為 true 時 ay_syslog 僅導出 CREATE TABLE（表結構），不導出 INSERT 數據行，可大幅減小備份文件大小（endoscopy 站點從 343KB 降至約 177KB）\n• 手動備份：建立備份按鈕旁新增「排除日誌數據」checkbox，勾選後備份不含日誌數據\n• 定時備份：配置區新增「備份排除日誌數據」開關（backup_exclude_logs 配置項）\n• 日誌清理機制：新增 handleCleanupLogs（手動）+ handleScheduledLogCleanup（自動），按天數刪除舊日誌\n• 日誌統計 API：GET /admin/database/log-stats 返回總數、級別分佈、最早/最新記錄\n• 手動清理 API：POST /admin/database/cleanup-logs?days=30\n• 自動清理：Cron 定時備份後執行，每天最多一次，log_retention_days=0 時不自動清理\n• 前端 Database.tsx 新增「日誌管理」卡片：統計數據展示 + 手動清理按鈕 + 保留天數輸入`,
+  },
+  {
     version: 'v1.9.44',
     date: '2026-07-30 16:28:35',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 修復非 smile 站點數據庫備份失敗\n\n📋 變更內容\n• 修復 vision/endoscopy 站點手動備份報錯「no such table: ay_booking_calendar」— dumpDatabaseTables 遍歷 BACKUP_TABLES 時，先查 sqlite_master 確認表存在，不存在則 continue 跳過\n• 根因：BACKUP_TABLES 硬編碼包含 ay_booking_calendar / ay_booking_schedule（僅 smile 站點有這兩張表），其他站點 SELECT * 報 SQLITE_ERROR\n• 原邏輯缺陷：schemaRow?.sql 判斷了表是否存在並輸出 CREATE 語句，但 SELECT * 查數據時未跳過不存在的表`,
   },
   {
@@ -845,11 +852,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/users/:id/sites', desc: '設置用戶站點分配', auth: true },
   // 數據庫備份 (超管, v1.9.37+)
   { method: 'GET', path: '/api/v1/admin/database/backups', desc: '備份文件列表', auth: true },
-  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（僅當前站點）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（?excludeLogs=1 排除日誌數據）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backup-schedule', desc: '定時備份排程配置（v1.9.37+）', auth: true },
   { method: 'PUT', path: '/api/v1/admin/database/backup-schedule', desc: '更新定時備份排程（v1.9.37+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份文件', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/database/backups/:filename', desc: '刪除備份文件', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/log-stats', desc: '日誌統計（總數/級別/時間範圍，v1.9.45+）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/cleanup-logs', desc: '清理舊日誌（?days=30，v1.9.45+）', auth: true },
   // 存儲管理 (超管, v1.9.39+ 合併至系統設置)
   { method: 'GET', path: '/api/v1/admin/storage/config', desc: '存儲配置（憑證 *** 遮罩）', auth: true },
   { method: 'PUT', path: '/api/v1/admin/storage/config', desc: '更新存儲配置（密鑰寫入 Secrets Store）', auth: true },

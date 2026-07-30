@@ -1760,10 +1760,13 @@ app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
 
+  // 支持排除日誌數據選項（v1.9.45）
+  const excludeLogData = c.req.query('excludeLogs') === '1';
+
   // 僅備份當前站點數據庫
   return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, currentSiteId(c), {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  });
+  }, { excludeLogData });
 });
 
 // ===== 定時備份排程配置 (v1.9.37) =====
@@ -1796,6 +1799,20 @@ app.delete('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   return systemService.handleDeleteBackup(siteDB(c), c.env.CONFIG_CACHE, filename, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
+});
+
+// ===== 日誌清理 (v1.9.45) =====
+app.get('/api/v1/admin/database/log-stats', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return systemService.handleGetLogStats(siteDB(c));
+});
+
+app.post('/api/v1/admin/database/cleanup-logs', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const days = parseInt(c.req.query('days') || '30', 10);
+  return systemService.handleCleanupLogs(siteDB(c), c.env.CONFIG_CACHE, days);
 });
 
 // ===== 語義搜索 (Vectorize + Workers AI) =====
