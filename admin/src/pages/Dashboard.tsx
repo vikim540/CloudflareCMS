@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.43',
+    date: '2026-07-30 16:14:01',
+    icon: '💾',
+    latest: true,
+    changes: `💾 數據庫備份多站點改進\n\n📋 變更內容\n• 備份文件命名加站點前綴：backup_YYYYMMDDHHmmss.sql → {siteId}_backup_YYYYMMDDHHmmss.sql（如 endoscopy_backup_20260730160000.sql）\n• 修復保留策略嚴重 bug：applyBackupRetention 原邏輯全局統一保留 N 份，3 站同時備份時 keep=7 實際每站僅保留約 2 份 → 改為按站點前綴分組，每站獨立保留 N 份\n• 前端備份列表新增「站點」列，藍色徽章顯示站點 ID，舊格式文件顯示灰色「舊格式」標籤\n• 向後兼容：舊格式 backup_*.sql 文件仍可列出、下載、刪除，保留清理也按 keepCount 獨立管理\n• 定時備份已支持多站點：Cron 遍歷所有註冊站點數據庫，各站獨立判斷是否到期（v1.9.37 已有，本次確認）`,
+  },
+  {
     version: 'v1.9.42',
     date: '2026-07-30 16:01:41',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: `🔒 回收站等頁面權限 toast 修復 + wrangler 升級\n\n📋 變更內容\n• 修復非 M202 權限用戶進入回收站（M208）彈出「無權限訪問此功能」toast — Trash 頁面載入欄目樹改用 /admin/sorts/all 白名單端點（原 /admin/sorts 需 M202 權限）\n• 舉一反三修復同類問題：Singles（M203）、ExtFields（M206）、Categories（M202）頁面的欄目樹/模型列表載入均改用 /all 白名單端點\n• 根因：頁面載入引用數據（下拉選單）調用了需其他菜單權限的端點，403 響應觸發全局 toast，即使頁面主數據正常載入\n• wrangler 從 4.111.0 升級至 4.115.0（修復 pnpm 跨盤 EBUSY 問題，使用同盤 store-dir 安裝）\n• AGENTS.md 新增開發規範：前端載入引用數據必須使用 /all 白名單端點`,
   },
   {

@@ -8,6 +8,7 @@ interface BackupFile {
   filename: string
   size: number
   date: string
+  site: string
 }
 
 /** 定時備份配置 */
@@ -391,6 +392,7 @@ export default function DatabasePage() {
               <thead>
                 <tr className="border-b bg-secondary/50">
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">文件名</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">站點</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">大小</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">建立時間</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
@@ -407,6 +409,19 @@ export default function DatabasePage() {
                         <span className="text-muted-foreground shrink-0">📄</span>
                         <span className="font-mono text-xs">{file.filename}</span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {file.site && file.site !== '(舊格式)' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                          {file.site}
+                        </span>
+                      ) : file.site === '(舊格式)' ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
+                          舊格式
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{formatSize(file.size)}</td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">

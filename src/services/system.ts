@@ -891,19 +891,30 @@ export async function handleListBackups(
     const backups = result.files
       .filter((f) => f.key.endsWith('.sql'))
       .map((f) => {
-        // 從文件名解析建立時間 (backup_YYYYMMDDHHmmss.sql)
-        const match = f.key.match(/backup_(\d{14})\.sql/);
+        const filename = f.key.replace(BACKUP_PREFIX, '');
+        // 新格式: {siteId}_backup_YYYYMMDDHHmmss.sql
+        const newMatch = f.key.match(/(\w+)_backup_(\d{14})\.sql$/);
+        // 舊格式: backup_YYYYMMDDHHmmss.sql（向後兼容）
+        const oldMatch = f.key.match(/backup_(\d{14})\.sql$/);
+
         let date = f.lastModified || '';
-        if (match) {
-          const s = match[1];
-          // 轉為 YYYY-MM-DD HH:mm:ss 格式
+        let site = '';
+
+        if (newMatch) {
+          site = newMatch[1];
+          const s = newMatch[2];
+          date = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}`;
+        } else if (oldMatch) {
+          site = '(舊格式)';
+          const s = oldMatch[1];
           date = `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)} ${s.slice(8,10)}:${s.slice(10,12)}:${s.slice(12,14)}`;
         }
         return {
-          filename: f.key.replace(BACKUP_PREFIX, ''),
+          filename,
           key: f.key,
           size: f.size,
           date,
+          site,
         };
       });
 
@@ -998,8 +1009,8 @@ export async function handleCreateBackup(
   try {
     const now = nowStr();
     const timestamp = now.replace(/[: ]/g, '').replace(/[-]/g, '');
-    // 格式: backup_YYYYMMDDHHmmss
-    const backupName = `backup_${timestamp}.sql`;
+    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql（站點前綴區分不同站數據庫）
+    const backupName = `${siteId}_backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
     // 生成 SQL 內容 — 僅導出當前站點
@@ -1133,12 +1144,17 @@ export async function handleUpdateBackupSchedule(
   return ok('定時備份配置更新成功');
 }
 
-/** 清理過期備份（保留最近 N 個） */
+/**
+ * 清理過期備份（按站點獨立保留最近 N 個）
+ * 新格式 {siteId}_backup_*.sql 按站點前綴分組，每站保留 keepCount 個
+ * 舊格式 backup_*.sql（無站點前綴）單獨保留 keepCount 個
+ */
 async function applyBackupRetention(
   db: D1Database,
   kv: KVNamespace,
   s3Secrets: S3Secrets | undefined,
   keepCount: number,
+  siteId: string,
 ): Promise<number> {
   if (keepCount <= 0) return 0;
 
@@ -1146,19 +1162,41 @@ async function applyBackupRetention(
   if (!s3Config) return 0;
 
   try {
-    const result = await s3ListObjects(s3Config, BACKUP_PREFIX, 100, '');
-    const backups = result.files
-      .filter((f) => f.key.endsWith('.sql'))
+    const result = await s3ListObjects(s3Config, BACKUP_PREFIX, 200, '');
+    const allFiles = result.files.filter((f) => f.key.endsWith('.sql'));
+
+    // 按站點前綴分組：新格式 {siteId}_backup_*.sql
+    const sitePrefix = `${siteId}_backup_`;
+    const siteBackups = allFiles
+      .filter((f) => f.key.includes(sitePrefix))
       .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
 
-    // 超出保留數量的刪除
-    const toDelete = backups.slice(keepCount);
-    for (const f of toDelete) {
+    // 舊格式 backup_*.sql（無站點前綴，向後兼容）
+    const legacyBackups = allFiles
+      .filter((f) => !f.key.includes('_backup_') && f.key.match(/backup_\d{14}\.sql/))
+      .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+
+    let deletedCount = 0;
+
+    // 當前站點超出保留數量的刪除
+    const siteToDelete = siteBackups.slice(keepCount);
+    for (const f of siteToDelete) {
       try {
         await s3DeleteObject(s3Config, f.key);
+        deletedCount++;
       } catch { /* 刪除失敗不影響主流程 */ }
     }
-    return toDelete.length;
+
+    // 舊格式備份也按 keepCount 清理（避免歷史文件堆積）
+    const legacyToDelete = legacyBackups.slice(keepCount);
+    for (const f of legacyToDelete) {
+      try {
+        await s3DeleteObject(s3Config, f.key);
+        deletedCount++;
+      } catch { /* 刪除失敗不影響主流程 */ }
+    }
+
+    return deletedCount;
   } catch {
     return 0;
   }
@@ -1225,7 +1263,8 @@ export async function handleScheduledBackup(
 
     const nowHk = nowStr();
     const timestamp = nowHk.replace(/[: ]/g, '').replace(/[-]/g, '');
-    const backupName = `backup_${timestamp}.sql`;
+    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql（站點前綴區分不同站數據庫）
+    const backupName = `${siteId}_backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
     const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
@@ -1268,8 +1307,8 @@ export async function handleScheduledBackup(
       ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', nowHk, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
-    // 清理過期備份
-    const deleted = await applyBackupRetention(db, kv, s3Secrets, config.keep);
+    // 清理過期備份（按站點獨立保留）
+    const deleted = await applyBackupRetention(db, kv, s3Secrets, config.keep, siteId);
     if (deleted > 0) {
       console.log(`[ScheduledBackup] ${siteId}: 清理了 ${deleted} 個過期備份`);
     }
