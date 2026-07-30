@@ -336,7 +336,8 @@ async function getMarkedPaths(db: D1Database): Promise<Set<string>> {
 
 /** 從配置中獲取 S3 配置。
  *  v1.8.7：s3_access_key / s3_secret_key 優先從 Secrets Store 讀取，
- *  若未提供 s3Secrets 則回退到 D1（向後相容）。 */
+ *  v1.9.38：Secrets Store 返回 null 時回退到 D1 明文憑證（兼容分站點獨立 S3 配置）。
+ *  若未提供 s3Secrets 則直接從 D1 讀取（向後相容）。 */
 export async function getS3Config(
   db: D1Database,
   kv: KVNamespace,
@@ -344,8 +345,13 @@ export async function getS3Config(
 ): Promise<S3Config | null> {
   const configs = await getAllConfigs(db, kv);
   const endpoint = configs['s3_endpoint'];
-  const accessKey = s3Secrets ? (await s3Secrets.accessKeyStore.get()) ?? '' : configs['s3_access_key'];
-  const secretKey = s3Secrets ? (await s3Secrets.secretKeyStore.get()) ?? '' : configs['s3_secret_key'];
+  // v1.9.38: Secrets Store 優先，返回 null 時回退到 D1 明文憑證
+  const accessKey = s3Secrets
+    ? (await s3Secrets.accessKeyStore.get()) ?? configs['s3_access_key'] ?? ''
+    : configs['s3_access_key'];
+  const secretKey = s3Secrets
+    ? (await s3Secrets.secretKeyStore.get()) ?? configs['s3_secret_key'] ?? ''
+    : configs['s3_secret_key'];
   const bucket = configs['s3_bucket'];
   const region = configs['s3_region'] || 'auto';
   const publicUrl = configs['s3_public_url'] || '';

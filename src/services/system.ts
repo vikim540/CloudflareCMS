@@ -983,17 +983,14 @@ async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<{ par
   return { parts, tableCount, rowCount };
 }
 
-/** 創建數據庫備份 (僅導出當前站點數據庫為 SQL 並上傳到 R2)
- *  v1.9.38: S3 配置始終從主庫讀取（configDb），數據導出用當前站點庫（dataDb）
- */
+/** 創建數據庫備份 (僅導出當前站點數據庫為 SQL 並上傳到 R2) */
 export async function handleCreateBackup(
-  configDb: D1Database,
-  dataDb: D1Database,
+  db: D1Database,
   kv: KVNamespace,
   siteId: string,
   s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(configDb, kv, s3Secrets);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
@@ -1006,7 +1003,7 @@ export async function handleCreateBackup(
     const backupKey = BACKUP_PREFIX + backupName;
 
     // 生成 SQL 內容 — 僅導出當前站點
-    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(dataDb, siteId);
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
 
     const parts: string[] = [];
     parts.push('-- ============================================================');
@@ -1033,7 +1030,7 @@ export async function handleCreateBackup(
 
     // 記錄備份日誌（寫入當前站點庫）
     try {
-      await dataDb.prepare(
+      await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
       ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', now, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
@@ -1170,16 +1167,14 @@ async function applyBackupRetention(
 /**
  * 定時備份檢查（由 Cron 每 15 分鐘調用）
  * 檢查當前站點是否需要執行定時備份，若到期則執行
- * v1.9.38: S3 配置從主庫讀取（configDb），排程配置+數據導出+日誌用站點庫（dataDb）
  */
 export async function handleScheduledBackup(
-  configDb: D1Database,
-  dataDb: D1Database,
+  db: D1Database,
   kv: KVNamespace,
   siteId: string,
   s3Secrets?: S3Secrets,
 ): Promise<void> {
-  const config = await getBackupScheduleConfig(dataDb, kv);
+  const config = await getBackupScheduleConfig(db, kv);
   if (config.enabled !== '1') return;
 
   // 當前香港時間
@@ -1222,7 +1217,7 @@ export async function handleScheduledBackup(
 
   // 執行備份
   try {
-    const s3Config = await getS3Config(configDb, kv, s3Secrets);
+    const s3Config = await getS3Config(db, kv, s3Secrets);
     if (!s3Config) {
       console.error(`[ScheduledBackup] ${siteId}: S3 存儲未配置，跳過`);
       return;
@@ -1233,7 +1228,7 @@ export async function handleScheduledBackup(
     const backupName = `backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
-    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(dataDb, siteId);
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
 
     const parts: string[] = [];
     parts.push('-- ============================================================');
@@ -1256,25 +1251,25 @@ export async function handleScheduledBackup(
 
     await s3PutObject(s3Config, backupKey, data, 'application/sql');
 
-    // 更新 last_run（寫入站點庫）
-    const existing = await dataDb.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
+    // 更新 last_run
+    const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
     if (existing) {
-      await dataDb.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
+      await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
     } else {
-      await dataDb.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+      await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
         .bind('backup_last_run', nowHk, '1', 94, '上次定時備份執行時間').run();
     }
     await kv.delete('config:all');
 
-    // 記錄日誌（寫入站點庫）
+    // 記錄日誌
     try {
-      await dataDb.prepare(
+      await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
       ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', nowHk, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
-    // 清理過期備份（S3 配置從主庫讀取）
-    const deleted = await applyBackupRetention(configDb, kv, s3Secrets, config.keep);
+    // 清理過期備份
+    const deleted = await applyBackupRetention(db, kv, s3Secrets, config.keep);
     if (deleted > 0) {
       console.log(`[ScheduledBackup] ${siteId}: 清理了 ${deleted} 個過期備份`);
     }

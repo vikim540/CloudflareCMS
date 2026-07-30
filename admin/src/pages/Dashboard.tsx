@@ -66,7 +66,7 @@ const VERSIONS: VersionEntry[] = [
     date: '2026-07-30 12:05:00',
     icon: '🔧',
     latest: true,
-    changes: `🔧 修復分站點備份 403 AccessDenied\n\n📋 問題根因\n• 備份 API 使用 siteDB(c) 讀取 S3 配置，切換到 smile 站點時從 smile 庫的 ay_config 讀取 S3 endpoint/bucket\n• S3 憑證是帳號級共享（Secrets Store），與 smile 站點的 S3 配置不匹配\n• S3 ListObjects 返回 403 AccessDenied，備份列表/創建/下載/刪除全部失敗\n\n📋 修復方案\n• S3 配置始終從主庫（env.DB）讀取，不再使用站點庫的 S3 配置\n• handleCreateBackup / handleScheduledBackup 分離 configDb（主庫）和 dataDb（站點庫）\n• 數據導出仍用當前站點庫，保證備份內容正確\n• 日誌和 last_run 寫入站點庫，保證排程配置的站點獨立性\n• 影響範圍：僅備份功能，其他 S3 操作（圖片上傳、媒體庫）不受影響`,
+    changes: `🔧 修復分站點備份 403 AccessDenied\n\n📋 問題根因\n• v1.9.37b 錯誤改動：S3 配置改從主庫讀取，但各站點 R2 endpoint 不同（不同 Cloudflare 帳號的桶）\n• smile 庫 endpoint（3cdadbb...）與主庫 endpoint（3d2ecef...）不同\n• 主庫 endpoint + Secrets Store 憑證不匹配 → S3 ListObjects 返回 403\n\n📋 修復方案\n• 恢復按站點讀取 S3 配置（siteDB(c)），各站點用自己的 endpoint + 憑證\n• getS3Config 改進：Secrets Store 返回 null 時回退到 D1 明文憑證（兼容分站點獨立配置）\n• 影響範圍：僅備份功能恢復正常，其他 S3 操作不受影響`,
   },
   {
     version: 'v1.9.37',
