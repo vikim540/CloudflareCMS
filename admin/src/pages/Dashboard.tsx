@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.37',
+    date: '2026-07-30 11:23:54',
+    icon: '⏰',
+    latest: true,
+    changes: `⏰ 定時備份排程 + 備份邏輯恢復單站點\n\n📋 定時備份排程（新功能）\n• Database 界面新增「定時備份排程」設置卡片（非全局配置）\n• 每站點獨立配置：啟用開關、頻率（每天/每週）、執行時間（HH:mm）、保留備份數\n• Cron 每 15 分鐘檢查是否到期，到期自動執行備份\n• 自動清理過期備份（保留最近 N 個，超出自動刪除）\n• 配置存儲在 ay_config（INSERT/UPDATE 自適應，無需 migration）\n• 新增 API：GET/PUT /api/v1/admin/database/backup-schedule\n• 前端顯示上次執行時間 + 當前配置摘要\n\n📋 備份邏輯恢復單站點\n• 恢復「建立備份」僅導出當前站點數據庫（非所有站點）\n• 修正 v1.9.36 錯誤改動：用戶確認每次備份只需當前站點\n• dumpDatabaseTables 返回 tableCount + rowCount 統計\n• 備份日誌記錄站點名 + 表數 + 行數`,
+  },
+  {
     version: 'v1.9.36',
     date: '2026-07-30 09:28:57',
     icon: '📅',
-    latest: true,
+    latest: false,
     changes: `📅 批量排期工作流優化 + 數據庫備份修復\n\n📋 批量排期工作流重構\n• 時段選擇從多選改為單選（radio）— 同一服務同一日期僅一個時段，符合實際業務\n• 月曆增強：已選日期下方即時顯示時段開始時間，已暫存日期綠色標記\n• 新增「預保存」按鈕 — 暫存當前批次到 localStorage（不怕意外關閉）\n• 原「確認新增」改為「確認完成（N 條）」— 一次性提交所有暫存批次\n• 切換服務類型時自動清除已選日期/時段，防跨服務數據污染\n• 重複日期檢測：相同服務+地點+日期時彈窗確認\n• 暫存批次管理面板：查看/移除單個批次/清空全部\n• 關閉對話框時提示未提交的暫存數量\n• 提交進度指示器（當前/總批數）\n• 服務類型重新定義：1=SMILE Pro 2.0(旺角+中環)、2=SMILE+ICL(僅中環)、3=老花矯視(僅旺角)\n• 時段格式改為 HH:mm-HH:mm（如 13:30-14:30），取代上午/下午\n• 新增特別場標記（is_special + special_label，如 LBV特別場）\n• 新增公開 API /api/v1/booking/services（服務列表+地點聯動+時段預設）\n\n📋 數據庫備份修復\n• 修復備份僅導出當前站點數據庫的問題（siteDB → 遍歷所有站點）\n• 備份現包含全部站點：endoscopy + smile + vision\n• BACKUP_TABLES 新增 ay_booking_calendar + ay_booking_schedule\n• 備份日誌增加站點數/表數/行數統計\n• 新增 migration 0003_booking_refine.sql（is_special + special_label 字段）`,
   },
   {
@@ -787,6 +794,13 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/sites/:siteId', desc: '更新站點信息 (超管)', auth: true },
   { method: 'GET', path: '/api/v1/admin/users/:id/sites', desc: '用戶已分配的站點列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/users/:id/sites', desc: '設置用戶站點分配', auth: true },
+  // 數據庫備份 (超管, v1.9.37+)
+  { method: 'GET', path: '/api/v1/admin/database/backups', desc: '備份文件列表', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（僅當前站點）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/backup-schedule', desc: '定時備份排程配置（v1.9.37+）', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/database/backup-schedule', desc: '更新定時備份排程（v1.9.37+）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份文件', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/database/backups/:filename', desc: '刪除備份文件', auth: true },
 ]
 
 /** 錯誤碼對照 */

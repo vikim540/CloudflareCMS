@@ -10,6 +10,15 @@ interface BackupFile {
   date: string
 }
 
+/** 定時備份配置 */
+interface BackupSchedule {
+  enabled: string
+  frequency: string
+  time: string
+  keep: number
+  lastRun: string
+}
+
 /** 格式化文件大小 */
 function formatSize(bytes: number): string {
   if (!bytes || bytes <= 0) return '-'
@@ -36,6 +45,18 @@ export default function DatabasePage() {
   const [creating, setCreating] = useState(false)
   const [actionFile, setActionFile] = useState<string | null>(null)
 
+  // 定時備份配置
+  const [schedule, setSchedule] = useState<BackupSchedule>({
+    enabled: '0',
+    frequency: 'daily',
+    time: '03:00',
+    keep: 7,
+    lastRun: '',
+  })
+  const [scheduleLoading, setScheduleLoading] = useState(true)
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleMsg, setScheduleMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
   /** 載入備份列表 */
   const fetchBackups = useCallback(async () => {
     setLoading(true)
@@ -50,9 +71,25 @@ export default function DatabasePage() {
     }
   }, [])
 
+  /** 載入定時備份配置 */
+  const fetchSchedule = useCallback(async () => {
+    setScheduleLoading(true)
+    try {
+      const res = await api.get<BackupSchedule>('/admin/database/backup-schedule')
+      if (res.data) {
+        setSchedule(res.data)
+      }
+    } catch {
+      // 配置不存在時使用默認值，不報錯
+    } finally {
+      setScheduleLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchBackups()
-  }, [fetchBackups])
+    fetchSchedule()
+  }, [fetchBackups, fetchSchedule])
 
   /** 建立備份 */
   const handleCreateBackup = async () => {
@@ -114,6 +151,27 @@ export default function DatabasePage() {
     }
   }
 
+  /** 保存定時備份配置 */
+  const handleSaveSchedule = async () => {
+    setScheduleSaving(true)
+    setScheduleMsg(null)
+    try {
+      await api.put('/admin/database/backup-schedule', {
+        enabled: schedule.enabled,
+        frequency: schedule.frequency,
+        time: schedule.time,
+        keep: schedule.keep,
+      })
+      setScheduleMsg({ type: 'success', text: '定時備份配置已保存' })
+      // 重新載入以獲取最新的 lastRun
+      await fetchSchedule()
+    } catch (err) {
+      setScheduleMsg({ type: 'error', text: err instanceof Error ? err.message : '保存失敗' })
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
+
   return (
     <div className="p-6">
       {/* 頁首 */}
@@ -133,6 +191,128 @@ export default function DatabasePage() {
           {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
           {creating ? '備份中...' : '建立備份'}
         </button>
+      </div>
+
+      {/* 定時備份設置卡片 */}
+      <div className="mb-6 bg-white rounded-lg border overflow-hidden">
+        <div className="px-4 py-3 border-b bg-secondary/30">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <span>⏰</span>
+            定時備份排程
+            <span className="text-xs font-normal text-muted-foreground ml-1">
+              （每站點獨立配置，Cron 每 15 分鐘檢查）
+            </span>
+          </h2>
+        </div>
+
+        {scheduleLoading ? (
+          <div className="px-4 py-8"><LoadingState text="載入配置中..." /></div>
+        ) : (
+          <div className="p-4 space-y-4">
+            {/* 開關 + 頻率 + 時間 + 保留數量 */}
+            <div className="flex flex-wrap items-end gap-4">
+              {/* 開關 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">啟用</label>
+                <button
+                  type="button"
+                  onClick={() => setSchedule(s => ({ ...s, enabled: s.enabled === '1' ? '0' : '1' }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    schedule.enabled === '1' ? 'bg-primary' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      schedule.enabled === '1' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {schedule.enabled === '1' ? '已啟用' : '已停用'}
+                </span>
+              </div>
+
+              {/* 頻率 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">備份頻率</label>
+                <select
+                  value={schedule.frequency}
+                  onChange={(e) => setSchedule(s => ({ ...s, frequency: e.target.value }))}
+                  disabled={schedule.enabled !== '1'}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="daily">每天</option>
+                  <option value="weekly">每週</option>
+                </select>
+              </div>
+
+              {/* 時間 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">執行時間</label>
+                <input
+                  type="time"
+                  value={schedule.time}
+                  onChange={(e) => setSchedule(s => ({ ...s, time: e.target.value }))}
+                  disabled={schedule.enabled !== '1'}
+                  className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              {/* 保留數量 */}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1.5">保留備份數</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={schedule.keep}
+                  onChange={(e) => setSchedule(s => ({ ...s, keep: parseInt(e.target.value, 10) || 7 }))}
+                  disabled={schedule.enabled !== '1'}
+                  className="w-20 px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <span className="ml-1.5 text-xs text-muted-foreground">個</span>
+              </div>
+
+              {/* 保存按鈕 */}
+              <button
+                onClick={handleSaveSchedule}
+                disabled={scheduleSaving}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity text-sm"
+              >
+                {scheduleSaving ? <span className="animate-spin inline-block">🔄</span> : <span>💾</span>}
+                {scheduleSaving ? '保存中...' : '保存配置'}
+              </button>
+            </div>
+
+            {/* 上次執行時間 + 提示消息 */}
+            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+              {schedule.lastRun && (
+                <span className="flex items-center gap-1">
+                  <span>🕐</span>
+                  上次執行: <span className="font-mono text-foreground">{formatDate(schedule.lastRun)}</span>
+                </span>
+              )}
+              {schedule.enabled === '1' && (
+                <span className="flex items-center gap-1 text-green-600">
+                  <span>✅</span>
+                  {schedule.frequency === 'daily' ? '每天' : '每週'} {schedule.time} 自動備份，保留最近 {schedule.keep} 個
+                </span>
+              )}
+            </div>
+
+            {/* 操作結果提示 */}
+            {scheduleMsg && (
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs ${
+                scheduleMsg.type === 'success'
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-destructive/10 text-destructive border border-destructive/20'
+              }`}>
+                <span>{scheduleMsg.type === 'success' ? '✅' : '⚠️'}</span>
+                {scheduleMsg.text}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 錯誤提示 */}

@@ -17,7 +17,8 @@ import { fromQuery, offset } from '../utils/pagination';
 import { hashPassword } from '../utils/password';
 import { getS3Config, type S3Secrets } from './storage';
 import { s3PutObject, s3GetObject, s3DeleteObject, s3ListObjects } from '../utils/s3sig';
-import { nowStr } from '../utils/datetime';
+import { nowStr, todayStr } from '../utils/datetime';
+import { getConfig } from './config';
 
 /** 超級管理員 ucode, 禁止刪除/禁用 */
 const SUPER_ADMIN_UCODE = '10001';
@@ -913,22 +914,19 @@ export async function handleListBackups(
   }
 }
 
-/** 站點數據庫條目（用於多站點備份） */
-interface SiteDbEntry {
-  siteId: string;
-  db: D1Database;
-}
-
 /**
  * 導出單個數據庫的所有表為 SQL 語句
  * @returns SQL 字符串數組（不含事務包裝）
  */
-async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<string[]> {
+async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<{ parts: string[]; tableCount: number; rowCount: number }> {
   const parts: string[] = [];
   parts.push('-- ============================================================');
   parts.push(`-- Site: ${siteId}`);
   parts.push('-- ============================================================');
   parts.push('');
+
+  let tableCount = 0;
+  let rowCount = 0;
 
   for (const table of BACKUP_TABLES) {
     // 從 sqlite_master 獲取 CREATE TABLE 語句
@@ -951,6 +949,8 @@ async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<strin
     const dataResult = await db.prepare(`SELECT * FROM "${table}"`).all();
 
     if (dataResult.results.length > 0) {
+      tableCount++;
+      rowCount += dataResult.results.length;
       const columns = Object.keys(dataResult.results[0] as Record<string, unknown>);
       for (const row of dataResult.results) {
         const record = row as Record<string, unknown>;
@@ -980,17 +980,17 @@ async function dumpDatabaseTables(db: D1Database, siteId: string): Promise<strin
     parts.push('');
   }
 
-  return parts;
+  return { parts, tableCount, rowCount };
 }
 
-/** 創建數據庫備份 (導出所有站點的全部表為 SQL 並上傳到 R2) */
+/** 創建數據庫備份 (僅導出當前站點數據庫為 SQL 並上傳到 R2) */
 export async function handleCreateBackup(
-  primaryDb: D1Database,
-  sites: SiteDbEntry[],
+  db: D1Database,
   kv: KVNamespace,
+  siteId: string,
   s3Secrets?: S3Secrets,
 ): Promise<Response> {
-  const s3Config = await getS3Config(primaryDb, kv, s3Secrets);
+  const s3Config = await getS3Config(db, kv, s3Secrets);
   if (!s3Config) {
     return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
   }
@@ -1002,37 +1002,21 @@ export async function handleCreateBackup(
     const backupName = `backup_${timestamp}.sql`;
     const backupKey = BACKUP_PREFIX + backupName;
 
-    // 生成 SQL 內容 — 遍歷所有站點數據庫
+    // 生成 SQL 內容 — 僅導出當前站點
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
+
     const parts: string[] = [];
     parts.push('-- ============================================================');
-    parts.push('-- Cloudflare CMS Database Backup (All Sites)');
+    parts.push('-- Cloudflare CMS Database Backup');
     parts.push(`-- Generated: ${now}`);
-    parts.push(`-- Sites: ${sites.map((s) => s.siteId).join(', ')}`);
-    parts.push(`-- Tables per site: ${BACKUP_TABLES.length}`);
+    parts.push(`-- Site: ${siteId}`);
+    parts.push(`-- Tables: ${tableCount} (with data)`);
     parts.push('-- ============================================================');
     parts.push('');
     parts.push('PRAGMA foreign_keys=OFF;');
     parts.push('BEGIN TRANSACTION;');
     parts.push('');
-
-    let totalTables = 0;
-    let totalRows = 0;
-
-    for (const site of sites) {
-      const siteParts = await dumpDatabaseTables(site.db, site.siteId);
-      parts.push(...siteParts);
-      // 統計
-      for (const table of BACKUP_TABLES) {
-        try {
-          const countResult = await site.db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`).first<{ cnt: number }>();
-          if (countResult && countResult.cnt > 0) {
-            totalTables++;
-            totalRows += countResult.cnt;
-          }
-        } catch { /* 表可能不存在於此站點，跳過 */ }
-      }
-    }
-
+    parts.push(...dumpParts);
     parts.push('COMMIT;');
     parts.push('');
 
@@ -1044,11 +1028,11 @@ export async function handleCreateBackup(
     // 上傳到 R2/S3
     await s3PutObject(s3Config, backupKey, data, 'application/sql');
 
-    // 記錄備份日誌（寫入主庫）
+    // 記錄備份日誌（寫入當前站點庫）
     try {
-      await primaryDb.prepare(
+      await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${sites.length} 站點, ${totalTables} 表, ${totalRows} 行)`, '127.0.0.1', now, 'system').run();
+      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', now, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     return okData(
@@ -1058,15 +1042,232 @@ export async function handleCreateBackup(
         size: data.byteLength,
         sizeKB: (data.byteLength / 1024).toFixed(2),
         createdAt: now,
-        sites: sites.map((s) => s.siteId),
-        totalTables,
-        totalRows,
+        site: siteId,
+        totalTables: tableCount,
+        totalRows: rowCount,
       },
       '備份創建成功',
     );
   } catch (e) {
     const msg = e instanceof Error ? e.message : '未知錯誤';
     return err(`備份創建失敗: ${msg}`, 1005);
+  }
+}
+
+// ============================================================================
+// 定時備份排程 (v1.9.37)
+// 配置存儲在 ay_config（每站點獨立），Cron 每 15 分鐘檢查是否到期
+// ============================================================================
+
+/** 定時備份配置 */
+interface BackupScheduleConfig {
+  enabled: string;       // '0' | '1'
+  frequency: string;     // 'daily' | 'weekly'
+  time: string;          // 'HH:mm'
+  keep: number;          // 保留備份數量
+  lastRun: string;       // 上次執行時間 'YYYY-MM-DD HH:mm:ss'
+}
+
+/** 讀取定時備份配置 */
+async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise<BackupScheduleConfig> {
+  const [enabled, frequency, time, keep, lastRun] = await Promise.all([
+    getConfig(db, kv, 'backup_schedule_enabled', '0'),
+    getConfig(db, kv, 'backup_schedule_frequency', 'daily'),
+    getConfig(db, kv, 'backup_schedule_time', '03:00'),
+    getConfig(db, kv, 'backup_schedule_keep', '7'),
+    getConfig(db, kv, 'backup_last_run', ''),
+  ]);
+  return {
+    enabled,
+    frequency,
+    time,
+    keep: parseInt(keep, 10) || 7,
+    lastRun,
+  };
+}
+
+/** 獲取定時備份配置（API 響應） */
+export async function handleGetBackupSchedule(
+  db: D1Database,
+  kv: KVNamespace,
+): Promise<Response> {
+  const config = await getBackupScheduleConfig(db, kv);
+  return okData(config, '成功');
+}
+
+/** 更新定時備份配置（API 響應） */
+export async function handleUpdateBackupSchedule(
+  db: D1Database,
+  kv: KVNamespace,
+  body: { enabled?: string; frequency?: string; time?: string; keep?: number },
+): Promise<Response> {
+  const updates: Array<{ name: string; value: string }> = [];
+
+  if (body.enabled !== undefined) updates.push({ name: 'backup_schedule_enabled', value: body.enabled });
+  if (body.frequency !== undefined) updates.push({ name: 'backup_schedule_frequency', value: body.frequency });
+  if (body.time !== undefined) updates.push({ name: 'backup_schedule_time', value: body.time });
+  if (body.keep !== undefined) updates.push({ name: 'backup_schedule_keep', value: String(body.keep) });
+
+  if (updates.length === 0) {
+    return err('沒有需要更新的字段', 1001);
+  }
+
+  for (const item of updates) {
+    // 先檢查是否存在，存在則 UPDATE，不存在則 INSERT
+    const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind(item.name).first<{ id: number }>();
+    if (existing) {
+      await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(item.value, item.name).run();
+    } else {
+      await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+        .bind(item.name, item.value, '1', 90, '定時備份配置').run();
+    }
+  }
+
+  // 清除配置緩存
+  await kv.delete('config:all');
+
+  return ok('定時備份配置更新成功');
+}
+
+/** 清理過期備份（保留最近 N 個） */
+async function applyBackupRetention(
+  db: D1Database,
+  kv: KVNamespace,
+  s3Secrets: S3Secrets | undefined,
+  keepCount: number,
+): Promise<number> {
+  if (keepCount <= 0) return 0;
+
+  const s3Config = await getS3Config(db, kv, s3Secrets);
+  if (!s3Config) return 0;
+
+  try {
+    const result = await s3ListObjects(s3Config, BACKUP_PREFIX, 100, '');
+    const backups = result.files
+      .filter((f) => f.key.endsWith('.sql'))
+      .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
+
+    // 超出保留數量的刪除
+    const toDelete = backups.slice(keepCount);
+    for (const f of toDelete) {
+      try {
+        await s3DeleteObject(s3Config, f.key);
+      } catch { /* 刪除失敗不影響主流程 */ }
+    }
+    return toDelete.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 定時備份檢查（由 Cron 每 15 分鐘調用）
+ * 檢查當前站點是否需要執行定時備份，若到期則執行
+ */
+export async function handleScheduledBackup(
+  db: D1Database,
+  kv: KVNamespace,
+  siteId: string,
+  s3Secrets?: S3Secrets,
+): Promise<void> {
+  const config = await getBackupScheduleConfig(db, kv);
+  if (config.enabled !== '1') return;
+
+  // 當前香港時間
+  const now = new Date();
+  const hkStr = now.toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' });
+  // 格式: YYYY-MM-DD HH:mm:ss
+  const currentDate = hkStr.slice(0, 10);
+  const currentHour = parseInt(hkStr.slice(11, 13), 10);
+  const currentMinute = parseInt(hkStr.slice(14, 16), 10);
+
+  // 解析排程時間
+  const [schedHour, schedMinute] = config.time.split(':').map(Number);
+  const isPastScheduledTime = currentHour > schedHour || (currentHour === schedHour && currentMinute >= schedMinute);
+
+  let isDue = false;
+
+  if (config.frequency === 'daily') {
+    // 每日：當天尚未執行且已過排程時間
+    const lastRunDate = config.lastRun.slice(0, 10);
+    if (lastRunDate !== currentDate && isPastScheduledTime) {
+      isDue = true;
+    }
+  } else if (config.frequency === 'weekly') {
+    // 每週：距上次執行 ≥ 7 天且已過排程時間
+    if (!config.lastRun) {
+      if (isPastScheduledTime) isDue = true;
+    } else {
+      const lastRunDate = new Date(config.lastRun.replace(' ', 'T') + '+08:00');
+      const daysSince = (now.getTime() - lastRunDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSince >= 7 && isPastScheduledTime) {
+        isDue = true;
+      }
+    }
+  }
+
+  if (!isDue) return;
+
+  // 執行備份
+  try {
+    const s3Config = await getS3Config(db, kv, s3Secrets);
+    if (!s3Config) {
+      console.error(`[ScheduledBackup] ${siteId}: S3 存儲未配置，跳過`);
+      return;
+    }
+
+    const nowHk = nowStr();
+    const timestamp = nowHk.replace(/[: ]/g, '').replace(/[-]/g, '');
+    const backupName = `backup_${timestamp}.sql`;
+    const backupKey = BACKUP_PREFIX + backupName;
+
+    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId);
+
+    const parts: string[] = [];
+    parts.push('-- ============================================================');
+    parts.push('-- Cloudflare CMS Database Backup (Scheduled)');
+    parts.push(`-- Generated: ${nowHk}`);
+    parts.push(`-- Site: ${siteId}`);
+    parts.push(`-- Tables: ${tableCount} (with data)`);
+    parts.push('-- ============================================================');
+    parts.push('');
+    parts.push('PRAGMA foreign_keys=OFF;');
+    parts.push('BEGIN TRANSACTION;');
+    parts.push('');
+    parts.push(...dumpParts);
+    parts.push('COMMIT;');
+    parts.push('');
+
+    const sqlContent = parts.join('\n');
+    const encoded = new TextEncoder().encode(sqlContent);
+    const data = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
+
+    await s3PutObject(s3Config, backupKey, data, 'application/sql');
+
+    // 更新 last_run
+    const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
+    if (existing) {
+      await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
+    } else {
+      await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+        .bind('backup_last_run', nowHk, '1', 94, '上次定時備份執行時間').run();
+    }
+    await kv.delete('config:all');
+
+    // 記錄日誌
+    try {
+      await db.prepare(
+        'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
+      ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行)`, '127.0.0.1', nowHk, 'system').run();
+    } catch { /* 日誌寫入失敗不影響主流程 */ }
+
+    // 清理過期備份
+    const deleted = await applyBackupRetention(db, kv, s3Secrets, config.keep);
+    if (deleted > 0) {
+      console.log(`[ScheduledBackup] ${siteId}: 清理了 ${deleted} 個過期備份`);
+    }
+  } catch (e) {
+    console.error(`[ScheduledBackup] ${siteId}: 備份失敗:`, e);
   }
 }
 

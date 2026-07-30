@@ -1758,24 +1758,24 @@ app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
 
-  // 收集所有站點數據庫（確保備份覆蓋全部站點，而非僅當前站點）
-  const sites: { siteId: string; db: D1Database }[] = [];
-  const registry = parseSiteRegistry(c.env.SITE_REGISTRY ?? '{}');
-  for (const [siteId, entry] of Object.entries(registry)) {
-    if (entry.binding) {
-      const envBindings = c.env as unknown as Record<string, D1Database>;
-      const db = envBindings[entry.binding];
-      if (db) sites.push({ siteId, db });
-    }
-  }
-  // 確保主庫始終在列表中（即使 SITE_REGISTRY 未配置）
-  if (!sites.find((s) => s.siteId === 'endoscopy')) {
-    sites.unshift({ siteId: 'endoscopy', db: c.env.DB });
-  }
-
-  return systemService.handleCreateBackup(primaryDB(c), sites, c.env.CONFIG_CACHE, {
+  // 僅備份當前站點數據庫（非所有站點）
+  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, currentSiteId(c), {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
+});
+
+// ===== 定時備份排程配置 (v1.9.37) =====
+app.get('/api/v1/admin/database/backup-schedule', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  return systemService.handleGetBackupSchedule(siteDB(c), c.env.CONFIG_CACHE);
+});
+
+app.put('/api/v1/admin/database/backup-schedule', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const body = await c.req.json();
+  return systemService.handleUpdateBackupSchedule(siteDB(c), c.env.CONFIG_CACHE, body);
 });
 
 app.get('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
@@ -1972,12 +1972,20 @@ export default {
       const envBindings = env as unknown as Record<string, D1Database>;
       const db = envBindings[site.binding];
       if (db) {
+        // 定時發布
         ctx.waitUntil(schedulerService.handleScheduledPublish(db, env.PUBLISH_QUEUE, site.siteId));
+        // 定時備份檢查（v1.9.37）
+        ctx.waitUntil(systemService.handleScheduledBackup(db, env.CONFIG_CACHE, site.siteId, {
+          accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
+        }));
       }
     }
     // 兜底：如果沒有註冊站點，至少處理主庫
     if (sites.length === 0) {
       ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE, 'endoscopy'));
+      ctx.waitUntil(systemService.handleScheduledBackup(env.DB, env.CONFIG_CACHE, 'endoscopy', {
+        accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
+      }));
     }
   },
 } satisfies ExportedHandler<Env, PublishMessage>;
