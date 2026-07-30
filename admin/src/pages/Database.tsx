@@ -9,6 +9,7 @@ interface BackupFile {
   size: number
   date: string
   site: string
+  compressed?: boolean
 }
 
 /** 定時備份配置 */
@@ -99,6 +100,9 @@ export default function DatabasePage() {
   const [cleanupDays, setCleanupDays] = useState(30)
   const [cleaning, setCleaning] = useState(false)
   const [cleanupMsg, setCleanupMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // 備份列表站點 Tab
+  const [activeSiteTab, setActiveSiteTab] = useState<string>('all')
 
   /** 載入備份列表 */
   const fetchBackups = useCallback(async () => {
@@ -205,7 +209,8 @@ export default function DatabasePage() {
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = filename
+      // 壓縮文件下載時後端已解壓，使用 .sql 副檔名
+      link.download = filename.replace(/\.gz$/, '')
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -266,16 +271,19 @@ export default function DatabasePage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">管理資料庫備份文件，可建立、下載或刪除備份</p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* 排除日誌數據選項 */}
-          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer select-none">
+        <div className="flex items-center gap-4">
+          {/* 排除日誌數據選項（放大版） */}
+          <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg border bg-white cursor-pointer select-none hover:bg-accent/50 transition-colors">
             <input
               type="checkbox"
               checked={excludeLogs}
               onChange={(e) => setExcludeLogs(e.target.checked)}
-              className="rounded border-gray-300"
+              className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary/30 cursor-pointer"
             />
-            <span>排除日誌數據</span>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">排除日誌數據</span>
+              <span className="text-xs text-muted-foreground">備份時跳過 ay_syslog 表數據</span>
+            </div>
           </label>
           <button
             onClick={handleCreateBackup}
@@ -303,89 +311,187 @@ export default function DatabasePage() {
         {scheduleLoading ? (
           <div className="px-4 py-8"><LoadingState text="載入配置中..." /></div>
         ) : (
-          <div className="p-4 space-y-4">
-            {/* 開關 + 頻率 + 時間 + 保留數量 */}
-            <div className="flex flex-wrap items-end gap-4">
-              {/* 開關 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">啟用</label>
-                <button
-                  type="button"
-                  onClick={() => setSchedule(s => ({ ...s, enabled: s.enabled === '1' ? '0' : '1' }))}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    schedule.enabled === '1' ? 'bg-primary' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      schedule.enabled === '1' ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {schedule.enabled === '1' ? '已啟用' : '已停用'}
-                </span>
+          <div className="p-4 space-y-5">
+            {/* ===== 區塊 1：備份排程設定 ===== */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-xs font-semibold text-foreground">📋 備份排程</span>
+                <span className="text-xs text-muted-foreground">— 何時自動執行備份</span>
               </div>
-
-              {/* 頻率 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">備份頻率</label>
-                <select
-                  value={schedule.frequency}
-                  onChange={(e) => setSchedule(s => ({ ...s, frequency: e.target.value }))}
-                  disabled={schedule.enabled !== '1'}
-                  className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                >
-                  <option value="daily">每天</option>
-                  <option value="weekly">每週</option>
-                </select>
-              </div>
-
-              {/* 星期幾（僅 weekly 顯示） */}
-              {schedule.frequency === 'weekly' && (
+              <div className="flex flex-wrap items-end gap-4">
+                {/* 開關 */}
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1.5">星期</label>
+                  <label className="block text-xs text-muted-foreground mb-1.5">啟用</label>
+                  <button
+                    type="button"
+                    onClick={() => setSchedule(s => ({ ...s, enabled: s.enabled === '1' ? '0' : '1' }))}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      schedule.enabled === '1' ? 'bg-primary' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        schedule.enabled === '1' ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {schedule.enabled === '1' ? '已啟用' : '已停用'}
+                  </span>
+                </div>
+
+                {/* 頻率 */}
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">備份頻率</label>
                   <select
-                    value={schedule.weekday}
-                    onChange={(e) => setSchedule(s => ({ ...s, weekday: e.target.value }))}
+                    value={schedule.frequency}
+                    onChange={(e) => setSchedule(s => ({ ...s, frequency: e.target.value }))}
                     disabled={schedule.enabled !== '1'}
                     className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
-                    {WEEKDAY_LABELS.map((w) => (
-                      <option key={w.value} value={w.value}>{w.label}</option>
-                    ))}
+                    <option value="daily">每天</option>
+                    <option value="weekly">每週</option>
                   </select>
                 </div>
-              )}
 
-              {/* 時間 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">執行時間</label>
-                <input
-                  type="time"
-                  value={schedule.time}
-                  onChange={(e) => setSchedule(s => ({ ...s, time: e.target.value }))}
-                  disabled={schedule.enabled !== '1'}
-                  className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
+                {/* 星期幾（僅 weekly 顯示） */}
+                {schedule.frequency === 'weekly' && (
+                  <div>
+                    <label className="block text-xs text-muted-foreground mb-1.5">星期</label>
+                    <select
+                      value={schedule.weekday}
+                      onChange={(e) => setSchedule(s => ({ ...s, weekday: e.target.value }))}
+                      disabled={schedule.enabled !== '1'}
+                      className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      {WEEKDAY_LABELS.map((w) => (
+                        <option key={w.value} value={w.value}>{w.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 時間 */}
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">執行時間</label>
+                  <input
+                    type="time"
+                    value={schedule.time}
+                    onChange={(e) => setSchedule(s => ({ ...s, time: e.target.value }))}
+                    disabled={schedule.enabled !== '1'}
+                    className="px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                </div>
+
+                {/* 保留數量 */}
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1.5">保留備份數</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={99}
+                    value={schedule.keep}
+                    onChange={(e) => setSchedule(s => ({ ...s, keep: parseInt(e.target.value, 10) || 7 }))}
+                    disabled={schedule.enabled !== '1'}
+                    className="w-20 px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <span className="ml-1.5 text-xs text-muted-foreground">個</span>
+                </div>
               </div>
+            </div>
 
-              {/* 保留數量 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">保留備份數</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={schedule.keep}
-                  onChange={(e) => setSchedule(s => ({ ...s, keep: parseInt(e.target.value, 10) || 7 }))}
-                  disabled={schedule.enabled !== '1'}
-                  className="w-20 px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
-                <span className="ml-1.5 text-xs text-muted-foreground">個</span>
+            {/* ===== 區塊 2：備份內容選項 ===== */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-xs font-semibold text-foreground">📦 備份內容</span>
+                <span className="text-xs text-muted-foreground">— 備份文件中包含什麼</span>
               </div>
+              <div className="flex flex-wrap items-center gap-4">
+                {/* 備份排除日誌 */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSchedule(s => ({ ...s, excludeLogs: s.excludeLogs === '1' ? '0' : '1' }))}
+                    disabled={schedule.enabled !== '1'}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
+                      schedule.excludeLogs === '1' ? 'bg-primary' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        schedule.excludeLogs === '1' ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">排除日誌數據</span>
+                    <span className="text-xs text-muted-foreground">
+                      {schedule.excludeLogs === '1'
+                        ? '✅ 備份文件僅含日誌表結構，不含日誌數據（文件更小）'
+                        : '備份文件包含完整日誌數據'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-              {/* 保存按鈕 */}
+            {/* ===== 區塊 3：日誌自動清理（獨立功能） ===== */}
+            <div className="pt-4 border-t">
+              <div className="flex items-center gap-1.5 mb-3">
+                <span className="text-xs font-semibold text-foreground">🧹 日誌自動清理</span>
+                <span className="text-xs text-muted-foreground">— 定期刪除數據庫中的舊日誌（與備份無關）</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">保留最近</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={schedule.logRetentionDays}
+                    onChange={(e) => setSchedule(s => ({ ...s, logRetentionDays: parseInt(e.target.value, 10) || 0 }))}
+                    disabled={schedule.enabled !== '1'}
+                    className="w-20 px-3 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <span className="text-sm text-muted-foreground">天的日誌</span>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded ${
+                  schedule.logRetentionDays > 0
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-gray-50 text-gray-500 border border-gray-200'
+                }`}>
+                  {schedule.logRetentionDays > 0
+                    ? `✅ 每天自動刪除 ${schedule.logRetentionDays} 天前的日誌`
+                    : '⚠️ 設為 0 表示不自動清理'}
+                </span>
+                {schedule.lastLogCleanup && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <span>🧹</span>
+                    上次清理: <span className="font-mono text-foreground">{formatDate(schedule.lastLogCleanup)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* ===== 保存按鈕 + 狀態信息 ===== */}
+            <div className="pt-4 border-t flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                {schedule.lastRun && (
+                  <span className="flex items-center gap-1">
+                    <span>🕐</span>
+                    上次執行: <span className="font-mono text-foreground">{formatDate(schedule.lastRun)}</span>
+                  </span>
+                )}
+                {schedule.enabled === '1' && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <span>✅</span>
+                    {schedule.frequency === 'daily'
+                      ? `每天 ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
+                      : `每${getWeekdayLabel(schedule.weekday)} ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
+                    }
+                  </span>
+                )}
+              </div>
               <button
                 onClick={handleSaveSchedule}
                 disabled={scheduleSaving}
@@ -394,78 +500,6 @@ export default function DatabasePage() {
                 {scheduleSaving ? <span className="animate-spin inline-block">🔄</span> : <span>💾</span>}
                 {scheduleSaving ? '保存中...' : '保存配置'}
               </button>
-            </div>
-
-            {/* 第二行：日誌相關配置 */}
-            <div className="flex flex-wrap items-end gap-4 pt-3 border-t">
-              {/* 備份排除日誌 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">備份排除日誌數據</label>
-                <button
-                  type="button"
-                  onClick={() => setSchedule(s => ({ ...s, excludeLogs: s.excludeLogs === '1' ? '0' : '1' }))}
-                  disabled={schedule.enabled !== '1'}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-50 ${
-                    schedule.excludeLogs === '1' ? 'bg-primary' : 'bg-gray-300'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      schedule.excludeLogs === '1' ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {schedule.excludeLogs === '1' ? '✅ 排除（僅備份表結構）' : '包含日誌數據'}
-                </span>
-              </div>
-
-              {/* 日誌保留天數 */}
-              <div>
-                <label className="block text-xs text-muted-foreground mb-1.5">日誌自動清理</label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">保留最近</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={365}
-                    value={schedule.logRetentionDays}
-                    onChange={(e) => setSchedule(s => ({ ...s, logRetentionDays: parseInt(e.target.value, 10) || 0 }))}
-                    disabled={schedule.enabled !== '1'}
-                    className="w-16 px-2 py-1.5 text-sm border rounded-md bg-background disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                  <span className="text-xs text-muted-foreground">天（0=不自動清理）</span>
-                </div>
-              </div>
-
-              {/* 上次日誌清理時間 */}
-              {schedule.lastLogCleanup && (
-                <div className="text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <span>🧹</span>
-                    上次清理: <span className="font-mono text-foreground">{formatDate(schedule.lastLogCleanup)}</span>
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* 上次執行時間 + 提示消息 */}
-            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-              {schedule.lastRun && (
-                <span className="flex items-center gap-1">
-                  <span>🕐</span>
-                  上次執行: <span className="font-mono text-foreground">{formatDate(schedule.lastRun)}</span>
-                </span>
-              )}
-              {schedule.enabled === '1' && (
-                <span className="flex items-center gap-1 text-green-600">
-                  <span>✅</span>
-                  {schedule.frequency === 'daily'
-                    ? `每天 ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
-                    : `每${getWeekdayLabel(schedule.weekday)} ${schedule.time} 自動備份，保留最近 ${schedule.keep} 個`
-                  }
-                </span>
-              )}
             </div>
 
             {/* 操作結果提示 */}
@@ -594,73 +628,130 @@ export default function DatabasePage() {
       {/* 備份列表 */}
       {!loading && backups.length > 0 && (
         <div className="bg-white rounded-lg border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-secondary/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">文件名</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">站點</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">大小</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">建立時間</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {backups.map((file) => (
-                  <tr
-                    key={file.filename}
-                    className="border-b last:border-0 hover:bg-accent/50 transition-colors"
+          {/* 站點 Tab 切換 */}
+          {(() => {
+            const sites = Array.from(new Set(backups.map(b => b.site || '(未知)'))).sort()
+            const filteredBackups = activeSiteTab === 'all'
+              ? backups
+              : backups.filter(b => (b.site || '(未知)') === activeSiteTab)
+
+            return (
+              <>
+                <div className="flex items-center gap-1 px-3 pt-3 border-b">
+                  <button
+                    onClick={() => setActiveSiteTab('all')}
+                    className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                      activeSiteTab === 'all'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground shrink-0">📄</span>
-                        <span className="font-mono text-xs">{file.filename}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {file.site && file.site !== '(舊格式)' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                          {file.site}
-                        </span>
-                      ) : file.site === '(舊格式)' ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
-                          舊格式
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatSize(file.size)}</td>
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {formatDate(file.date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleDownload(file.filename)}
-                          disabled={actionFile === file.filename}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
-                          title="下載"
-                        >
-                          <span className="text-sm">📥</span>
-                          下載
-                        </button>
-                        <button
-                          onClick={() => handleDelete(file.filename)}
-                          disabled={actionFile === file.filename}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="刪除"
-                        >
-                          <span className="text-sm">🗑️</span>
-                          刪除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    全部 <span className="text-xs text-muted-foreground">({backups.length})</span>
+                  </button>
+                  {sites.map(site => (
+                    <button
+                      key={site}
+                      onClick={() => setActiveSiteTab(site)}
+                      className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                        activeSiteTab === site
+                          ? 'border-primary text-primary'
+                          : 'border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {site === '(舊格式)' ? '舊格式' : site}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        ({backups.filter(b => (b.site || '(未知)') === site).length})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* 當前 Tab 的備份列表 */}
+                {filteredBackups.length === 0 ? (
+                  <div className="py-12 text-center text-sm text-muted-foreground">
+                    此站點暫無備份文件
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-secondary/50">
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">文件名</th>
+                          {activeSiteTab === 'all' && (
+                            <th className="px-4 py-3 text-left font-medium text-muted-foreground">站點</th>
+                          )}
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">大小</th>
+                          <th className="px-4 py-3 text-left font-medium text-muted-foreground">建立時間</th>
+                          <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredBackups.map((file) => (
+                          <tr
+                            key={file.filename}
+                            className="border-b last:border-0 hover:bg-accent/50 transition-colors"
+                          >
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground shrink-0">{file.compressed ? '🗜️' : '📄'}</span>
+                                <span className="font-mono text-xs">{file.filename}</span>
+                                {file.compressed && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-50 text-green-700 border border-green-200">
+                                    gzip
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            {activeSiteTab === 'all' && (
+                              <td className="px-4 py-3">
+                                {file.site && file.site !== '(舊格式)' ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                    {file.site}
+                                  </span>
+                                ) : file.site === '(舊格式)' ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-50 text-gray-500 border border-gray-200">
+                                    舊格式
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </td>
+                            )}
+                            <td className="px-4 py-3 text-muted-foreground">{formatSize(file.size)}</td>
+                            <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                              {formatDate(file.date)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  onClick={() => handleDownload(file.filename)}
+                                  disabled={actionFile === file.filename}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
+                                  title="下載"
+                                >
+                                  <span className="text-sm">📥</span>
+                                  下載
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(file.filename)}
+                                  disabled={actionFile === file.filename}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                                  title="刪除"
+                                >
+                                  <span className="text-sm">🗑️</span>
+                                  刪除
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )
+          })()}
         </div>
       )}
     </div>

@@ -72,8 +72,73 @@ function escapeSqlValue(val: unknown): string {
 /** 備份文件名安全校驗 (僅允許字母數字、下劃線、點、連字符) */
 function sanitizeBackupFilename(filename: string): string {
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, '');
-  if (!safe.endsWith('.sql')) return '';
+  // 支持 .sql 和 .sql.gz 兩種格式
+  if (!safe.endsWith('.sql') && !safe.endsWith('.sql.gz')) return '';
   return safe;
+}
+
+/** 使用 CompressionStream 進行 gzip 壓縮 (Cloudflare Workers 原生支持) */
+async function gzipCompress(data: ArrayBuffer): Promise<ArrayBuffer> {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(data));
+      controller.close();
+    },
+  });
+  const compressed = stream.pipeThrough(new CompressionStream('gzip'));
+  const reader = compressed.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLength += value.length;
+  }
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result.buffer;
+}
+
+/** 使用 DecompressionStream 進行 gzip 解壓 */
+async function gzipDecompress(data: ArrayBuffer): Promise<ArrayBuffer> {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array(data));
+      controller.close();
+    },
+  });
+  const decompressed = stream.pipeThrough(new DecompressionStream('gzip'));
+  const reader = decompressed.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalLength = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    totalLength += value.length;
+  }
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result.buffer;
+}
+
+/** 判斷備份文件是否為 gzip 壓縮格式 */
+function isGzipBackup(filename: string): boolean {
+  return filename.endsWith('.sql.gz');
+}
+
+/** 從壓縮文件名中提取原始 SQL 文件名（用於下載時的 Content-Disposition） */
+function getSqlFilenameFromGz(gzFilename: string): string {
+  return gzFilename.replace(/\.gz$/, '');
 }
 
 // ============================================================================
@@ -892,13 +957,14 @@ export async function handleListBackups(
     const result = await s3ListObjects(s3Config, BACKUP_PREFIX, 100, '');
 
     const backups = result.files
-      .filter((f) => f.key.endsWith('.sql'))
+      .filter((f) => f.key.endsWith('.sql') || f.key.endsWith('.sql.gz'))
       .map((f) => {
         const filename = f.key.replace(BACKUP_PREFIX, '');
-        // 新格式: {siteId}_backup_YYYYMMDDHHmmss.sql
-        const newMatch = f.key.match(/(\w+)_backup_(\d{14})\.sql$/);
+        const compressed = isGzipBackup(filename);
+        // 新格式: {siteId}_backup_YYYYMMDDHHmmss.sql 或 .sql.gz
+        const newMatch = f.key.match(/(\w+)_backup_(\d{14})\.sql(?:\.gz)?$/);
         // 舊格式: backup_YYYYMMDDHHmmss.sql（向後兼容）
-        const oldMatch = f.key.match(/backup_(\d{14})\.sql$/);
+        const oldMatch = f.key.match(/backup_(\d{14})\.sql(?:\.gz)?$/);
 
         let date = f.lastModified || '';
         let site = '';
@@ -918,6 +984,7 @@ export async function handleListBackups(
           size: f.size,
           date,
           site,
+          compressed,
         };
       });
 
@@ -1030,8 +1097,8 @@ export async function handleCreateBackup(
   try {
     const now = nowStr();
     const timestamp = now.replace(/[: ]/g, '').replace(/[-]/g, '');
-    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql（站點前綴區分不同站數據庫）
-    const backupName = `${siteId}_backup_${timestamp}.sql`;
+    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql.gz（gzip 壓縮，節省存儲空間）
+    const backupName = `${siteId}_backup_${timestamp}.sql.gz`;
     const backupKey = BACKUP_PREFIX + backupName;
 
     const excludeLogData = options?.excludeLogData ?? false;
@@ -1060,16 +1127,20 @@ export async function handleCreateBackup(
     const sqlContent = parts.join('\n');
     const encoded = new TextEncoder().encode(sqlContent);
     // 複製為獨立的 ArrayBuffer (避免 ArrayBufferLike 類型問題)
-    const data = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
+    const rawData = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
 
-    // 上傳到 R2/S3
-    await s3PutObject(s3Config, backupKey, data, 'application/sql');
+    // gzip 壓縮
+    const data = await gzipCompress(rawData);
+    const originalSize = rawData.byteLength;
+
+    // 上傳到 R2/S3（壓縮格式）
+    await s3PutObject(s3Config, backupKey, data, 'application/gzip');
 
     // 記錄備份日誌（寫入當前站點庫）
     try {
       await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `數據庫備份創建: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', now, 'system').run();
+      ).bind('admin', `數據庫備份創建: ${backupName} (原始 ${(originalSize / 1024).toFixed(2)} KB → 壓縮 ${(data.byteLength / 1024).toFixed(2)} KB, 壓縮率 ${((1 - data.byteLength / originalSize) * 100).toFixed(1)}%, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', now, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     return okData(
@@ -1077,12 +1148,14 @@ export async function handleCreateBackup(
         filename: backupName,
         key: backupKey,
         size: data.byteLength,
+        originalSize,
         sizeKB: (data.byteLength / 1024).toFixed(2),
         createdAt: now,
         site: siteId,
         totalTables: tableCount,
         totalRows: rowCount,
         excludeLogData,
+        compressed: true,
       },
       '備份創建成功',
     );
@@ -1201,17 +1274,17 @@ async function applyBackupRetention(
 
   try {
     const result = await s3ListObjects(s3Config, BACKUP_PREFIX, 200, '');
-    const allFiles = result.files.filter((f) => f.key.endsWith('.sql'));
+    const allFiles = result.files.filter((f) => f.key.endsWith('.sql') || f.key.endsWith('.sql.gz'));
 
-    // 按站點前綴分組：新格式 {siteId}_backup_*.sql
+    // 按站點前綴分組：新格式 {siteId}_backup_*.sql 或 .sql.gz
     const sitePrefix = `${siteId}_backup_`;
     const siteBackups = allFiles
       .filter((f) => f.key.includes(sitePrefix))
       .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
 
-    // 舊格式 backup_*.sql（無站點前綴，向後兼容）
+    // 舊格式 backup_*.sql 或 .sql.gz（無站點前綴，向後兼容）
     const legacyBackups = allFiles
-      .filter((f) => !f.key.includes('_backup_') && f.key.match(/backup_\d{14}\.sql/))
+      .filter((f) => !f.key.includes('_backup_') && (f.key.match(/backup_\d{14}\.sql$/) || f.key.match(/backup_\d{14}\.sql\.gz$/)))
       .sort((a, b) => (b.lastModified || '').localeCompare(a.lastModified || ''));
 
     let deletedCount = 0;
@@ -1301,8 +1374,8 @@ export async function handleScheduledBackup(
 
     const nowHk = nowStr();
     const timestamp = nowHk.replace(/[: ]/g, '').replace(/[-]/g, '');
-    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql（站點前綴區分不同站數據庫）
-    const backupName = `${siteId}_backup_${timestamp}.sql`;
+    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql.gz（gzip 壓縮）
+    const backupName = `${siteId}_backup_${timestamp}.sql.gz`;
     const backupKey = BACKUP_PREFIX + backupName;
 
     const excludeLogData = config.excludeLogs === '1';
@@ -1328,9 +1401,13 @@ export async function handleScheduledBackup(
 
     const sqlContent = parts.join('\n');
     const encoded = new TextEncoder().encode(sqlContent);
-    const data = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
+    const rawData = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
 
-    await s3PutObject(s3Config, backupKey, data, 'application/sql');
+    // gzip 壓縮
+    const data = await gzipCompress(rawData);
+    const originalSize = rawData.byteLength;
+
+    await s3PutObject(s3Config, backupKey, data, 'application/gzip');
 
     // 更新 last_run
     const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
@@ -1346,7 +1423,7 @@ export async function handleScheduledBackup(
     try {
       await db.prepare(
         'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `定時備份: ${backupName} (${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', nowHk, 'system').run();
+      ).bind('admin', `定時備份: ${backupName} (原始 ${(originalSize / 1024).toFixed(2)} KB → 壓縮 ${(data.byteLength / 1024).toFixed(2)} KB, ${siteId}, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', nowHk, 'system').run();
     } catch { /* 日誌寫入失敗不影響主流程 */ }
 
     // 清理過期備份（按站點獨立保留）
@@ -1549,6 +1626,21 @@ export async function handleDownloadBackup(
 
   try {
     const { data } = await s3GetObject(s3Config, backupKey);
+
+    // 如果是 gzip 壓縮文件，先解壓再返回原始 SQL
+    if (isGzipBackup(safeFilename)) {
+      const decompressedData = await gzipDecompress(data);
+      const sqlFilename = getSqlFilenameFromGz(safeFilename);
+      return new Response(decompressedData, {
+        headers: {
+          'Content-Type': 'application/sql',
+          'Content-Disposition': `attachment; filename="${sqlFilename}"`,
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
+    // 舊格式 .sql 直接返回
     return new Response(data, {
       headers: {
         'Content-Type': 'application/sql',
