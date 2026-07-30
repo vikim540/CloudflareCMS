@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.38',
+    date: '2026-07-30 12:05:00',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 修復分站點備份 403 AccessDenied\n\n📋 問題根因\n• 備份 API 使用 siteDB(c) 讀取 S3 配置，切換到 smile 站點時從 smile 庫的 ay_config 讀取 S3 endpoint/bucket\n• S3 憑證是帳號級共享（Secrets Store），與 smile 站點的 S3 配置不匹配\n• S3 ListObjects 返回 403 AccessDenied，備份列表/創建/下載/刪除全部失敗\n\n📋 修復方案\n• S3 配置始終從主庫（env.DB）讀取，不再使用站點庫的 S3 配置\n• handleCreateBackup / handleScheduledBackup 分離 configDb（主庫）和 dataDb（站點庫）\n• 數據導出仍用當前站點庫，保證備份內容正確\n• 日誌和 last_run 寫入站點庫，保證排程配置的站點獨立性\n• 影響範圍：僅備份功能，其他 S3 操作（圖片上傳、媒體庫）不受影響`,
+  },
+  {
     version: 'v1.9.37',
     date: '2026-07-30 11:23:54',
     icon: '⏰',
-    latest: true,
+    latest: false,
     changes: `⏰ 定時備份排程 + 備份邏輯恢復單站點\n\n📋 定時備份排程（新功能）\n• Database 界面新增「定時備份排程」設置卡片（非全局配置）\n• 每站點獨立配置：啟用開關、頻率（每天/每週）、星期幾（每週時選擇）、執行時間（HH:mm）、保留備份數\n• Cron 每 15 分鐘檢查是否到期，到期自動執行備份\n• 自動清理過期備份（保留最近 N 個，超出自動刪除）\n• 配置存儲在 ay_config（INSERT/UPDATE 自適應，無需 migration）\n• 新增 API：GET/PUT /api/v1/admin/database/backup-schedule\n• 前端顯示上次執行時間 + 當前配置摘要（含星期幾）\n• 系統信息 Tab 新增「定時備份排程」狀態卡片\n\n📋 備份邏輯恢復單站點\n• 恢復「建立備份」僅導出當前站點數據庫（非所有站點）\n• 修正 v1.9.36 錯誤改動：用戶確認每次備份只需當前站點\n• dumpDatabaseTables 返回 tableCount + rowCount 統計\n• 備份日誌記錄站點名 + 表數 + 行數`,
   },
   {

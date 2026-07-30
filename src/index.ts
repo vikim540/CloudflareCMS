@@ -1746,10 +1746,11 @@ app.post('/api/v1/admin/logs/clear', async (c) => {
 });
 
 // ===== 後台管理接口 - 數據庫備份 =====
+// v1.9.38: S3 配置始終從主庫(env.DB)讀取，避免分站點 S3 配置不一致導致 403
 app.get('/api/v1/admin/database/backups', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
-  return systemService.handleListBackups(siteDB(c), c.env.CONFIG_CACHE, {
+  return systemService.handleListBackups(c.env.DB, c.env.CONFIG_CACHE, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
 });
@@ -1758,8 +1759,8 @@ app.post('/api/v1/admin/database/backup', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
 
-  // 僅備份當前站點數據庫（非所有站點）
-  return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, currentSiteId(c), {
+  // S3 配置從主庫讀取，數據導出用當前站點庫
+  return systemService.handleCreateBackup(c.env.DB, siteDB(c), c.env.CONFIG_CACHE, currentSiteId(c), {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
 });
@@ -1782,7 +1783,7 @@ app.get('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDownloadBackup(siteDB(c), c.env.CONFIG_CACHE, filename, {
+  return systemService.handleDownloadBackup(c.env.DB, c.env.CONFIG_CACHE, filename, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
 });
@@ -1791,7 +1792,7 @@ app.delete('/api/v1/admin/database/backups/:filename{.+}', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const filename = c.req.param('filename');
-  return systemService.handleDeleteBackup(siteDB(c), c.env.CONFIG_CACHE, filename, {
+  return systemService.handleDeleteBackup(c.env.DB, c.env.CONFIG_CACHE, filename, {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
   });
 });
@@ -1974,8 +1975,8 @@ export default {
       if (db) {
         // 定時發布
         ctx.waitUntil(schedulerService.handleScheduledPublish(db, env.PUBLISH_QUEUE, site.siteId));
-        // 定時備份檢查（v1.9.37）
-        ctx.waitUntil(systemService.handleScheduledBackup(db, env.CONFIG_CACHE, site.siteId, {
+        // 定時備份檢查（v1.9.38: S3 配置從主庫讀取，數據導出用站點庫）
+        ctx.waitUntil(systemService.handleScheduledBackup(env.DB, db, env.CONFIG_CACHE, site.siteId, {
           accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
         }));
       }
@@ -1983,7 +1984,7 @@ export default {
     // 兜底：如果沒有註冊站點，至少處理主庫
     if (sites.length === 0) {
       ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE, 'endoscopy'));
-      ctx.waitUntil(systemService.handleScheduledBackup(env.DB, env.CONFIG_CACHE, 'endoscopy', {
+      ctx.waitUntil(systemService.handleScheduledBackup(env.DB, env.DB, env.CONFIG_CACHE, 'endoscopy', {
         accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
       }));
     }
