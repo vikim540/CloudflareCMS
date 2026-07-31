@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
+    "build": "tsc --noEmit",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply endoscopy-cms --local",
     "db:migrate:remote": "wrangler d1 migrations apply endoscopy-cms --remote",
