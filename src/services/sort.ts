@@ -2,7 +2,7 @@
  * 欄目管理服務
  * 遞歸 CTE 查詢子孫欄目 + 內存遞歸構建樹
  */
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, D1PreparedStatement } from '@cloudflare/workers-types';
 import { okData, ok, err, notFound, createMeta } from '../utils/response';
 import { nowStr } from '../utils/datetime';
 
@@ -124,15 +124,19 @@ export async function handleCreateSort(
   const newSorting = (maxResult?.maxSorting ?? 0) + 1;
 
   // 先插入,取得自增 ID 後再回填 scode
-  const result = await db.prepare(
+  // 注意：INSERT 和 UPDATE 有依賴關係（UPDATE 需要 INSERT 的 last_row_id），
+  //       不能用 db.batch() 合併，必須分步執行
+  const insertStmt = db.prepare(
     "INSERT INTO ay_content_sort (acode, mcode, pcode, scode, name, filename, sorting, status, gtype, gid, create_time, update_time) VALUES (?, ?, ?, '', ?, ?, ?, '1', '4', '', ?, ?)",
-  ).bind(acode, mcode, pcode, name, filename, newSorting, now, now).run();
+  ).bind(acode, mcode, pcode, name, filename, newSorting, now, now);
 
-  if (result.meta.changes > 0) {
+  const insertResult = await insertStmt.run();
+  if (insertResult.meta.changes > 0) {
     // 用自增 ID 作為 scode (與 PbootCMS 風格一致)
-    const newId = result.meta.last_row_id as number;
-    await db.prepare('UPDATE ay_content_sort SET scode = ? WHERE id = ?')
-      .bind(String(newId), newId).run();
+    const newId = insertResult.meta.last_row_id as number;
+    const updateStmt = db.prepare('UPDATE ay_content_sort SET scode = ? WHERE id = ?')
+      .bind(String(newId), newId);
+    await updateStmt.run();
     return ok('欄目創建成功');
   }
   return err('欄目創建失敗', 1005);
@@ -214,21 +218,32 @@ export async function handleDeleteSort(db: D1Database, id: number): Promise<Resp
   const allScodes = allSorts.map((s) => s.scode).filter(Boolean);
   const allIds = allSorts.map((s) => s.id);
 
-  // 3. 刪除所有關聯內容（含擴展字段值）
+  // 3. 刪除所有關聯內容（含擴展字段值）— 使用 db.batch() 事務保護（P0 修復）
   if (allScodes.length > 0) {
-    // 先刪除擴展字段值
     const extPlaceholder = allScodes.map(() => '?').join(',');
-    await db.prepare(`DELETE FROM ay_content_ext WHERE contentid IN (SELECT id FROM ay_content WHERE scode IN (${extPlaceholder}))`)
-      .bind(...allScodes).run().catch(() => {});
-    // 再刪除內容（物理刪除，不進回收站）
-    await db.prepare(`DELETE FROM ay_content WHERE scode IN (${extPlaceholder})`)
-      .bind(...allScodes).run();
-  }
+    const contentPlaceholder = allScodes.map(() => '?').join(',');
+    const idPlaceholder = allIds.map(() => '?').join(',');
 
-  // 4. 刪除所有欄目（自身 + 子孫）
-  const idPlaceholder = allIds.map(() => '?').join(',');
-  await db.prepare(`DELETE FROM ay_content_sort WHERE id IN (${idPlaceholder})`)
-    .bind(...allIds).run();
+    // 構建批量語句：擴展字段 → 內容 → 欄目，原子執行
+    const batchStmts: D1PreparedStatement[] = [
+      // 刪除擴展字段值
+      db.prepare(`DELETE FROM ay_content_ext WHERE contentid IN (SELECT id FROM ay_content WHERE scode IN (${extPlaceholder}))`)
+        .bind(...allScodes),
+      // 刪除內容（物理刪除，不進回收站）
+      db.prepare(`DELETE FROM ay_content WHERE scode IN (${contentPlaceholder})`)
+        .bind(...allScodes),
+      // 刪除所有欄目（自身 + 子孫）
+      db.prepare(`DELETE FROM ay_content_sort WHERE id IN (${idPlaceholder})`)
+        .bind(...allIds),
+    ];
+    await db.batch(batchStmts);
+  } else {
+    // 無子孫欄目關聯內容，僅刪除欄目自身
+    const idPlaceholder = allIds.map(() => '?').join(',');
+    await db.batch([
+      db.prepare(`DELETE FROM ay_content_sort WHERE id IN (${idPlaceholder})`).bind(...allIds),
+    ]);
+  }
 
   return ok(`欄目刪除成功（共刪除 ${allIds.length} 個欄目）`);
 }
@@ -242,12 +257,12 @@ export async function handleBatchUpdateSortSorting(
     return err('沒有需要更新的排序', 1001);
   }
 
-  // 逐條更新（D1 不支持 CASE WHEN 批量更新）
-  const stmt = db.prepare('UPDATE ay_content_sort SET sorting = ? WHERE id = ?');
-  const batchPromises = items.map((item) =>
-    stmt.bind(Math.max(0, Math.floor(item.sorting)), item.id).run(),
+  // 使用 db.batch() 原子執行（P0 修復，替代 Promise.all 確保事務一致性）
+  const stmts = items.map((item) =>
+    db.prepare('UPDATE ay_content_sort SET sorting = ? WHERE id = ?')
+      .bind(Math.max(0, Math.floor(item.sorting)), item.id),
   );
-  await Promise.all(batchPromises);
+  await db.batch(stmts);
 
   return ok(`批量更新 ${items.length} 項排序成功`);
 }

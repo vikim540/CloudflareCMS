@@ -33,12 +33,15 @@ type FormBody = Record<string, unknown>;
 
 // ===== 公開端點 =====
 
-/** 生成 16 位隨機 token（大小寫字母+數字） */
+/** 生成 16 位隨機 token（大小寫字母+數字）
+ *  使用 Web Crypto API crypto.getRandomValues() 確保密碼學安全（P0 修復） */
 export function generateSubmitToken(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const randomValues = new Uint8Array(16);
+  crypto.getRandomValues(randomValues);
   let token = '';
   for (let i = 0; i < 16; i++) {
-    token += chars[Math.floor(Math.random() * chars.length)];
+    token += chars[randomValues[i] % chars.length];
   }
   return token;
 }

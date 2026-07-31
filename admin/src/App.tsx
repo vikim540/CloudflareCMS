@@ -1,35 +1,49 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { getToken, getUserInfo } from './lib/api'
 import Layout from './components/Layout'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Contents from './pages/Contents'
-import ContentEdit from './pages/ContentEdit'
-import Categories from './pages/Categories'
-import Singles from './pages/Singles'
-import SingleEdit from './pages/SingleEdit'
-import Links from './pages/Links'
-import Slides from './pages/Slides'
-import Booking from './pages/Booking'
-import InternalLinks from './pages/InternalLinks'
-import FormSubmissions from './pages/FormSubmissions'
-import FormManager from './pages/FormManager'
-import SiteInfo from './pages/SiteInfo'
-import Company from './pages/Company'
-import Settings from './pages/Settings'
-import MediaLibrary from './pages/MediaLibrary'
-import Models from './pages/Models'
-import ExtFields from './pages/ExtFields'
-import Trash from './pages/Trash'
-import Users from './pages/Users'
-import Roles from './pages/Roles'
-import Menus from './pages/Menus'
-import Logs from './pages/Logs'
-import Database from './pages/Database'
-import Sites from './pages/Sites'
 import ErrorBoundary from './components/ErrorBoundary'
 import GlobalErrorToast from './components/GlobalErrorToast'
+
+// P0-6: 路由級懶加載，減少首屏 bundle 體積，按需加載頁面組件
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Contents = lazy(() => import('./pages/Contents'))
+const ContentEdit = lazy(() => import('./pages/ContentEdit'))
+const Categories = lazy(() => import('./pages/Categories'))
+const Singles = lazy(() => import('./pages/Singles'))
+const SingleEdit = lazy(() => import('./pages/SingleEdit'))
+const Links = lazy(() => import('./pages/Links'))
+const Slides = lazy(() => import('./pages/Slides'))
+const Booking = lazy(() => import('./pages/Booking'))
+const InternalLinks = lazy(() => import('./pages/InternalLinks'))
+const FormSubmissions = lazy(() => import('./pages/FormSubmissions'))
+const FormManager = lazy(() => import('./pages/FormManager'))
+const SiteInfo = lazy(() => import('./pages/SiteInfo'))
+const Company = lazy(() => import('./pages/Company'))
+const Settings = lazy(() => import('./pages/Settings'))
+const MediaLibrary = lazy(() => import('./pages/MediaLibrary'))
+const Models = lazy(() => import('./pages/Models'))
+const ExtFields = lazy(() => import('./pages/ExtFields'))
+const Trash = lazy(() => import('./pages/Trash'))
+const Users = lazy(() => import('./pages/Users'))
+const Roles = lazy(() => import('./pages/Roles'))
+const Menus = lazy(() => import('./pages/Menus'))
+const Logs = lazy(() => import('./pages/Logs'))
+const Database = lazy(() => import('./pages/Database'))
+const Sites = lazy(() => import('./pages/Sites'))
+
+/** 懶加載fallback：簡潔的加載動畫 */
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center h-full min-h-[400px]">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-500 rounded-full animate-spin"></div>
+        <span className="text-sm text-slate-400">載入中…</span>
+      </div>
+    </div>
+  )
+}
 
 /** 路由守衛:未登錄跳轉到登錄頁 */
 function Protected({ children }: { children: React.ReactNode }) {
@@ -82,6 +96,8 @@ export default function App() {
     <>
       {/* ErrorBoundary 包裹整個路由，捕獲子組件渲染錯誤，防止整個應用白屏崩潰 */}
       <ErrorBoundary>
+        {/* Suspense 包裹懶加載路由，頁面 chunk 載入期間顯示 PageLoading fallback */}
+        <Suspense fallback={<PageLoading />}>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -123,6 +139,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </ErrorBoundary>
       {/* GlobalErrorToast 放在所有路由之外，確保始終可見，不受路由切換影響 */}
       <GlobalErrorToast />

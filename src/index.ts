@@ -79,11 +79,16 @@ type AppEnv = { Bindings: Env; Variables: { claims?: JwtClaims; siteDb?: D1Datab
 const app = new Hono<AppEnv>({ strict: false });
 
 // ===== CORS 中間件 (動態域名校驗, 根據 api_cors_origins 配置) =====
+// P0-2 修復：admin/auth 端點不再默認允許 *，僅公開端點在未配置時回退到 *
+// 安全分析：admin SPA 通過 Service Binding 內部代理（無 Origin 頭），不受 CORS 影響
 app.use('*', async (c, next) => {
   const origin = c.req.header('Origin');
+  const path = new URL(c.req.url).pathname;
+  // 敏感端點：admin 管理接口 + auth 認證接口，未配置 CORS 時不允許跨域
+  const isSensitivePath = path.startsWith('/api/v1/admin/') || path.startsWith('/api/v1/auth/');
 
   // 從 KV 緩存讀取 CORS 配置
-  let allowedOrigin = '*';
+  let allowedOrigin = isSensitivePath ? '' : '*'; // 敏感端點默認不允許，公開端點默認允許
   let credentials = false;
 
   if (origin) {
@@ -99,7 +104,9 @@ app.use('*', async (c, next) => {
             .map((o) => o.trim())
             .filter(Boolean);
           if (origins.includes('*')) {
-            allowedOrigin = '*';
+            // 即使配置了 *，敏感端點也改為精確匹配 Origin（安全加固）
+            allowedOrigin = isSensitivePath ? origin : '*';
+            if (isSensitivePath) credentials = true;
           } else if (origins.includes(origin)) {
             allowedOrigin = origin;
             credentials = true;
@@ -112,23 +119,29 @@ app.use('*', async (c, next) => {
             return;
           }
         } else {
-          // 未配置 CORS 域名, 允許所有
-          allowedOrigin = '*';
+          // 未配置 CORS 域名：敏感端點不設置 CORS 頭（阻止跨域瀏覽器訪問），公開端點允許 *
+          allowedOrigin = isSensitivePath ? '' : '*';
         }
+      } else {
+        // KV 無緩存：與未配置相同處理
+        allowedOrigin = isSensitivePath ? '' : '*';
       }
     } catch {
-      // 配置讀取失敗, 回退到允許所有
-      allowedOrigin = '*';
+      // 配置讀取失敗：敏感端點保守拒絕，公開端點回退到 *
+      allowedOrigin = isSensitivePath ? '' : '*';
     }
   }
 
-  c.header('Access-Control-Allow-Origin', allowedOrigin);
-  c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Site-Id');
-  c.header('Access-Control-Max-Age', '86400');
-  if (credentials) {
-    c.header('Access-Control-Allow-Credentials', 'true');
-    c.header('Vary', 'Origin');
+  // 敏感端點未匹配到允許的 Origin 時，不設置任何 CORS 頭（瀏覽器將拒絕跨域請求）
+  if (allowedOrigin) {
+    c.header('Access-Control-Allow-Origin', allowedOrigin);
+    c.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Site-Id');
+    c.header('Access-Control-Max-Age', '86400');
+    if (credentials) {
+      c.header('Access-Control-Allow-Credentials', 'true');
+      c.header('Vary', 'Origin');
+    }
   }
 
   if (c.req.method === 'OPTIONS') {
@@ -936,9 +949,9 @@ app.get('/api/v1/admin/stats', async (c) => {
     visitsTotal: visitsTotal?.n ?? 0,
     todayNew: todayNew?.n ?? 0,
     // Worker 版本元數據（Cloudflare version_metadata 綁定，僅管理後台可見）
+    // v1.9.47: 移除硬編碼 projectVersion，前端改用 VERSIONS 數組的最新版本號
     version: c.env.CF_VERSION_METADATA
       ? {
-          projectVersion: 'v1.9.20',
           workerId: c.env.CF_VERSION_METADATA.id,
           workerTag: c.env.CF_VERSION_METADATA.tag,
           workerTimestamp: c.env.CF_VERSION_METADATA.timestamp,

@@ -10,7 +10,6 @@ interface Stats {
   visitsTotal: number
   todayNew: number
   version?: {
-    projectVersion: string
     workerId: string
     workerTag: string
     workerTimestamp: string
@@ -62,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.48',
+    date: '2026-07-31 11:25:53',
+    icon: '🔒',
+    latest: true,
+    changes: `🔒 P0 安全與性能修復（6 項）\n\n📋 變更內容\n• P0-1: 表單 token 生成從 Math.random() 改為 crypto.getRandomValues()，密碼學安全隨機數\n• P0-2: CORS 收緊 — admin/auth 端點不再默認允許 *，未配置 CORS 時不設置 CORS 頭阻止跨域瀏覽器訪問；公開端點保持 * 回退不影響前端網站\n• P0-3: 欄目刪除 + 批量排序改用 db.batch() 原子事務，防止中間失敗導致數據不一致\n• P0-4: 新增 0003_indexes.sql 遷移 — 18 張高頻查詢表添加索引（登錄/配置/日誌等），ay_content_ext.contentid 添加 UNIQUE 約束\n• P0-5: 內容擴展字段 Upsert 競態條件修復 — SELECT-then-INSERT/UPDATE 改為 INSERT ON CONFLICT(contentid) DO UPDATE 原子操作\n• P0-6: 前端路由級懶加載 — 25 個頁面組件改為 React.lazy + Suspense，減少首屏 bundle 體積，按需加載\n• Dashboard 版本回退偵測：Worker 部署時間早於最新版本發佈時間時顯示 ⚠️ 警告`,
+  },
+  {
     version: 'v1.9.47',
     date: '2026-07-31 10:08:20',
     icon: '🔄',
-    latest: true,
+    latest: false,
     changes: `🔄 數據庫備份 Queue 異步解耦 + 一鍵備份所有站點\n\n📋 變更內容\n• Queue 異步備份架構：HTTP 請求只投遞任務到 backup-queue（~1ms CPU），Consumer 在後台逐個執行 D1 dump → gzip 壓縮 → S3 上傳，Worker 不再「硬等」備份完成\n• Consumer 併發控制：max_batch_size=1 + max_concurrency=1，確保備份一個接一個完成，避免 D1/S3 資源爭用\n• 自動重試機制：max_retries=3，備份失敗時 Queue 自動重試，超過次數進入 backup-dlq 死信隊列\n• 一鍵備份所有站點：新增 POST /admin/database/backup-all 端點，一次請求投遞所有站點的備份任務到 Queue，逐個在後台執行\n• 任務狀態追蹤：KV 存儲任務狀態（pending/running/completed/failed），TTL 1 小時，前端輪詢 GET /admin/database/backup-status/:requestId 獲取進度\n• CPU 時間優化：Consumer cpu_ms 提升至 300000（5 分鐘），遠超免費額度 10ms 限制；HTTP 請求只做 queue.send() 不消耗額外 CPU\n• 定時備份也改用 Queue：Cron 只判斷是否到期 + 投遞 Queue 消息，實際備份由 Consumer 執行，降級路徑保留同步執行（本地開發無 Queue 時）\n• 前端任務狀態面板：Database.tsx 新增「備份任務進度」面板，展示各站點備份狀態（⏳等待/⚙️執行中/✅完成/❌失敗）、文件名、壓縮比、耗時\n• 降級機制：Queue 不可用時自動降級為同步執行（本地開發環境），確保功能不受影響`,
   },
   {
@@ -1590,7 +1596,7 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                   <div>
                     <div className="text-xs text-muted-foreground mb-1">項目版本</div>
                     <div className="font-bold text-lg text-indigo-700">
-                      {stats.version?.projectVersion ?? '未綁定'}
+                      {VERSIONS.find((v) => v.latest)?.version ?? '未知'}
                     </div>
                   </div>
                   <div>
@@ -1614,6 +1620,29 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                     </code>
                   </div>
                 </div>
+                {/* 版本回退偵測：Worker 部署時間早於最新版本發佈時間 → 可能發生了回退 */}
+                {(() => {
+                  const latestVersion = VERSIONS.find((v) => v.latest)
+                  const workerTs = stats.version?.workerTimestamp
+                  if (!latestVersion || !workerTs) return null
+                  // VERSIONS.date 格式 'YYYY-MM-DD HH:mm:ss'（香港時間），轉為 Date 比較
+                  const versionDate = new Date(latestVersion.date.replace(' ', 'T') + '+08:00')
+                  const workerDate = new Date(workerTs)
+                  // Worker 部署時間比最新版本發佈時間早超過 1 分鐘 → 判定為回退
+                  if (workerDate.getTime() < versionDate.getTime() - 60000) {
+                    return (
+                      <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                        <span className="shrink-0 text-sm">⚠️</span>
+                        <div>
+                          <span className="font-semibold">版本回退偵測</span>
+                          <span className="mx-1">—</span>
+                          Worker 實際部署時間（{new Date(workerTs).toLocaleString('zh-HK', { timeZone: 'Asia/Hong_Kong' })}）早於當前項目版本（{latestVersion.version}）的發佈時間（{latestVersion.date}），可能因部署失敗已回退至舊版本。請確認 Worker 部署狀態。
+                        </div>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
               </div>
             </section>
 

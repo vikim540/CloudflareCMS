@@ -357,11 +357,12 @@ export async function handleBatchUpdateExtFieldSorting(
     return err('沒有需要更新的排序', 1001);
   }
 
-  const stmt = db.prepare('UPDATE ay_extfield SET sorting = ? WHERE id = ?');
-  const batchPromises = items.map((item) =>
-    stmt.bind(Math.max(0, Math.floor(item.sorting)), item.id).run(),
+  // 使用 db.batch() 原子執行（P0 修復，替代 Promise.all 確保事務一致性）
+  const stmts = items.map((item) =>
+    db.prepare('UPDATE ay_extfield SET sorting = ? WHERE id = ?')
+      .bind(Math.max(0, Math.floor(item.sorting)), item.id),
   );
-  await Promise.all(batchPromises);
+  await db.batch(stmts);
 
   return ok(`批量更新 ${items.length} 項排序成功`);
 }
@@ -492,24 +493,15 @@ export async function handleSaveContentExt(
   }
 
   try {
-    // 檢查是否已有記錄
-    const existing = await db.prepare(
-      'SELECT extid FROM ay_content_ext WHERE contentid = ?',
-    ).bind(contentId).first();
-
-    if (existing) {
-      // 動態 UPDATE: UPDATE ay_content_ext SET ext_xxx=?, ext_yyy=? WHERE contentid=?
-      const setClause = fields.map((f) => `${f} = ?`).join(', ');
-      await db.prepare(
-        `UPDATE ay_content_ext SET ${setClause} WHERE contentid = ?`,
-      ).bind(...values, contentId).run();
-    } else {
-      // 動態 INSERT: INSERT INTO ay_content_ext (contentid, ext_xxx, ext_yyy) VALUES (?, ?, ?)
-      const placeholders = fields.map(() => '?').join(', ');
-      await db.prepare(
-        `INSERT INTO ay_content_ext (contentid, ${fields.join(', ')}) VALUES (?, ${placeholders})`,
-      ).bind(contentId, ...values).run();
-    }
+    // P0-5 修復：使用 INSERT ON CONFLICT 原子操作，替代 SELECT-then-INSERT/UPDATE 競態條件
+    // 需要 UNIQUE 索引 idx_content_ext_contentid_unique（已在 0003_indexes.sql 中創建）
+    // 語法：INSERT ... ON CONFLICT(contentid) DO UPDATE SET ...（SQLite 原生 Upsert）
+    const placeholders = fields.map(() => '?').join(', ');
+    const setClause = fields.map((f) => `${f} = excluded.${f}`).join(', ');
+    await db.prepare(
+      `INSERT INTO ay_content_ext (contentid, ${fields.join(', ')}) VALUES (?, ${placeholders})
+       ON CONFLICT(contentid) DO UPDATE SET ${setClause}`,
+    ).bind(contentId, ...values).run();
 
     return ok('擴展字段保存成功');
   } catch (e) {
