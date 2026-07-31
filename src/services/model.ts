@@ -583,7 +583,7 @@ export async function handlePermanentDeleteContent(db: D1Database, id: number): 
   }
 
   // 同步刪除擴展字段記錄 (容錯: 表可能不存在該 contentid 的記錄)
-  await db.prepare('DELETE FROM ay_content_ext WHERE contentid = ?').bind(id).run().catch(() => {});
+  await db.prepare('DELETE FROM ay_content_ext WHERE contentid = ?').bind(id).run().catch((e) => { console.warn('[model] 擴展字段清理失敗:', e instanceof Error ? e.message : String(e)); });
 
   return ok('已永久刪除');
 }

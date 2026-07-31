@@ -52,6 +52,8 @@ export default function ImagePreviewWithRemove({
         src={src}
         alt={alt}
         className={cn('object-cover rounded', imgClassName)}
+        loading="lazy"
+        decoding="async"
       />
       <button
         type="button"

@@ -75,18 +75,28 @@ async function verifyTurnstile(
   params.append('response', token);
   if (remoteip) params.append('remoteip', remoteip);
 
-  try {
-    const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-    });
-    const data = (await resp.json()) as { success: boolean };
-    return data.success === true;
-  } catch {
-    // 網絡異常時放行（避免 Cloudflare API 故障導致無法登錄）
-    return true;
+  // 重試 2 次，共 3 次嘗試；全部失敗後 fail-open（避免 Cloudflare API 故障鎖死所有用戶）
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params.toString(),
+      });
+      const data = (await resp.json()) as { success: boolean };
+      return data.success === true;
+    } catch (e) {
+      // 最後一次嘗試仍失敗 → fail-open 並記錄
+      if (attempt === maxRetries) {
+        console.error('[Turnstile] siteverify 全部重試失敗，fail-open:', e instanceof Error ? e.message : String(e));
+        return true;
+      }
+      // 短暫等待後重試（500ms）
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
+  return true;
 }
 
 /** 管理員登錄 */

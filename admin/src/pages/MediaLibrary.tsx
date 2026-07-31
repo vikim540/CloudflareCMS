@@ -114,6 +114,7 @@ function ImageWithDimensions({ src, alt, className, loading, onDimensions }: {
         alt={alt}
         className={className}
         loading={loading}
+        decoding="async"
         onLoad={(e) => {
           const img = e.target as HTMLImageElement
           const d = { w: img.naturalWidth, h: img.naturalHeight }
@@ -710,6 +711,8 @@ export default function MediaLibrary() {
                         src={getFileUrl(detail.key, storageConfig.s3_public_url, storageConfig.s3_endpoint, storageConfig.s3_bucket)}
                         alt={detail.name}
                         className="max-w-full max-h-48 object-contain border rounded-lg"
+                        loading="lazy"
+                        decoding="async"
                         onLoad={(e) => {
                           const img = e.target as HTMLImageElement
                           setDetailImgDims({ w: img.naturalWidth, h: img.naturalHeight })

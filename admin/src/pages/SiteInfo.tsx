@@ -183,6 +183,8 @@ export default function SiteInfoPage() {
               src={form.logo}
               alt="LOGO"
               className="mt-2 h-12 rounded border object-contain"
+              loading="lazy"
+              decoding="async"
             />
           )}
         </div>

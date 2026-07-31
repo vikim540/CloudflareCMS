@@ -559,7 +559,7 @@ export async function handleTestStorage(
     const url = await s3PutObject(s3Config, testKey, testData.buffer as ArrayBuffer, 'text/plain');
 
     // 清理測試文件
-    await s3DeleteObject(s3Config, testKey).catch(() => {});
+    await s3DeleteObject(s3Config, testKey).catch((e) => { console.warn('[storage] 測試文件清理失敗:', e instanceof Error ? e.message : String(e)); });
 
     return okData({
       connected: true,
@@ -734,7 +734,7 @@ export async function handleDeleteMedia(
     await s3DeleteObject(s3Config, key);
     // 同時清除該文件的標記記錄 (如有)
     await ensureMediaMarkTable(db);
-    await db.prepare('DELETE FROM ay_media_mark WHERE path = ?').bind(key).run().catch(() => {});
+    await db.prepare('DELETE FROM ay_media_mark WHERE path = ?').bind(key).run().catch((e) => { console.warn('[storage] media_mark 記錄清理失敗:', e instanceof Error ? e.message : String(e)); });
     return ok('刪除成功');
   } catch (e) {
     const msg = e instanceof Error ? e.message : '未知錯誤';
@@ -912,7 +912,7 @@ export async function handleCleanUnused(
       await db.prepare(`DELETE FROM ay_media_mark WHERE path IN (${placeholders})`)
         .bind(...batch)
         .run()
-        .catch(() => {});
+        .catch((e) => { console.warn('[storage] media_mark 批量清理失敗:', e instanceof Error ? e.message : String(e)); });
     }
   }
 
@@ -1110,7 +1110,7 @@ export async function handleCleanupContentResources(
     await ensureMediaMarkTable(db)
     for (const key of deleted) {
       await db.prepare('DELETE FROM ay_media_mark WHERE path = ?')
-        .bind(key).run().catch(() => {})
+        .bind(key).run().catch((e) => { console.warn('[storage] media_mark 記錄清理失敗:', e instanceof Error ? e.message : String(e)); })
     }
   }
 

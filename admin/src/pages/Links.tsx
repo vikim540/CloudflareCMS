@@ -226,6 +226,8 @@ export default function Links() {
                           src={item.logo}
                           alt={item.name}
                           className="w-8 h-8 rounded object-contain border"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <span className="text-muted-foreground text-xs">-</span>

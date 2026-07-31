@@ -666,6 +666,8 @@ export default function Slides() {
                           src={item.pic}
                           alt={item.title || '幻燈片'}
                           className="w-32 h-18 rounded border bg-gray-50 object-contain"
+                          loading="lazy"
+                          decoding="async"
                           style={{ maxHeight: '72px' }}
                         />
                       ) : (
@@ -678,6 +680,8 @@ export default function Slides() {
                           src={item.pic_mobile}
                           alt={item.title || '移動端幻燈片'}
                           className="rounded border bg-gray-50"
+                          loading="lazy"
+                          decoding="async"
                           style={{ maxWidth: '72px', maxHeight: '128px', width: 'auto', height: 'auto' }}
                         />
                       ) : (
@@ -866,6 +870,8 @@ export default function Slides() {
                       src={form.pic}
                       alt="預覽"
                       className="rounded object-contain"
+                      loading="lazy"
+                      decoding="async"
                       style={{ maxHeight: '150px', maxWidth: '100%' }}
                     />
                   </div>
@@ -916,6 +922,8 @@ export default function Slides() {
                       src={form.pic_mobile}
                       alt="移動端預覽"
                       className="rounded object-contain"
+                      loading="lazy"
+                      decoding="async"
                       style={{ maxHeight: '150px', maxWidth: '100%' }}
                     />
                   </div>

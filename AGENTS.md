@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.48**（2026-07-31）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.49**（2026-07-31）
 
 ## 語言選擇優先級
 
@@ -25,7 +25,7 @@
 | 工具 | 版本/路徑 | 備註 |
 |------|-----------|------|
 | wrangler | ^4.115.0（package.json） | ⚠️ 必須使用 `npx wrangler` 調用（直接 `wrangler` 命中 Yarn 全局 3.1.0，路徑 `D:\Program Files\nodejs\Yarn\bin\wrangler.cmd`，過時不可用）。本地 `node_modules/wrangler` 已升級至 4.115.0。⚠️ TRAE 沙箱中 pnpm 跨盤符號連結會觸發 EBUSY，需使用 `pnpm install --store-dir='F:\mysite\AI\idea\Cloudflarerustcms\.pnpm-store'` 同盤安裝 |
-| pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`） |
+| pnpm | 11.5.1 | `D:\AI\Cache\pnpm-home`（全局緩存 `D:\AI\Cache\pnpm`）。⚠️ CI 環境配置：根目錄 + `admin/` 各有獨立 `pnpm-workspace.yaml`，同時保留 `package.json` 的 `pnpm` 字段（pnpm 10.x 向下兼容）。三層配置：`onlyBuiltDependencies`（pnpm 10.x）+ `allowBuilds`（pnpm 11.x）+ `dangerouslyAllowAllBuilds`（CI 核彈級開關） |
 | Node.js | >= 18 | 系統 PATH |
 | PowerShell | pwsh.exe 7 | 禁止寫入 C 盤，所有工具/緩存存放 `D:\AI` |
 | Cloudflare API Token | 環境變量 `CLOUDFLARE_API_TOKEN` | — |
@@ -80,7 +80,8 @@ Cloudflarerustcms/
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，0001_init.sql + 0002_booking.sql）
+├── migrations/                 # D1 遷移（冪等語法，0001_init.sql + 0002_booking.sql + 0003_indexes.sql）
+├── pnpm-workspace.yaml         # pnpm 11.x 配置（onlyBuiltDependencies + allowBuilds + dangerouslyAllowAllBuilds）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```
 
@@ -227,10 +228,19 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 - 所有上傳位置默認 JPG/PNG → WebP 壓縮，引擎可獨立替換
 - 上傳方式：① R2 上傳 ② 外鏈 URL ③ 媒體庫選擇（`MediaPickerModal`）
 - 進度展示：`UploadProgressOverlay` 屏幕居中覆蓋層
+- **圖片懶加載**（v1.9.49）：所有 `<img>` 標籤全局添加 `loading="lazy"` + `decoding="async"`，減少首屏帶寬消耗，按需加載視口外圖片
+
+### 內容草稿自動保存（v1.9.49）
+
+- **觸發時機**：① 每 30 秒定時保存 ② 頁面卸載前（`beforeunload`）③ SPA 路由切換時（組件卸載）
+- **存儲位置**：`localStorage`，key 格式 `content_draft:{scode}:{id|new}`，按欄目+文章 ID 隔離
+- **恢復流程**：進入編輯頁時檢測草稿，彈出恢復提示（顯示標題 + 保存時間），用戶可選擇恢復或丟棄
+- **清理時機**：文章成功保存/發布後自動清除對應草稿
+- **錯誤處理**：`localStorage` 寫入失敗時 `console.warn` 記錄，不影響正常編輯流程
 
 ### 通知服務
 
-- **功能開關**：`mail_enabled` / `webhook_enabled` 控制總開關，註冊表 `FLAG_REGISTRY`（`src/services/flags.ts`）驅動後端攔截 + 前端隱藏 + API 保護
+- **功能開關**：`mail_enabled` / `webhook_enabled` 控制總開關，註冊表 `FLAG_REGISTRY`（`src/services/flags.ts`）驅動後端攔截 + 前端隱藏 + API 保護。**v1.9.49 緩存 TTL**：D1 配置緩存按站點隔離，TTL 60 秒自動過期，防止跨 isolate 數據不一致
 - **新增大功能**：在 `FLAG_REGISTRY` 加一條即可，三層自動生效
 - **Webhook**：自動檢測釘釘/企業微信/通用 JSON，分項開關
 - **郵件**：MailChannels / Resend HTTP API，HTML 模板
@@ -280,7 +290,7 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 ### Cloudflare Turnstile 人機驗證（v1.5.6，v1.8.6 重構）
 
 - **配置**：DB `ay_config` 表 2 條記錄（sorting 35-36，安全配置分組）— `turnstile_enabled`（開關）/ `turnstile_site_key`（站點密鑰）。**密鑰存儲在 Secrets Store**（v1.8.6 遷移，原 D1 `turnstile_secret_key` 已被 0010 遷移清空）
-- **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 接收 `turnstileSecret` 參數（從 `TURNSTILE_SECRET_STORE` 讀取），開關開啟時強制驗證（網絡異常時放行避免故障）
+- **後端**：`src/services/auth.ts` `verifyTurnstile()` 調用 Cloudflare siteverify API 驗證 token；`handleLogin` 接收 `turnstileSecret` 參數（從 `TURNSTILE_SECRET_STORE` 讀取），開關開啟時強制驗證。**v1.9.49 重試機制**：siteverify 網絡異常時重試 2 次（間隔 500ms），全部失敗後 fail-open 並記錄 `console.error`（避免 Cloudflare API 故障鎖死所有用戶）；secret key 未配置時直接放行（防配置丟失）
 - **前端**：`Login.tsx` 動態載入 Turnstile 腳本（explicit 模式），掛載時拉取 `/auth/turnstile-config` 判斷是否啟用，登錄失敗自動 reset widget
 - **公開端點**：`GET /api/v1/auth/turnstile-config` 返回 `{ enabled, siteKey }`（secret key 不返回）
 
@@ -345,8 +355,27 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 
 | 服務 | Cloudflare 資源 | Root Directory | Build Command | 觸發 |
 |------|----------------|---------------|---------------|------|
-| 後端 Worker | `cfstack-cms`（Workers Builds） | `/`（倉庫根目錄） | `pnpm run build` | push to main |
-| 前端 SPA | `cms-admin`（Pages） | `admin` | `pnpm run build` | push to main |
+| 後端 Worker | `cfstack-cms`（Workers Builds） | `/`（倉庫根目錄） | `pnpm run build` | push to main，監視路徑見下 |
+| 前端 SPA | `cms-admin`（Pages） | `admin` | `pnpm run build` | push to main（Root Directory 已隔離） |
+
+### Worker 構建監視路徑（Build Watch Paths）
+
+> Cloudflare Dashboard → Workers & Pages → `cfstack-cms` → Settings → Builds 配置。
+
+僅以下路徑變更才觸發 Worker 部署（避免前端改動誤觸發）：
+
+```
+src/**
+migrations/**
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+tsconfig.json
+wrangler.jsonc
+.npmrc
+```
+
+Pages 的 Root Directory 已設為 `admin`，天然隔離，無需額外配置監視路徑。
 
 ### 常規更新流程（5 步）
 

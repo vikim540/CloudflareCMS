@@ -504,6 +504,8 @@ export default function BookingCalendar() {
                           alt={item.title || '日曆圖片'}
                           title={item.title || ''}
                           className="w-32 h-18 rounded border bg-gray-50 object-contain"
+                          loading="lazy"
+                          decoding="async"
                           style={{ maxHeight: '72px' }}
                         />
                       ) : (
@@ -649,6 +651,8 @@ export default function BookingCalendar() {
                       src={form.pic}
                       alt="預覽"
                       className="rounded object-contain"
+                      loading="lazy"
+                      decoding="async"
                       style={{ maxHeight: '190px', maxWidth: '100%' }}
                     />
                   </div>
@@ -768,6 +772,8 @@ export default function BookingCalendar() {
                     src={deleteTarget.pic}
                     alt={deleteTarget.title || '日曆圖片'}
                     className="w-16 h-16 rounded border bg-white object-contain"
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="text-sm">
                     <div className="font-medium">{deleteTarget.title || '(無標題)'}</div>
@@ -855,6 +861,8 @@ export default function BookingCalendar() {
                           src={item.pic}
                           alt={item.title || ''}
                           className="w-8 h-8 rounded border bg-gray-50 object-contain shrink-0"
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <span className="w-8 h-8 rounded border bg-gray-50 flex items-center justify-center text-xs shrink-0">🖼️</span>

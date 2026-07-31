@@ -334,6 +334,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                         src={result.previewUrl}
                         alt={preview.original.name}
                         className="w-full h-full object-contain"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-400">
@@ -422,6 +424,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                           src={preview.originalUrl}
                           alt="原始"
                           className="max-w-full max-h-full object-contain"
+                          loading="lazy"
+                          decoding="async"
                         />
                       </div>
                     </div>
@@ -442,6 +446,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                           src={result.previewUrl}
                           alt="壓縮後"
                           className="max-w-full max-h-full object-contain"
+                          loading="lazy"
+                          decoding="async"
                         />
                       </div>
                     </div>
@@ -520,6 +526,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                   src={hoverPreview.originalUrl}
                   alt="原始放大"
                   className="object-contain"
+                  loading="lazy"
+                  decoding="async"
                   style={{ maxWidth: '48vw', maxHeight: 'calc(100vh - 60px)' }}
                 />
               </div>
@@ -541,6 +549,8 @@ export default function ImageCompressDialog({ files, onConfirm, onCancel }: Imag
                   src={hoverPreview.compressedUrl}
                   alt="壓縮後放大"
                   className="object-contain"
+                  loading="lazy"
+                  decoding="async"
                   style={{ maxWidth: '48vw', maxHeight: 'calc(100vh - 60px)' }}
                 />
               </div>

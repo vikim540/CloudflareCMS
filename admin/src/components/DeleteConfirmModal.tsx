@@ -282,6 +282,7 @@ export default function DeleteConfirmModal({
                         alt={img.key}
                         className="w-full h-full object-cover"
                         loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const target = e.currentTarget
                           target.style.display = 'none'

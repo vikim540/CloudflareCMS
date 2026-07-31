@@ -90,14 +90,15 @@ interface FlagReadEnv {
   siteId?: string;
 }
 
-/** D1 配置緩存（按站點隔離，單次請求內有效） */
-const d1FlagCache = new Map<string, Record<string, string>>();
+/** D1 配置緩存（按站點隔離，帶 TTL 防止跨 isolate 數據不一致） */
+const d1FlagCache = new Map<string, { data: Record<string, string>; ts: number }>();
+const FLAG_CACHE_TTL = 60_000; // 60 秒
 
-/** 從 D1 讀取所有開關值（按站點隔離緩存） */
+/** 從 D1 讀取所有開關值（按站點隔離緩存，TTL 60s） */
 async function loadFlagsFromD1(db: D1Database, siteId: string): Promise<Record<string, string>> {
   const cacheKey = siteId || 'default';
   const cached = d1FlagCache.get(cacheKey);
-  if (cached) return cached;
+  if (cached && Date.now() - cached.ts < FLAG_CACHE_TTL) return cached.data;
   const placeholders = FLAG_REGISTRY.map(() => '?').join(', ');
   const keys = FLAG_REGISTRY.map((f) => f.key);
   const result = await db
@@ -108,7 +109,7 @@ async function loadFlagsFromD1(db: D1Database, siteId: string): Promise<Record<s
   for (const row of result.results) {
     map[row.name] = row.value;
   }
-  d1FlagCache.set(cacheKey, map);
+  d1FlagCache.set(cacheKey, { data: map, ts: Date.now() });
   return map;
 }
 

@@ -16,13 +16,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
   const targetUrl = new URL(url.pathname + url.search, 'https://cfstack-cms.internal');
 
-  // 如果 Service Binding 未配置，返回錯誤（不暴露 Worker 公網域名）
+  // 如果 Service Binding 未配置，返回錯誤（不暴露請求詳情）
   if (!context.env.API) {
     return new Response(
       JSON.stringify({
         code: 500,
         msg: 'Service Binding 未配置，請聯繫管理員',
-        detail: `Pages Function env.API 為空。請檢查 admin/wrangler.jsonc 中 services 綁定是否配置正確（binding: "API", service: "cfstack-cms"）。\n請求: ${context.request.method} ${url.pathname}${url.search}`,
       }),
       {
         status: 500,
@@ -56,13 +55,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
     return newResponse;
   } catch (e) {
-    // Service Binding 調用失敗（Worker 內部異常、網絡問題等）
-    const errorMsg = e instanceof Error ? e.message : String(e);
+    // Service Binding 調用失敗（不暴露請求詳情给前端）
     return new Response(
       JSON.stringify({
         code: 500,
-        msg: '後端服務調用失敗',
-        detail: `Service Binding fetch 異常: ${errorMsg}\n請求: ${context.request.method} ${url.pathname}${url.search}\n時間: ${new Date().toISOString()}`,
+        msg: '後端服務調用失敗，請稍後重試',
       }),
       {
         status: 500,

@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.49',
+    date: '2026-07-31 14:45:13',
+    icon: '🛡️',
+    latest: true,
+    changes: `🛡️ P1-P2 安全加固與可靠性提升（7 項）\n\n📋 變更內容\n• P1: Turnstile siteverify 改為重試 2 次 + fail-close（間隔 500ms），全部失敗才 fail-open 並記錄 console.error，避免 Cloudflare API 故障鎖死所有用戶\n• P1: flags.ts D1 配置緩存添加 TTL 60 秒，按站點隔離，防止跨 isolate 數據不一致\n• P1: ContentEdit 草稿自動保存 — 每 30 秒定時保存 + 頁面卸載前保存 + SPA 路由切換時保存，進入編輯頁檢測草稿並彈出恢復提示\n• P2: [[path]].ts 代理層 500 錯誤移除詳細請求信息，防止後端結構洩露\n• P2: 移除未使用依賴 class-variance-authority，減小 bundle 體積\n• P2: 全局 img 標籤添加 loading="lazy" + decoding="async"，減少首屏帶寬消耗\n• P2: storage.ts / model.ts 靜默 catch(() => {}) 改為 console.warn 記錄，便於排查問題`,
+  },
+  {
     version: 'v1.9.48',
     date: '2026-07-31 11:25:53',
     icon: '🔒',
-    latest: true,
+    latest: false,
     changes: `🔒 P0 安全與性能修復（6 項）\n\n📋 變更內容\n• P0-1: 表單 token 生成從 Math.random() 改為 crypto.getRandomValues()，密碼學安全隨機數\n• P0-2: CORS 收緊 — admin/auth 端點不再默認允許 *，未配置 CORS 時不設置 CORS 頭阻止跨域瀏覽器訪問；公開端點保持 * 回退不影響前端網站\n• P0-3: 欄目刪除 + 批量排序改用 db.batch() 原子事務，防止中間失敗導致數據不一致\n• P0-4: 新增 0003_indexes.sql 遷移 — 18 張高頻查詢表添加索引（登錄/配置/日誌等），ay_content_ext.contentid 添加 UNIQUE 約束\n• P0-5: 內容擴展字段 Upsert 競態條件修復 — SELECT-then-INSERT/UPDATE 改為 INSERT ON CONFLICT(contentid) DO UPDATE 原子操作\n• P0-6: 前端路由級懶加載 — 25 個頁面組件改為 React.lazy + Suspense，減少首屏 bundle 體積，按需加載\n• Dashboard 版本回退偵測：Worker 部署時間早於最新版本發佈時間時顯示 ⚠️ 警告`,
   },
   {

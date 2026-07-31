@@ -258,6 +258,20 @@ const EMPTY_FORM: FormData = {
   date: '',
 }
 
+/** 草稿數據結構（localStorage 自動保存，按欄目+文章ID隔離） */
+interface ContentDraft {
+  form: FormData
+  htmlSource: string
+  savedAt: string
+}
+
+/** 草稿自動保存間隔（毫秒） */
+const DRAFT_AUTOSAVE_INTERVAL = 30000
+
+/** 草稿 localStorage key 生成器 */
+const draftKeyOf = (scode: string, id?: string) =>
+  `content_draft:${scode}:${id || 'new'}`
+
 /** 將欄目樹渲染為帶縮進的 select 選項 */
 function renderCategoryOptions(
   categories: Category[],
@@ -799,6 +813,11 @@ export default function ContentEdit() {
     callback: (urls: (string | null)[]) => void
   } | null>(null)
 
+  // ─── 草稿自動保存（localStorage） ───
+  const [draftPrompt, setDraftPrompt] = useState<{ title: string; savedAt: string } | null>(null)
+  const draftCheckedRef = useRef(false) // 確保草稿檢查只執行一次
+  const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
+
   /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
     try {
@@ -1059,6 +1078,107 @@ export default function ContentEdit() {
       setPendingImageUpload(null)
     }
   }, [pendingImageUpload])
+
+  // ============================================================================
+  // ─── 草稿自動保存（純前端 localStorage 方案，不涉及後端 API） ───
+  //
+  // 機制：
+  //   1. 每 30 秒定時將當前表單數據序列化存入 localStorage
+  //   2. 頁面離開前（beforeunload + 組件卸載）也保存一次
+  //   3. 重新進入編輯頁面時，如有未提交草稿，顯示「恢復草稿」提示
+  //   4. 手動保存/發佈成功後清除對應草稿
+  //
+  // 草稿 key 格式：content_draft:{scode}:{id || 'new'}，按欄目+文章ID隔離
+  // ============================================================================
+
+  /** 保存草稿到 localStorage */
+  const saveDraft = useCallback(() => {
+    if (!form.scode) return // 沒有欄目不保存
+    // 從 Quill 編輯器獲取最新內容（form.content 可能滯後於編輯器）
+    let currentContent = form.content
+    if (quillRef.current) {
+      currentContent = quillRef.current.root.innerHTML
+    }
+    const draft: ContentDraft = {
+      form: { ...form, content: currentContent },
+      htmlSource,
+      savedAt: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' }),
+    }
+    try {
+      localStorage.setItem(draftKeyOf(form.scode, id), JSON.stringify(draft))
+    } catch {
+      /* localStorage 滿或不可用，靜默失敗 */
+    }
+  }, [form, htmlSource, id])
+
+  // 保持 saveDraftRef 指向最新的 saveDraft（給定時器和卸載回調使用）
+  useEffect(() => {
+    saveDraftRef.current = saveDraft
+  }, [saveDraft])
+
+  // ─── 30 秒定時自動保存 ───
+  useEffect(() => {
+    if (!form.scode) return // 沒有欄目時不啟動定時器
+    const timer = setInterval(() => saveDraftRef.current(), DRAFT_AUTOSAVE_INTERVAL)
+    return () => clearInterval(timer)
+  }, [form.scode])
+
+  // ─── 頁面離開前保存（beforeunload：關閉頁籤/刷新；卸載：SPA 路由切換） ───
+  useEffect(() => {
+    const handleBeforeUnload = () => saveDraftRef.current()
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      saveDraftRef.current() // 組件卸載時也保存（覆蓋 SPA 路由切換場景）
+    }
+  }, [])
+
+  // ─── 掛載時檢查是否有未提交的草稿 ───
+  useEffect(() => {
+    if (draftCheckedRef.current) return // 只檢查一次
+    if (!form.scode) return // 欄目未確定時不檢查
+    if (isEdit && loading) return // 編輯模式下等待內容載入完成
+    draftCheckedRef.current = true
+    try {
+      const raw = localStorage.getItem(draftKeyOf(form.scode, id))
+      if (!raw) return
+      const draft = JSON.parse(raw) as ContentDraft
+      // 只在有實際內容時才提示
+      if (draft.form.title || draft.form.content) {
+        setDraftPrompt({ title: draft.form.title, savedAt: draft.savedAt })
+      }
+    } catch {
+      /* 草稿解析失敗，忽略 */
+    }
+  }, [form.scode, isEdit, loading, id])
+
+  /** 恢復草稿：將草稿數據寫回表單和編輯器 */
+  const restoreDraft = () => {
+    try {
+      const raw = localStorage.getItem(draftKeyOf(form.scode, id))
+      if (!raw) return
+      const draft = JSON.parse(raw) as ContentDraft
+      setForm(draft.form)
+      setHtmlSource(draft.htmlSource)
+      // Quill 編輯器已初始化時，手動寫入內容
+      if (draft.form.content && quillRef.current) {
+        quillRef.current.clipboard.dangerouslyPasteHTML(draft.form.content)
+      }
+    } catch {
+      /* 恢復失敗，忽略 */
+    }
+    setDraftPrompt(null)
+  }
+
+  /** 丟棄草稿：清除 localStorage 並關閉提示 */
+  const discardDraft = () => {
+    try {
+      localStorage.removeItem(draftKeyOf(form.scode, id))
+    } catch {
+      /* 忽略 */
+    }
+    setDraftPrompt(null)
+  }
 
   /** 縮略圖（ico）上傳處理 */
   const handleIcoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1449,6 +1569,12 @@ export default function ContentEdit() {
       } else {
         await api.post('/admin/contents', payload)
       }
+      // 保存/發佈成功：清除 localStorage 草稿
+      try {
+        localStorage.removeItem(draftKeyOf(form.scode, id))
+      } catch {
+        /* 忽略 */
+      }
       navigate('/contents')
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存失敗')
@@ -1502,6 +1628,34 @@ export default function ContentEdit() {
             onClick={() => setSaveHint(null)}
             className="text-white/70 hover:text-white"
           >✕</button>
+        </div>
+      )}
+
+      {/* 草稿恢復提示 — 檢測到未提交的草稿時顯示 */}
+      {draftPrompt && (
+        <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-sm flex items-center gap-3 flex-wrap">
+          <span className="text-base">💾</span>
+          <div className="flex-1 min-w-0">
+            <p>
+              檢測到未保存的草稿
+              {draftPrompt.title ? `：「${draftPrompt.title}」` : ''}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">保存時間：{draftPrompt.savedAt}</p>
+          </div>
+          <button
+            type="button"
+            onClick={restoreDraft}
+            className="px-3 py-1.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors text-xs font-medium"
+          >
+            恢復草稿
+          </button>
+          <button
+            type="button"
+            onClick={discardDraft}
+            className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors text-xs"
+          >
+            丟棄
+          </button>
         </div>
       )}
 
