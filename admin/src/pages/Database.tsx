@@ -33,6 +33,21 @@ interface LogStats {
   latest: string
 }
 
+/** 異步備份任務狀態（v1.9.47，Queue 模式） */
+interface BackupTask {
+  requestId: string
+  siteId: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  filename?: string
+  size?: number
+  originalSize?: number
+  tableCount?: number
+  rowCount?: number
+  error?: string
+  startTime: string
+  endTime?: string
+}
+
 /** 星期標籤 */
 const WEEKDAY_LABELS: { value: string; label: string }[] = [
   { value: '0', label: '週日' },
@@ -104,6 +119,10 @@ export default function DatabasePage() {
   // 備份列表站點 Tab
   const [activeSiteTab, setActiveSiteTab] = useState<string>('all')
 
+  // 異步備份任務追蹤（v1.9.47，Queue 模式）
+  const [backupTasks, setBackupTasks] = useState<BackupTask[]>([])
+  const [backingUpAll, setBackingUpAll] = useState(false)
+
   /** 載入備份列表 */
   const fetchBackups = useCallback(async () => {
     setLoading(true)
@@ -154,17 +173,105 @@ export default function DatabasePage() {
     fetchLogStats()
   }, [fetchBackups, fetchSchedule, fetchLogStats])
 
-  /** 建立備份 */
+  /** 輪詢單個備份任務狀態（v1.9.47） */
+  const pollBackupStatus = useCallback(async (requestId: string) => {
+    let attempts = 0
+    const maxAttempts = 120 // 最多輪詢 120 次（每 3 秒，共 6 分鐘）
+    while (attempts < maxAttempts) {
+      try {
+        const res = await api.get<BackupTask>(`/admin/database/backup-status/${requestId}`)
+        const task = res.data
+        if (!task) break
+
+        setBackupTasks(prev => prev.map(t => t.requestId === requestId ? task : t))
+
+        if (task.status === 'completed' || task.status === 'failed') {
+          // 任務結束，刷新備份列表
+          if (task.status === 'completed') {
+            await fetchBackups()
+          }
+          // 延遲 5 秒後從列表移除已完成的任務
+          setTimeout(() => {
+            setBackupTasks(prev => prev.filter(t => t.requestId !== requestId))
+          }, 5000)
+          return
+        }
+      } catch {
+        // 輪詢失敗不中斷，繼續重試
+      }
+      attempts++
+      await new Promise(resolve => setTimeout(resolve, 3000))
+    }
+    // 超時：標記為失敗
+    setBackupTasks(prev => prev.map(t =>
+      t.requestId === requestId
+        ? { ...t, status: 'failed', error: '輪詢超時（6 分鐘）' }
+        : t
+    ))
+  }, [fetchBackups])
+
+  /** 建立備份（v1.9.47: 支援 Queue 異步模式） */
   const handleCreateBackup = async () => {
     setCreating(true)
     setError('')
     try {
-      await api.post(`/admin/database/backup${excludeLogs ? '?excludeLogs=1' : ''}`, {})
-      await fetchBackups()
+      const res = await api.post<{ requestId?: string; siteId?: string; status?: string }>(
+        `/admin/database/backup${excludeLogs ? '?excludeLogs=1' : ''}`, {}
+      )
+      // 檢查是否為異步模式（返回 requestId）
+      if (res.data?.requestId && res.data?.status === 'pending') {
+        const task: BackupTask = {
+          requestId: res.data.requestId,
+          siteId: res.data.siteId || 'unknown',
+          status: 'pending',
+          startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' }),
+        }
+        setBackupTasks(prev => [...prev, task])
+        // 開始輪詢任務狀態
+        pollBackupStatus(task.requestId)
+      } else {
+        // 同步模式：直接刷新列表
+        await fetchBackups()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '建立備份失敗')
     } finally {
       setCreating(false)
+    }
+  }
+
+  /** 一鍵備份所有站點（v1.9.47） */
+  const handleBackupAll = async () => {
+    if (!window.confirm('確定要一鍵備份所有站點嗎？\n任務將逐個在後台執行，無需等待。')) return
+    setBackingUpAll(true)
+    setError('')
+    try {
+      const res = await api.post<{ tasks: { requestId: string; siteId: string; status: string }[] }>(
+        `/admin/database/backup-all${excludeLogs ? '?excludeLogs=1' : ''}`, {}
+      )
+      const tasks = res.data?.tasks ?? []
+      if (tasks.length === 0) {
+        setError('未能提交任何備份任務')
+        return
+      }
+      // 將所有任務加入追蹤列表
+      const newTasks: BackupTask[] = tasks
+        .filter(t => !t.status.startsWith('failed'))
+        .map(t => ({
+          requestId: t.requestId,
+          siteId: t.siteId,
+          status: 'pending',
+          startTime: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' }),
+        }))
+      setBackupTasks(prev => [...prev, ...newTasks])
+      // 逐個輪詢（Queue max_concurrency=1，任務會逐個完成）
+      for (const task of newTasks) {
+        pollBackupStatus(task.requestId)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '一鍵備份失敗')
+    } finally {
+      setBackingUpAll(false)
     }
   }
 
@@ -292,6 +399,15 @@ export default function DatabasePage() {
           >
             {creating ? <span className="animate-spin inline-block">🔄</span> : <span>➕</span>}
             {creating ? '備份中...' : '建立備份'}
+          </button>
+          <button
+            onClick={handleBackupAll}
+            disabled={backingUpAll}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-opacity text-sm"
+            title="一次提交所有站點的備份任務，Queue 逐個在後台執行"
+          >
+            {backingUpAll ? <span className="animate-spin inline-block">🔄</span> : <span>📦</span>}
+            {backingUpAll ? '提交中...' : '一鍵備份所有站點'}
           </button>
         </div>
       </div>
@@ -595,6 +711,76 @@ export default function DatabasePage() {
           </div>
         </div>
       </div>
+
+      {/* 異步備份任務狀態面板（v1.9.47） */}
+      {backupTasks.length > 0 && (
+        <div className="mb-4 bg-white rounded-lg border border-blue-200 overflow-hidden">
+          <div className="px-4 py-2.5 border-b bg-blue-50/50 flex items-center gap-2">
+            <span className="text-sm font-semibold">🔄 備份任務進度</span>
+            <span className="text-xs text-muted-foreground">
+              （Queue 異步執行，{backupTasks.filter(t => t.status === 'pending' || t.status === 'running').length} 個進行中 / {backupTasks.filter(t => t.status === 'completed').length} 個完成 / {backupTasks.filter(t => t.status === 'failed').length} 個失敗）
+            </span>
+          </div>
+          <div className="divide-y">
+            {backupTasks.map(task => (
+              <div key={task.requestId} className="px-4 py-3 flex items-center gap-3">
+                {/* 狀態圖標 */}
+                <span className="text-lg shrink-0">
+                  {task.status === 'pending' && '⏳'}
+                  {task.status === 'running' && <span className="animate-spin inline-block">⚙️</span>}
+                  {task.status === 'completed' && '✅'}
+                  {task.status === 'failed' && '❌'}
+                </span>
+                {/* 站點 */}
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                  {task.siteId}
+                </span>
+                {/* 狀態文字 */}
+                <div className="flex-1 min-w-0">
+                  {task.status === 'pending' && (
+                    <span className="text-sm text-muted-foreground">等待 Queue 處理...</span>
+                  )}
+                  {task.status === 'running' && (
+                    <span className="text-sm text-blue-600">正在備份數據庫...</span>
+                  )}
+                  {task.status === 'completed' && (
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="text-green-600 font-medium">備份完成</span>
+                      {task.filename && (
+                        <span className="font-mono text-xs text-muted-foreground truncate max-w-xs">{task.filename}</span>
+                      )}
+                      {task.size != null && task.originalSize != null && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatSize(task.originalSize)} → {formatSize(task.size)}
+                          {task.tableCount != null && task.rowCount != null && (
+                            <span className="ml-1">({task.tableCount} 表, {task.rowCount} 行)</span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {task.status === 'failed' && (
+                    <span className="text-sm text-red-600">
+                      失敗：{task.error || '未知錯誤'}
+                    </span>
+                  )}
+                </div>
+                {/* 耗時 */}
+                {task.endTime && (
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {(() => {
+                      const start = new Date(task.startTime).getTime()
+                      const end = new Date(task.endTime).getTime()
+                      const sec = Math.floor((end - start) / 1000)
+                      return sec < 60 ? `${sec} 秒` : `${Math.floor(sec / 60)} 分 ${sec % 60} 秒`
+                    })()}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 錯誤提示 */}
       {error && (

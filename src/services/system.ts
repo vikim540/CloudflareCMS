@@ -11,7 +11,7 @@
  *
  * 所有 SQL 均使用 D1 binding 的參數化查詢, 禁止字符串拼接值
  */
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, Queue } from '@cloudflare/workers-types';
 import { okData, ok, err, okList, createMeta, notFound } from '../utils/response';
 import { fromQuery, offset } from '../utils/pagination';
 import { hashPassword } from '../utils/password';
@@ -906,6 +906,69 @@ export async function logAction(
 /** 備份前綴 (S3 key 前綴) */
 const BACKUP_PREFIX = 'backups/';
 
+// ============================================================================
+// Queue 異步備份架構 (v1.9.47)
+// HTTP 請求只投遞任務到 Queue（~1ms CPU），Consumer 逐個執行備份
+// 任務狀態追蹤存儲在 KV（backup-task:{requestId}），TTL 1 小時
+// ============================================================================
+
+/** Queue 消息載荷: 備份任務 */
+export interface BackupMessage {
+  action: 'backup';
+  siteId: string;
+  excludeLogData: boolean;
+  requestId: string;
+}
+
+/** 備份任務狀態（存儲在 KV，供前端輪詢） */
+export interface BackupTaskStatus {
+  requestId: string;
+  siteId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startTime: string;
+  endTime?: string;
+  filename?: string;
+  size?: number;
+  originalSize?: number;
+  tableCount?: number;
+  rowCount?: number;
+  excludeLogData?: boolean;
+  compressed?: boolean;
+  error?: string;
+}
+
+/** KV 任務狀態鍵前綴 */
+const BACKUP_TASK_PREFIX = 'backup-task:';
+/** KV 任務狀態 TTL（1 小時，足夠前端輪詢完成） */
+const BACKUP_TASK_TTL = 3600;
+
+/** 寫入備份任務狀態到 KV */
+async function setBackupTaskStatus(kv: KVNamespace, status: BackupTaskStatus): Promise<void> {
+  try {
+    await kv.put(BACKUP_TASK_PREFIX + status.requestId, JSON.stringify(status), {
+      expirationTtl: BACKUP_TASK_TTL,
+    });
+  } catch {
+    // KV 寫入失敗不影響備份主流程
+  }
+}
+
+/** 讀取備份任務狀態 */
+async function getBackupTaskStatus(kv: KVNamespace, requestId: string): Promise<BackupTaskStatus | null> {
+  try {
+    const raw = await kv.get(BACKUP_TASK_PREFIX + requestId);
+    if (!raw) return null;
+    return JSON.parse(raw) as BackupTaskStatus;
+  } catch {
+    return null;
+  }
+}
+
+/** 生成唯一請求 ID */
+function generateRequestId(): string {
+  return `bk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 /** 需要備份的表列表 (來自已知 schema) */
 const BACKUP_TABLES = [
   'ay_content',
@@ -1081,87 +1144,301 @@ async function dumpDatabaseTables(
   return { parts, tableCount, rowCount };
 }
 
-/** 創建數據庫備份 (僅導出當前站點數據庫為 SQL 並上傳到 R2) */
+/**
+ * 執行備份的核心邏輯（純函數，不返回 Response）。
+ * 從 handleCreateBackup 和 Queue Consumer 共用。
+ *
+ * @returns 備份結果（文件名、大小、表數、行數等）
+ * @throws 備份失敗時拋出錯誤（由調用方捕獲處理）
+ */
+export async function executeBackup(
+  db: D1Database,
+  kv: KVNamespace,
+  siteId: string,
+  s3Secrets: S3Secrets | undefined,
+  options?: { excludeLogData?: boolean },
+): Promise<{
+  filename: string;
+  key: string;
+  size: number;
+  originalSize: number;
+  tableCount: number;
+  rowCount: number;
+  excludeLogData: boolean;
+  compressed: boolean;
+  createdAt: string;
+}> {
+  const s3Config = await getS3Config(db, kv, s3Secrets);
+  if (!s3Config) {
+    throw new Error('S3 存儲未配置，請先在存儲設置中配置');
+  }
+
+  const now = nowStr();
+  const timestamp = now.replace(/[: ]/g, '').replace(/[-]/g, '');
+  const backupName = `${siteId}_backup_${timestamp}.sql.gz`;
+  const backupKey = BACKUP_PREFIX + backupName;
+  const excludeLogData = options?.excludeLogData ?? false;
+
+  // 生成 SQL 內容 — 僅導出當前站點
+  const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId, excludeLogData);
+
+  const parts: string[] = [];
+  parts.push('-- ============================================================');
+  parts.push('-- Cloudflare CMS Database Backup');
+  parts.push(`-- Generated: ${now}`);
+  parts.push(`-- Site: ${siteId}`);
+  parts.push(`-- Tables: ${tableCount} (with data)`);
+  if (excludeLogData) {
+    parts.push('-- Log data (ay_syslog) excluded — schema only');
+  }
+  parts.push('-- ============================================================');
+  parts.push('');
+  parts.push('PRAGMA foreign_keys=OFF;');
+  parts.push('BEGIN TRANSACTION;');
+  parts.push('');
+  parts.push(...dumpParts);
+  parts.push('COMMIT;');
+  parts.push('');
+
+  const sqlContent = parts.join('\n');
+  const encoded = new TextEncoder().encode(sqlContent);
+  const rawData = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
+
+  // gzip 壓縮
+  const data = await gzipCompress(rawData);
+  const originalSize = rawData.byteLength;
+
+  // 上傳到 R2/S3（壓縮格式）
+  await s3PutObject(s3Config, backupKey, data, 'application/gzip');
+
+  // 記錄備份日誌（寫入當前站點庫）
+  try {
+    await db.prepare(
+      'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
+    ).bind('admin', `數據庫備份創建: ${backupName} (原始 ${(originalSize / 1024).toFixed(2)} KB → 壓縮 ${(data.byteLength / 1024).toFixed(2)} KB, 壓縮率 ${((1 - data.byteLength / originalSize) * 100).toFixed(1)}%, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', now, 'system').run();
+  } catch { /* 日誌寫入失敗不影響主流程 */ }
+
+  return {
+    filename: backupName,
+    key: backupKey,
+    size: data.byteLength,
+    originalSize,
+    tableCount,
+    rowCount,
+    excludeLogData,
+    compressed: true,
+    createdAt: now,
+  };
+}
+
+/**
+ * 創建數據庫備份（異步 Queue 模式，v1.9.47）。
+ * HTTP 請求只投遞任務到 Queue 並立即返回任務 ID，Consumer 逐個執行備份。
+ * 若 Queue 不可用（本地開發），降級為同步執行。
+ */
 export async function handleCreateBackup(
   db: D1Database,
   kv: KVNamespace,
   siteId: string,
-  s3Secrets?: S3Secrets,
+  s3Secrets: S3Secrets | undefined,
   options?: { excludeLogData?: boolean },
+  queue?: Queue<BackupMessage> | null,
 ): Promise<Response> {
-  const s3Config = await getS3Config(db, kv, s3Secrets);
-  if (!s3Config) {
-    return err('S3 存儲未配置，請先在存儲設置中配置', 1005);
-  }
+  const excludeLogData = options?.excludeLogData ?? false;
 
-  try {
-    const now = nowStr();
-    const timestamp = now.replace(/[: ]/g, '').replace(/[-]/g, '');
-    // 格式: {siteId}_backup_YYYYMMDDHHmmss.sql.gz（gzip 壓縮，節省存儲空間）
-    const backupName = `${siteId}_backup_${timestamp}.sql.gz`;
-    const backupKey = BACKUP_PREFIX + backupName;
+  // 有 Queue → 異步模式：投遞任務並立即返回
+  if (queue) {
+    const requestId = generateRequestId();
+    const taskStatus: BackupTaskStatus = {
+      requestId,
+      siteId,
+      status: 'pending',
+      startTime: nowStr(),
+      excludeLogData,
+    };
+    await setBackupTaskStatus(kv, taskStatus);
 
-    const excludeLogData = options?.excludeLogData ?? false;
-
-    // 生成 SQL 內容 — 僅導出當前站點
-    const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId, excludeLogData);
-
-    const parts: string[] = [];
-    parts.push('-- ============================================================');
-    parts.push('-- Cloudflare CMS Database Backup');
-    parts.push(`-- Generated: ${now}`);
-    parts.push(`-- Site: ${siteId}`);
-    parts.push(`-- Tables: ${tableCount} (with data)`);
-    if (excludeLogData) {
-      parts.push('-- Log data (ay_syslog) excluded — schema only');
-    }
-    parts.push('-- ============================================================');
-    parts.push('');
-    parts.push('PRAGMA foreign_keys=OFF;');
-    parts.push('BEGIN TRANSACTION;');
-    parts.push('');
-    parts.push(...dumpParts);
-    parts.push('COMMIT;');
-    parts.push('');
-
-    const sqlContent = parts.join('\n');
-    const encoded = new TextEncoder().encode(sqlContent);
-    // 複製為獨立的 ArrayBuffer (避免 ArrayBufferLike 類型問題)
-    const rawData = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength) as ArrayBuffer;
-
-    // gzip 壓縮
-    const data = await gzipCompress(rawData);
-    const originalSize = rawData.byteLength;
-
-    // 上傳到 R2/S3（壓縮格式）
-    await s3PutObject(s3Config, backupKey, data, 'application/gzip');
-
-    // 記錄備份日誌（寫入當前站點庫）
     try {
-      await db.prepare(
-        'INSERT INTO ay_syslog (level, event, user_ip, create_time, username) VALUES (?, ?, ?, ?, ?)',
-      ).bind('admin', `數據庫備份創建: ${backupName} (原始 ${(originalSize / 1024).toFixed(2)} KB → 壓縮 ${(data.byteLength / 1024).toFixed(2)} KB, 壓縮率 ${((1 - data.byteLength / originalSize) * 100).toFixed(1)}%, ${siteId} 站點, ${tableCount} 表, ${rowCount} 行${excludeLogData ? ', 排除日誌數據' : ''})`, '127.0.0.1', now, 'system').run();
-    } catch { /* 日誌寫入失敗不影響主流程 */ }
+      await queue.send({
+        action: 'backup',
+        siteId,
+        excludeLogData,
+        requestId,
+      });
+    } catch (e) {
+      // Queue 投遞失敗 → 降級為同步執行
+      const msg = e instanceof Error ? e.message : '未知錯誤';
+      console.error(`[Backup] ${siteId}: Queue 投遞失敗，降級同步執行:`, msg);
+      try {
+        const result = await executeBackup(db, kv, siteId, s3Secrets, { excludeLogData });
+        return okData(result, '備份創建成功（同步模式）');
+      } catch (e2) {
+        return err(`備份創建失敗: ${e2 instanceof Error ? e2.message : '未知錯誤'}`, 1005);
+      }
+    }
 
     return okData(
-      {
-        filename: backupName,
-        key: backupKey,
-        size: data.byteLength,
-        originalSize,
-        sizeKB: (data.byteLength / 1024).toFixed(2),
-        createdAt: now,
-        site: siteId,
-        totalTables: tableCount,
-        totalRows: rowCount,
-        excludeLogData,
-        compressed: true,
-      },
-      '備份創建成功',
+      { requestId, siteId, status: 'pending' },
+      '備份任務已提交，正在後台執行',
     );
+  }
+
+  // 無 Queue（本地開發）→ 同步模式
+  try {
+    const result = await executeBackup(db, kv, siteId, s3Secrets, { excludeLogData });
+    return okData(result, '備份創建成功');
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '未知錯誤';
-    return err(`備份創建失敗: ${msg}`, 1005);
+    return err(`備份創建失敗: ${e instanceof Error ? e.message : '未知錯誤'}`, 1005);
+  }
+}
+
+/**
+ * 一鍵備份所有站點（v1.9.47）。
+ * 一次請求投遞所有站點的備份任務到 Queue，Consumer 逐個執行。
+ *
+ * @param sites 站點列表 [{ siteId, binding }]
+ * @param queue Cloudflare Queue binding
+ */
+export async function handleBackupAll(
+  db: D1Database,
+  kv: KVNamespace,
+  sites: Array<{ siteId: string; binding: string }>,
+  queue: Queue<BackupMessage> | null,
+  options?: { excludeLogData?: boolean },
+): Promise<Response> {
+  const excludeLogData = options?.excludeLogData ?? false;
+
+  if (!queue) {
+    return err('Queue 未配置，無法執行批量備份。請使用單站備份。', 1005);
+  }
+
+  const tasks: Array<{ requestId: string; siteId: string; status: string }> = [];
+
+  for (const site of sites) {
+    const requestId = generateRequestId();
+    const taskStatus: BackupTaskStatus = {
+      requestId,
+      siteId: site.siteId,
+      status: 'pending',
+      startTime: nowStr(),
+      excludeLogData,
+    };
+    await setBackupTaskStatus(kv, taskStatus);
+
+    try {
+      await queue.send({
+        action: 'backup',
+        siteId: site.siteId,
+        excludeLogData,
+        requestId,
+      });
+      tasks.push({ requestId, siteId: site.siteId, status: 'pending' });
+    } catch (e) {
+      // 單站投遞失敗不影響其他站點
+      const errorMsg = e instanceof Error ? e.message : '未知錯誤';
+      tasks.push({ requestId, siteId: site.siteId, status: `failed: ${errorMsg}` });
+      // 更新任務狀態為失敗
+      taskStatus.status = 'failed';
+      taskStatus.error = `Queue 投遞失敗: ${errorMsg}`;
+      taskStatus.endTime = nowStr();
+      await setBackupTaskStatus(kv, taskStatus);
+    }
+  }
+
+  return okData(
+    { tasks, totalSites: sites.length },
+    `已提交 ${tasks.length} 個站點備份任務，正在後台逐個執行`,
+  );
+}
+
+/**
+ * 查詢備份任務狀態（v1.9.47）。
+ * 前端輪詢此接口獲取備份進度。
+ */
+export async function handleGetBackupStatus(
+  kv: KVNamespace,
+  requestId: string,
+): Promise<Response> {
+  const status = await getBackupTaskStatus(kv, requestId);
+  if (!status) {
+    return err('任務不存在或已過期（TTL 1 小時）', 1004);
+  }
+  return okData(status, '成功');
+}
+
+/**
+ * Queue 消費者：執行單個站點的備份任務（v1.9.47）。
+ * 由 Cloudflare Queue 在後台觸發，與 HTTP 請求解耦。
+ *
+ * 流程：更新狀態為 running → 執行備份 → 更新狀態為 completed/failed → 清理過期備份
+ *
+ * @param db       站點數據庫 binding（已由 index.ts 路由到正確的站點）
+ * @param kv       KV namespace（任務狀態存儲）
+ * @param message  Queue 消息
+ * @param s3Secrets S3 憑證
+ */
+export async function handleQueueBackup(
+  db: D1Database,
+  kv: KVNamespace,
+  message: BackupMessage,
+  s3Secrets?: S3Secrets,
+): Promise<void> {
+  const { requestId, siteId, excludeLogData } = message;
+
+  // 更新狀態為 running
+  await setBackupTaskStatus(kv, {
+    requestId,
+    siteId,
+    status: 'running',
+    startTime: nowStr(),
+    excludeLogData,
+  });
+
+  try {
+    // 執行備份
+    const result = await executeBackup(db, kv, siteId, s3Secrets, { excludeLogData });
+
+    // 更新狀態為 completed
+    await setBackupTaskStatus(kv, {
+      requestId,
+      siteId,
+      status: 'completed',
+      startTime: result.createdAt,
+      endTime: nowStr(),
+      filename: result.filename,
+      size: result.size,
+      originalSize: result.originalSize,
+      tableCount: result.tableCount,
+      rowCount: result.rowCount,
+      excludeLogData: result.excludeLogData,
+      compressed: result.compressed,
+    });
+
+    // 清理過期備份（讀取保留數量配置）
+    try {
+      const keepStr = await getConfig(db, kv, 'backup_schedule_keep', '7');
+      const keep = parseInt(keepStr, 10) || 7;
+      const deleted = await applyBackupRetention(db, kv, s3Secrets, keep, siteId);
+      if (deleted > 0) {
+        console.log(`[BackupQueue] ${siteId}: 清理了 ${deleted} 個過期備份`);
+      }
+    } catch {
+      // 保留清理失敗不影響備份結果
+    }
+  } catch (e) {
+    // 更新狀態為 failed
+    const errorMsg = e instanceof Error ? e.message : '未知錯誤';
+    await setBackupTaskStatus(kv, {
+      requestId,
+      siteId,
+      status: 'failed',
+      startTime: nowStr(),
+      endTime: nowStr(),
+      excludeLogData,
+      error: errorMsg,
+    });
+    // 重新拋出讓 Queue 自動重試（wrangler.jsonc 配置 max_retries=3）
+    throw e;
   }
 }
 
@@ -1314,14 +1591,20 @@ async function applyBackupRetention(
 }
 
 /**
- * 定時備份檢查（由 Cron 每 15 分鐘調用）
- * 檢查當前站點是否需要執行定時備份，若到期則執行
+ * 定時備份檢查（由 Cron 每 15 分鐘調用，v1.9.47 改用 Queue 異步執行）
+ *
+ * v1.9.47 變更：Cron 只負責判斷是否到期 + 投遞 Queue 消息，實際備份由 Consumer 執行。
+ * 若 Queue 不可用（本地開發），降級為同步直接執行。
+ *
+ * @param queue  Cloudflare Queue binding（可為 null，本地開發時降級同步執行）
+ * @param s3Secrets S3 憑證（降級同步執行時使用）
  */
 export async function handleScheduledBackup(
   db: D1Database,
   kv: KVNamespace,
   siteId: string,
   s3Secrets?: S3Secrets,
+  queue?: Queue<BackupMessage> | null,
 ): Promise<void> {
   const config = await getBackupScheduleConfig(db, kv);
   if (config.enabled !== '1') return;
@@ -1364,7 +1647,67 @@ export async function handleScheduledBackup(
 
   if (!isDue) return;
 
-  // 執行備份
+  const excludeLogData = config.excludeLogs === '1';
+  const nowHk = nowStr();
+
+  // ===== v1.9.47: Queue 異步模式 =====
+  // Cron 只投遞任務到 Queue（~1ms CPU），Consumer 逐個執行實際備份
+  if (queue) {
+    try {
+      const requestId = generateRequestId();
+      await setBackupTaskStatus(kv, {
+        requestId,
+        siteId,
+        status: 'pending',
+        startTime: nowHk,
+        excludeLogData,
+      });
+
+      await queue.send({
+        action: 'backup',
+        siteId,
+        excludeLogData,
+        requestId,
+      });
+
+      // 更新 last_run（任務已投遞，而非等備份完成）
+      const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
+      if (existing) {
+        await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
+      } else {
+        await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
+          .bind('backup_last_run', nowHk, '1', 94, '上次定時備份執行時間').run();
+      }
+      await kv.delete('config:all');
+
+      console.log(`[ScheduledBackup] ${siteId}: 定時備份任務已投遞 Queue (requestId: ${requestId})`);
+
+      // 定時日誌清理（v1.9.45）：每天最多執行一次，保留最近 N 天日誌
+      await handleScheduledLogCleanup(db, kv, config.logRetentionDays, siteId);
+    } catch (e) {
+      console.error(`[ScheduledBackup] ${siteId}: Queue 投遞失敗，降級同步執行:`, e);
+      // Queue 投遞失敗 → 降級為同步執行
+      await executeScheduledBackupSync(db, kv, siteId, s3Secrets, config, excludeLogData);
+    }
+    return;
+  }
+
+  // ===== 降級：無 Queue 時同步執行（本地開發） =====
+  await executeScheduledBackupSync(db, kv, siteId, s3Secrets, config, excludeLogData);
+}
+
+/**
+ * 同步執行定時備份（降級路徑，v1.9.47 從 handleScheduledBackup 提取）。
+ * 當 Queue 不可用時使用，邏輯與 v1.9.46 前的 handleScheduledBackup 一致。
+ */
+async function executeScheduledBackupSync(
+  db: D1Database,
+  kv: KVNamespace,
+  siteId: string,
+  s3Secrets: S3Secrets | undefined,
+  config: BackupScheduleConfig,
+  excludeLogData: boolean,
+): Promise<void> {
   try {
     const s3Config = await getS3Config(db, kv, s3Secrets);
     if (!s3Config) {
@@ -1378,7 +1721,6 @@ export async function handleScheduledBackup(
     const backupName = `${siteId}_backup_${timestamp}.sql.gz`;
     const backupKey = BACKUP_PREFIX + backupName;
 
-    const excludeLogData = config.excludeLogs === '1';
     const { parts: dumpParts, tableCount, rowCount } = await dumpDatabaseTables(db, siteId, excludeLogData);
 
     const parts: string[] = [];

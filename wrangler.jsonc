@@ -97,6 +97,10 @@
       {
         "queue": "publish-queue",
         "binding": "PUBLISH_QUEUE"
+      },
+      {
+        "queue": "backup-queue",
+        "binding": "BACKUP_QUEUE"
       }
     ],
     "consumers": [
@@ -106,9 +110,23 @@
         "max_batch_timeout": 5,
         "max_retries": 3,
         "dead_letter_queue": "publish-dlq"
+      },
+      {
+        "queue": "backup-queue",
+        "max_batch_size": 1,
+        "max_concurrency": 1,
+        "max_retries": 3,
+        "dead_letter_queue": "backup-dlq"
       }
     ]
   },
+
+  // ⚠️ Free plan 不支持 limits.cpu_ms 配置（部署時報錯 code: 100328）
+  // Queue Consumer 在 Free plan 上使用預設 CPU 限制（30s），備份操作需在此時間內完成
+  // 若未來升級 Paid plan，可取消下方注釋提升至 5 分鐘
+  // "limits": {
+  //   "cpu_ms": 300000
+  // },
 
   "vectorize": [
     {

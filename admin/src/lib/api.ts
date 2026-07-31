@@ -1,8 +1,10 @@
 /**
  * API 客戶端 - JWT 認證 + 統一錯誤處理
  *
- * v1.6.5+ 改進：
- * - 所有錯誤（網絡層、401、業務碼非 0）透過 showGlobalError 推送到左下角全局通知
+ * v1.9.47 改進：
+ * - 401 不再彈出全局錯誤通知 — 跳轉到登錄頁本身已是足夠的反饋，無需多餘提示
+ * - 登錄頁靜默所有全局錯誤通知 — 登錄頁有自己的行內錯誤展示，避免同一錯誤重複顯示
+ * - 其餘錯誤（網絡層、500、業務碼非 0）透過 showGlobalError 推送到左下角全局通知
  * - 401 改用 CustomEvent('unauthorized') 通知 App.tsx，由 React Router navigate 跳轉（更平滑，不整頁刷新）
  * - isRedirectingToLogin 鎖 3 秒後自動解鎖，避免鎖死
  * - 403 權限錯誤沿用 Layout 的 permissionDeniedCallback（已在頂部顯示 toast，不重複彈框）
@@ -135,9 +137,18 @@ export function setPermissionDeniedCallback(cb: ((msg: string) => void) | null):
   permissionDeniedCallback = cb
 }
 
-/** 判斷當前是否在登錄頁（登錄頁的 401 由頁面自身處理，不重複彈全局通知） */
+/** 判斷當前是否在登錄頁（登錄頁有自己的行內錯誤展示，無需全局通知） */
 function isOnLoginPage(): boolean {
   return window.location.pathname.replace(/\/+$/, '') === '/login'
+}
+
+/**
+ * 安全推送全局錯誤通知 — 在登錄頁時自動靜默。
+ * 登錄頁通過 setError() 展示行內錯誤，若同時彈出全局通知會導致同一錯誤重複顯示。
+ */
+function safeShowGlobalError(title: string, message: string, detail?: string): void {
+  if (isOnLoginPage()) return
+  showGlobalError(title, message, detail)
 }
 
 /** 構建技術診斷報告（供一鍵複製用，非 UI 展示） */
@@ -246,7 +257,7 @@ async function request<T>(
     res = await fetch(fullUrl, { ...options, headers })
   } catch (networkError) {
     const errMsg = networkError instanceof Error ? networkError.message : String(networkError)
-    showGlobalError(
+    safeShowGlobalError(
       '網絡連線錯誤',
       '無法連接到伺服器，請檢查網路連線後重試。',
       buildTechReport({ method, url: fullUrl, path, reqHeaders: headers, reqBody: options.body, networkError: `${networkError instanceof Error ? networkError.name : 'Error'}: ${errMsg}` }),
@@ -259,7 +270,7 @@ async function request<T>(
     clearToken()
     clearUserInfo()
     const onLogin = isOnLoginPage()
-    // 觸發跳轉（僅一次，用鎖防抖）
+    // 觸發跳轉（僅一次，用鎖防抖）— 跳轉到登錄頁本身已是足夠的反饋，不再彈全局通知
     if (!onLogin && !isRedirectingToLogin) {
       isRedirectingToLogin = true
       window.dispatchEvent(new CustomEvent('unauthorized'))
@@ -267,12 +278,7 @@ async function request<T>(
         isRedirectingToLogin = false
       }, 3000)
     }
-    const errMsg = '登錄已過期,請重新登錄'
-    if (!onLogin) {
-      const respBody = await res.json().catch(() => null)
-      showGlobalError('登錄已過期', errMsg, buildTechReport({ method, url: fullUrl, path, status: 401, statusText: 'Unauthorized', reqHeaders: headers, reqBody: options.body, respBody }))
-    }
-    throw new Error(errMsg)
+    throw new Error('登錄已過期')
   }
 
   // 403 = 權限拒絕 → 不登出，僅提示無權限（silent403 時靜默跳過 toast）
@@ -289,7 +295,7 @@ async function request<T>(
   if (res.status === 500) {
     const json = await res.json().catch(() => ({ msg: '伺服器內部錯誤' })) as ApiResponse<T> & { detail?: string }
     const msg = json.msg || '伺服器內部錯誤'
-    showGlobalError('伺服器錯誤', msg, buildTechReport({
+    safeShowGlobalError('伺服器錯誤', msg, buildTechReport({
       method, url: fullUrl, path, status: 500, statusText: 'Internal Server Error',
       reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code, backendDetail: json.detail,
     }))
@@ -300,7 +306,7 @@ async function request<T>(
   if (!res.ok) {
     const json = await res.json().catch(() => ({ msg: `HTTP ${res.status} ${res.statusText}` })) as ApiResponse<T> & { detail?: string }
     const msg = json.msg || `HTTP ${res.status} ${res.statusText}`
-    showGlobalError('請求失敗', msg, buildTechReport({
+    safeShowGlobalError('請求失敗', msg, buildTechReport({
       method, url: fullUrl, path, status: res.status, statusText: res.statusText,
       reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code, backendDetail: json.detail,
     }))
@@ -310,7 +316,7 @@ async function request<T>(
   const json: ApiResponse<T> = await res.json()
   if (json.code !== 0) {
     const msg = json.msg || '請求失敗'
-    showGlobalError(
+    safeShowGlobalError(
       '請求失敗',
       msg,
       buildTechReport({ method, url: fullUrl, path, status: res.status, statusText: res.statusText, reqHeaders: headers, reqBody: options.body, respBody: json, errorCode: json.code }),

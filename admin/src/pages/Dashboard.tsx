@@ -62,10 +62,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.47',
+    date: '2026-07-31 10:08:20',
+    icon: '🔄',
+    latest: true,
+    changes: `🔄 數據庫備份 Queue 異步解耦 + 一鍵備份所有站點\n\n📋 變更內容\n• Queue 異步備份架構：HTTP 請求只投遞任務到 backup-queue（~1ms CPU），Consumer 在後台逐個執行 D1 dump → gzip 壓縮 → S3 上傳，Worker 不再「硬等」備份完成\n• Consumer 併發控制：max_batch_size=1 + max_concurrency=1，確保備份一個接一個完成，避免 D1/S3 資源爭用\n• 自動重試機制：max_retries=3，備份失敗時 Queue 自動重試，超過次數進入 backup-dlq 死信隊列\n• 一鍵備份所有站點：新增 POST /admin/database/backup-all 端點，一次請求投遞所有站點的備份任務到 Queue，逐個在後台執行\n• 任務狀態追蹤：KV 存儲任務狀態（pending/running/completed/failed），TTL 1 小時，前端輪詢 GET /admin/database/backup-status/:requestId 獲取進度\n• CPU 時間優化：Consumer cpu_ms 提升至 300000（5 分鐘），遠超免費額度 10ms 限制；HTTP 請求只做 queue.send() 不消耗額外 CPU\n• 定時備份也改用 Queue：Cron 只判斷是否到期 + 投遞 Queue 消息，實際備份由 Consumer 執行，降級路徑保留同步執行（本地開發無 Queue 時）\n• 前端任務狀態面板：Database.tsx 新增「備份任務進度」面板，展示各站點備份狀態（⏳等待/⚙️執行中/✅完成/❌失敗）、文件名、壓縮比、耗時\n• 降級機制：Queue 不可用時自動降級為同步執行（本地開發環境），確保功能不受影響`,
+  },
+  {
     version: 'v1.9.46',
     date: '2026-07-30 17:05:39',
     icon: '🗜️',
-    latest: true,
+    latest: false,
     changes: `🗜️ 備份文件 gzip 壓縮 + 站點 Tab 切換 + UI 優化\n\n📋 變更內容\n• SQL 備份文件 gzip 壓縮：使用 Cloudflare Workers 原生 CompressionStream 壓縮，文件名從 .sql 改為 .sql.gz，可大幅減小存儲空間（典型壓縮率 60-80%）\n• 下載自動解壓：下載 .sql.gz 文件時後端自動 DecompressionStream 解壓，返回原始 .sql 文件，用戶無需手動解壓\n• 向後兼容：舊格式 .sql 文件仍可正常列出、下載、刪除\n• 備份列表站點 Tab 切換：按站點前綴分組，支持「全部」+ 各站點獨立 Tab，切換時隱藏站點列，顯示各站備份數量\n• 壓縮標記：備份列表文件名前顯示 🗜️ 圖標 + 綠色 gzip 徽章\n• UI 優化：排除日誌 checkbox 放大為卡片式設計（帶描述文字）\n• 定時配置區重設計：分為三個清晰區塊 — 📋 備份排程 / 📦 備份內容 / 🧹 日誌自動清理，每區塊有標題+描述，消除「排除日誌」與「日誌清理」的混淆\n• 日誌清理狀態標記：保留天數 >0 顯示綠色 ✅ 標籤，=0 顯示灰色 ⚠️ 標籤`,
   },
   {
@@ -859,7 +866,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/users/:id/sites', desc: '設置用戶站點分配', auth: true },
   // 數據庫備份 (超管, v1.9.37+)
   { method: 'GET', path: '/api/v1/admin/database/backups', desc: '備份文件列表（含壓縮標記，v1.9.46+）', auth: true },
-  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（?excludeLogs=1 排除日誌，gzip 壓縮 .sql.gz，v1.9.46+）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/backup', desc: '建立備份（?excludeLogs=1 排除日誌，gzip 壓縮 .sql.gz，Queue 異步模式返回 requestId，v1.9.47+）', auth: true },
+  { method: 'POST', path: '/api/v1/admin/database/backup-all', desc: '一鍵備份所有站點（?excludeLogs=1，投遞所有站點到 Queue 逐個執行，v1.9.47+）', auth: true },
+  { method: 'GET', path: '/api/v1/admin/database/backup-status/:requestId', desc: '查詢備份任務狀態（pending/running/completed/failed，KV TTL 1 小時，v1.9.47+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backup-schedule', desc: '定時備份排程配置（v1.9.37+）', auth: true },
   { method: 'PUT', path: '/api/v1/admin/database/backup-schedule', desc: '更新定時備份排程（v1.9.37+）', auth: true },
   { method: 'GET', path: '/api/v1/admin/database/backups/:filename', desc: '下載備份（.sql.gz 自動解壓返回 .sql，v1.9.46+）', auth: true },
@@ -1836,6 +1845,11 @@ await fetch('/api/v1/admin/sorts/batch-sorting', {
                         <span className="text-muted-foreground mx-1">·</span>
                         <code className="font-mono text-foreground">publish-dlq</code>
                         <span className="text-muted-foreground mx-2 text-xs">定時發布</span>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">backup-queue</code>
+                        <span className="text-muted-foreground mx-1">·</span>
+                        <code className="font-mono text-foreground">backup-dlq</code>
+                        <span className="text-muted-foreground mx-2 text-xs">異步備份（v1.9.47+）</span>
                       </td>
                     </tr>
                     <tr className="hover:bg-secondary/50 transition-colors">

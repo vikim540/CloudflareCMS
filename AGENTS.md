@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.46**（2026-07-30）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.47**（2026-07-31）
 
 ## 語言選擇優先級
 
@@ -97,7 +97,7 @@ Cloudflarerustcms/
 | D1（smile） | `smile-cms` | ID: `f59320b5-b1f2-47cf-8b32-e341e1c5da48` |
 | D1（vision） | `vision-cms` | ID: `a49903a9-098e-43cd-934c-9bad2466d8ae` |
 | KV | `CONFIG_CACHE` / `TOKEN_BLACKLIST` / `API_CACHE` | 邏輯分離（CONFIG_CACHE 與 API_CACHE 共用 namespace） |
-| Queues | `publish-queue` → `publish-dlq` | 定時發布，Cron 每 15 分鐘掃描 |
+| Queues | `publish-queue` → `publish-dlq` / `backup-queue` → `backup-dlq` | 定時發布（Cron 每 15 分鐘）/ 異步備份（v1.9.47+，max_concurrency=1，max_retries=3） |
 | Vectorize | `article-semantic-search` | 768 維 cosine，多語言語義搜索 |
 | Workers AI | `@cf/baai/bge-base-en-v1.5` | XLM-RoBERTa 嵌入模型，支持中文 |
 | Rate Limiting | `PUBLIC_API_LIMIT`(60/min) / `ADMIN_API_LIMIT`(300/min) / `LOGIN_LIMIT`(5/min) / `FORM_LIMIT`(1/10s) | 零網絡開銷 |
@@ -308,8 +308,16 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 - **P2 輸入長度校驗**：`FIELD_LENGTH_LIMITS` 常量定義 18 個字段最大長度（新聞網站場景，略寬），`validateFieldLengths()` 超長返回明確錯誤。請求體大小限制 2MB（排除 `multipart/form-data` 文件上傳）
 - **P3 文件上傳 MIME 白名單**：`src/services/storage.ts` 的 `ALLOWED_MIME_TYPES` Set，僅允許圖片/視頻/音頻/PDF/文本/ZIP，非白名單返回 1001 錯誤
 
-### 數據庫備份（v1.9.37，v1.9.43 多站點改進，v1.9.44 表存在性修復，v1.9.45 日誌管理，v1.9.46 gzip 壓縮 + 站點 Tab）
+### 數據庫備份（v1.9.37，v1.9.43 多站點改進，v1.9.44 表存在性修復，v1.9.45 日誌管理，v1.9.46 gzip 壓縮 + 站點 Tab，v1.9.47 Queue 異步解耦）
 
+- **Queue 異步架構**（v1.9.47 新增）：HTTP 請求只投遞 `queue.send()` 到 `backup-queue`（~1ms CPU），Consumer 在後台逐個執行備份。Worker 不再「硬等」備份完成，規避 10ms CPU 免費額度限制
+- **Consumer 併發控制**：`max_batch_size=1` + `max_concurrency=1`，確保備份一個接一個完成，避免 D1/S3 資源爭用
+- **自動重試**：`max_retries=3`，備份失敗時 Queue 自動重試，超過次數進入 `backup-dlq` 死信隊列
+- **一鍵備份所有站點**（v1.9.47 新增）：`POST /api/v1/admin/database/backup-all`，一次請求投遞所有站點備份任務到 Queue，逐個在後台執行
+- **任務狀態追蹤**（v1.9.47 新增）：KV 存儲任務狀態（`backup-task:{requestId}`，TTL 1 小時），狀態為 pending/running/completed/failed。前端輪詢 `GET /api/v1/admin/database/backup-status/:requestId` 獲取進度
+- **降級機制**：Queue 不可用時（本地開發）自動降級為同步執行（`executeScheduledBackupSync`），確保功能不受影響
+- **定時備份也改用 Queue**（v1.9.47 變更）：Cron 只判斷是否到期 + 投遞 Queue 消息，實際備份由 Consumer 執行
+- **⚠️ Free plan 限制**：不支持 `limits.cpu_ms` 配置，Queue Consumer 使用預設 30s CPU 限制。備份操作需在此時間內完成（若超時需升級 Paid plan）
 - **文件命名**：`{siteId}_backup_YYYYMMDDHHmmss.sql.gz`（v1.9.46 起 gzip 壓縮；v1.9.43 前為 `backup_YYYYMMDDHHmmss.sql`，無站點前綴）
 - **gzip 壓縮**（v1.9.46 新增）：使用 Cloudflare Workers 原生 `CompressionStream('gzip')` 壓縮 SQL 內容，存儲為 `.sql.gz`，典型壓縮率 60-80%。下載時使用 `DecompressionStream('gzip')` 自動解壓返回原始 `.sql` 文件。舊格式 `.sql` 文件完全向後兼容
 - **存儲路徑**：R2/S3 `backups/` 目錄下，所有站點備份混合存儲，通過文件名站點前綴區分
@@ -324,7 +332,7 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
   - **日誌統計**：`GET /api/v1/admin/database/log-stats` 返回總數、級別分佈、最早/最新記錄時間
   - **自動清理**：`handleScheduledLogCleanup` 在每次定時備份後執行，每天最多一次，保留最近 N 天日誌（`log_retention_days` 配置，0=不自動清理）
   - **配置項**：`backup_exclude_logs`（備份排除日誌）、`log_retention_days`（日誌保留天數）、`log_last_cleanup`（上次清理時間）
-  - **前端**：Database.tsx 頁面新增「日誌管理」卡片，展示統計數據 + 手動清理按鈕；定時備份配置區分為三個清晰區塊（備份排程 / 備份內容 / 日誌自動清理）；備份列表按站點 Tab 切換，顯示壓縮標記（🗜️ + gzip 徽章）
+  - **前端**：Database.tsx 頁面新增「日誌管理」卡片，展示統計數據 + 手動清理按鈕；定時備份配置區分為三個清晰區塊（備份排程 / 備份內容 / 日誌自動清理）；備份列表按站點 Tab 切換，顯示壓縮標記（🗜️ + gzip 徽章）；v1.9.47 新增「備份任務進度」面板（⏳⚙️✅❌ 四態 + 耗時 + 壓縮比）
 
 ---
 
@@ -338,15 +346,22 @@ wrangler dev
 # 前端（Vite，端口 3000，代理 /api → 127.0.0.1:8787）
 cd admin; npx vite dev
 
-# ===== 部署（先使用Git本地備份使用commit時間對pages的儀表板 的三個tab 版本更新、API 開發手冊、系統信息查看以及更新，然後再部署 先Worker 後 Pages ， 最後提交推送遠程倉庫）=====
-# 1. Worker 部署
+# ===== 部署流程（嚴格按順序執行，不可跳步或調換）=====
+# 步驟 1: Git commit 代碼改動（拿到 commit 時間戳和 commit message 內容）
+#   git add -A; git commit -m '✨ feat: vX.Y.Z 描述...'
+# 步驟 2: 用 git log 獲取 commit 真實時間戳（Asia/Hong_Kong）
+#   git log --all --pretty=format:'%h|%ci|%s' -n 1
+# 步驟 3: 用該時間戳一次性更新 Dashboard.tsx 三個 Tab（版本更新 + API 開發手冊 + 系統信息）
+#   → date 字段填入步驟 2 獲取的真實時間戳，禁止用佔位時間再反覆修正
+# 步驟 4: git commit --amend --no-edit 將 Dashboard 變更合入原 commit（一次 amend，不再反覆修改）
+# 步驟 5: 部署 Worker
 wrangler deploy
-
-# 2. 前端構建（輸出到 deploy 目錄，非 build！）
+# 步驟 6: 前端構建（輸出到 deploy 目錄，非 build！）
 cd admin; npx vite build
-
-# 3. Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
+# 步驟 7: Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
 cd admin; wrangler pages deploy deploy --project-name=cms-admin --commit-dirty=true
+# 步驟 8: 推送遠程倉庫
+git push origin main
  
 # ===== 數據庫 =====
 # 遷移（主庫 endoscopy-cms）
@@ -387,7 +402,14 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 
 ## 儀表盤同步更新規則（強制）
 
-> **每次git commit後，必須拿commit時間同步更新 `admin/src/pages/Dashboard.tsx` 中的三個 Tab。**
+> **部署流程中的 Dashboard 更新步驟（步驟 1-4），必須一次性完成，禁止反覆修改時間戳。**
+
+### 正確流程（一氣呵成，不反覆修改）
+
+1. **Git commit** 代碼改動 → 拿到 commit message 內容和真實時間戳
+2. **git log** 獲取該 commit 的 `%ci` 時間戳（Asia/Hong_Kong）
+3. **一次性更新 Dashboard.tsx** 三個 Tab，`date` 字段直接填入真實時間戳（禁止用佔位時間再修正）
+4. **git commit --amend --no-edit** 將 Dashboard 變更合入原 commit（僅一次 amend）
 
 ### 版本更新 Tab
 

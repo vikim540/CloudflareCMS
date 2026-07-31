@@ -38,6 +38,7 @@ import { clearContentCache, clearApiCacheRemnants } from './services/cache';
 import * as vectorizeService from './services/vectorize';
 import * as schedulerService from './services/scheduler';
 import type { PublishMessage } from './services/scheduler';
+import type { BackupMessage } from './services/system';
 import { getAllFlags, setFlagEnabled, autoRouteProtection } from './services/flags';
 import { nowStr, todayStr } from './utils/datetime';
 
@@ -60,6 +61,7 @@ export interface Env {
   S3_ACCESS_KEY_STORE: SecretsStoreSecretWritable;  // S3 Access Key（Secrets Store 異步綁定，v1.8.7 遷移）
   S3_SECRET_KEY_STORE: SecretsStoreSecretWritable;  // S3 Secret Key（Secrets Store 異步綁定，v1.8.7 遷移）
   PUBLISH_QUEUE: Queue<PublishMessage>;
+  BACKUP_QUEUE: Queue<BackupMessage>;
   ARTICLE_INDEX: VectorizeIndex;
   AI: Ai;
   PUBLIC_API_LIMIT: RateLimit;
@@ -1763,10 +1765,36 @@ app.post('/api/v1/admin/database/backup', async (c) => {
   // 支持排除日誌數據選項（v1.9.45）
   const excludeLogData = c.req.query('excludeLogs') === '1';
 
+  // v1.9.47: 傳入 BACKUP_QUEUE，啟用異步模式
   // 僅備份當前站點數據庫
   return systemService.handleCreateBackup(siteDB(c), c.env.CONFIG_CACHE, currentSiteId(c), {
     accessKeyStore: c.env.S3_ACCESS_KEY_STORE, secretKeyStore: c.env.S3_SECRET_KEY_STORE,
-  }, { excludeLogData });
+  }, { excludeLogData }, c.env.BACKUP_QUEUE);
+});
+
+// ===== 一鍵備份所有站點 (v1.9.47) =====
+// 一次請求投遞所有站點的備份任務到 Queue，Consumer 逐個執行
+app.post('/api/v1/admin/database/backup-all', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+
+  const excludeLogData = c.req.query('excludeLogs') === '1';
+
+  // 獲取所有已註冊站點
+  const sites = listRegisteredSites(c.env.SITE_REGISTRY ?? '{}').map(s => ({ siteId: s.siteId, binding: s.binding }));
+
+  return systemService.handleBackupAll(
+    primaryDB(c), c.env.CONFIG_CACHE, sites, c.env.BACKUP_QUEUE, { excludeLogData },
+  );
+});
+
+// ===== 備份任務狀態查詢 (v1.9.47) =====
+// 前端輪詢此接口獲取異步備份進度
+app.get('/api/v1/admin/database/backup-status/:requestId', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const requestId = c.req.param('requestId');
+  return systemService.handleGetBackupStatus(c.env.CONFIG_CACHE, requestId);
 });
 
 // ===== 定時備份排程配置 (v1.9.37) =====
@@ -1964,19 +1992,50 @@ app.onError((e, c) => {
   return err(msg, 500);
 });
 
-// ===== Queues 消費者 (定時發布) =====
+// ===== Queues 消費者 (定時發布 + 異步備份) =====
 export default {
   fetch: app.fetch,
-  async queue(batch: MessageBatch<PublishMessage>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<PublishMessage | BackupMessage>, env: Env): Promise<void> {
+    // 根據隊列名稱分派處理器
+    if (batch.queue === 'backup-queue') {
+      // ===== 備份隊列消費者 (v1.9.47) =====
+      for (const msg of batch.messages) {
+        try {
+          const message = msg.body as BackupMessage;
+          // 多站點：根據 siteId 路由到正確的數據庫
+          const registry = parseSiteRegistry(env.SITE_REGISTRY ?? '{}');
+          const entry = registry[message.siteId];
+          const envBindings = env as unknown as Record<string, D1Database>;
+          const db = (entry && entry.binding && envBindings[entry.binding]) || env.DB;
+
+          // S3 憑證（從 Secrets Store 讀取）
+          const s3Secrets = {
+            accessKeyStore: env.S3_ACCESS_KEY_STORE,
+            secretKeyStore: env.S3_SECRET_KEY_STORE,
+          };
+
+          await systemService.handleQueueBackup(db, env.CONFIG_CACHE, message, s3Secrets);
+          msg.ack();
+        } catch (e) {
+          console.error('備份任務失敗:', e);
+          // msg.retry() 讓 Queue 自動重試（wrangler.jsonc max_retries=3）
+          msg.retry();
+        }
+      }
+      return;
+    }
+
+    // ===== 定時發布隊列消費者 =====
     for (const msg of batch.messages) {
       try {
+        const body = msg.body as PublishMessage;
         // 多站點：根據 siteId 路由到正確的數據庫
-        const siteId = msg.body.siteId || 'endoscopy';
+        const siteId = body.siteId || 'endoscopy';
         const registry = parseSiteRegistry(env.SITE_REGISTRY ?? '{}');
         const entry = registry[siteId];
         const envBindings = env as unknown as Record<string, D1Database>;
         const db = (entry && entry.binding && envBindings[entry.binding]) || env.DB;
-        await schedulerService.handleQueuePublish(db, msg.body);
+        await schedulerService.handleQueuePublish(db, body);
         msg.ack();
       } catch (e) {
         console.error('定時發布失敗:', e);
@@ -1993,10 +2052,10 @@ export default {
       if (db) {
         // 定時發布
         ctx.waitUntil(schedulerService.handleScheduledPublish(db, env.PUBLISH_QUEUE, site.siteId));
-        // 定時備份檢查（v1.9.37）
+        // 定時備份檢查（v1.9.47: 改用 Queue 異步執行，Cron 只投遞任務）
         ctx.waitUntil(systemService.handleScheduledBackup(db, env.CONFIG_CACHE, site.siteId, {
           accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
-        }));
+        }, env.BACKUP_QUEUE));
       }
     }
     // 兜底：如果沒有註冊站點，至少處理主庫
@@ -2004,7 +2063,7 @@ export default {
       ctx.waitUntil(schedulerService.handleScheduledPublish(env.DB, env.PUBLISH_QUEUE, 'endoscopy'));
       ctx.waitUntil(systemService.handleScheduledBackup(env.DB, env.CONFIG_CACHE, 'endoscopy', {
         accessKeyStore: env.S3_ACCESS_KEY_STORE, secretKeyStore: env.S3_SECRET_KEY_STORE,
-      }));
+      }, env.BACKUP_QUEUE));
     }
   },
-} satisfies ExportedHandler<Env, PublishMessage>;
+} satisfies ExportedHandler<Env, PublishMessage | BackupMessage>;
