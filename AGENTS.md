@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.47**（2026-07-31）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.48**（2026-07-31）
 
 ## 語言選擇優先級
 
@@ -336,48 +336,57 @@ POST/PUT/DELETE 仍需對應菜單權限，防止非授權用戶創建/修改數
 
 ---
 
-## 常用命令
+## CI/CD 自動部署（v1.9.48+）
+
+> **前後端均已通過 Cloudflare Git 集成自動部署**。push to main 即自動構建部署，無需手動 wrangler 命令。
+> 手動部署流程、本地運維命令、緊急回退流程見 `DEPLOYMENT-LEGACY.md`。
+
+### 自動部署架構
+
+| 服務 | Cloudflare 資源 | Root Directory | Build Command | 觸發 |
+|------|----------------|---------------|---------------|------|
+| 後端 Worker | `cfstack-cms`（Workers Builds） | `/`（倉庫根目錄） | `pnpm run build` | push to main |
+| 前端 SPA | `cms-admin`（Pages） | `admin` | `pnpm run build` | push to main |
+
+### 常規更新流程（5 步）
 
 ```powershell
-# ===== 開發 =====
-# 後端（Worker，端口 8787）
-wrangler dev
+# 前置：Git 路徑加入 PATH
+$env:PATH = 'D:\AI\Tools\Git\cmd;' + $env:PATH
 
-# 前端（Vite，端口 3000，代理 /api → 127.0.0.1:8787）
-cd admin; npx vite dev
+# 步驟 1: Git commit 代碼改動
+git add -A; git commit -m '✨ feat: vX.Y.Z 描述...'
 
-# ===== 部署流程（嚴格按順序執行，不可跳步或調換）=====
-# 步驟 1: Git commit 代碼改動（拿到 commit 時間戳和 commit message 內容）
-#   git add -A; git commit -m '✨ feat: vX.Y.Z 描述...'
-# 步驟 2: 用 git log 獲取 commit 真實時間戳（Asia/Hong_Kong）
-#   git log --all --pretty=format:'%h|%ci|%s' -n 1
-# 步驟 3: 用該時間戳一次性更新 Dashboard.tsx 三個 Tab（版本更新 + API 開發手冊 + 系統信息）
-#   → date 字段填入步驟 2 獲取的真實時間戳，禁止用佔位時間再反覆修正
-# 步驟 4: git commit --amend --no-edit 將 Dashboard 變更合入原 commit（一次 amend，不再反覆修改）
-# 步驟 5: 部署 Worker
-wrangler deploy
-# 步驟 6: 前端構建（輸出到 deploy 目錄，非 build！）
-cd admin; npx vite build
-# 步驟 7: Pages 部署（從 admin 目錄執行，需含 functions/ 目錄）
-cd admin; wrangler pages deploy deploy --project-name=cms-admin --commit-dirty=true
-# 步驟 8: 推送遠程倉庫
+# 步驟 2: 獲取 commit 真實時間戳（Asia/Hong_Kong）
+git log --all --pretty=format:'%h|%ci|%s' -n 1
+
+# 步驟 3: 用該時間戳更新 Dashboard.tsx VERSIONS 數組（date 字段填入真實時間戳）
+
+# 步驟 4: git commit --amend --no-edit 將 Dashboard 變更合入原 commit（一次 amend）
+
+# 步驟 5: 推送 → 自動觸發前後端部署
 git push origin main
- 
-# ===== 數據庫 =====
-# 遷移（主庫 endoscopy-cms）
-wrangler d1 migrations apply endoscopy-cms --remote
-
-# 執行 SQL（主庫 endoscopy-cms）
-wrangler d1 execute endoscopy-cms --remote --command "SELECT * FROM ay_config LIMIT 5"
-
-# 生成類型（配置變更後必須運行）
-wrangler types
-
-# ===== Git =====
-git add -A; git commit -m '✨ feat: 描述'; git push origin main
 ```
 
-> **部署注意**：Pages 部署必須從 `admin/` 目錄執行，否則 `functions/` 目錄不會被上傳。Vite 構建輸出到 `deploy/` 目錄（`vite.config.ts` 中 `outDir: 'deploy'`，配合 `fixEmptyChunksPlugin` 修復 Windows 0 字節 chunk 問題）。
+### ⚠️ D1 遷移（不自動，必須手動先執行）
+
+涉及數據庫結構變更時，**必須先執行遷移再 push 代碼**：
+
+```powershell
+npx wrangler d1 migrations apply endoscopy-cms --remote
+npx wrangler d1 migrations apply smile-cms --remote
+npx wrangler d1 migrations apply vision-cms --remote
+```
+
+### 本地開發
+
+```powershell
+# 後端開發服務器（端口 8787）
+npx wrangler dev
+
+# 前端開發服務器（端口 3000，代理 /api → 127.0.0.1:8787）
+cd admin; npx vite dev
+```
 
 ---
 
@@ -402,7 +411,8 @@ git add -A; git commit -m '✨ feat: 描述'; git push origin main
 
 ## 儀表盤同步更新規則（強制）
 
-> **部署流程中的 Dashboard 更新步驟（步驟 1-4），必須一次性完成，禁止反覆修改時間戳。**
+> **常規更新流程中的 Dashboard 更新步驟（步驟 1-4），必須一次性完成，禁止反覆修改時間戳。**
+> 部署由 `git push` 自動觸發（CI/CD），無需手動 wrangler 命令。
 
 ### 正確流程（一氣呵成，不反覆修改）
 
