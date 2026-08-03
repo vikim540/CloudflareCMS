@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.54',
+    date: '2026-08-03 16:49:32',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 修復保存成功後草稿被卸載回調重新寫入的 bug\n\n📋 問題描述\n• 文章保存/發佈成功後，navigate('/contents') 觸發組件卸載\n• 卸載時的 saveDraftRef.current() 回調再次保存草稿到 localStorage\n• 導致下次新建文章時彈出「檢測到未保存的草稿」提示\n\n修復方案\n• 新增 savedRef 標記，保存成功後設為 true\n• saveDraft 函數開頭檢查 savedRef.current，為 true 時直接返回不保存\n• 確保卸載回調不會在保存成功後重新寫入草稿`,
+  },
+  {
     version: 'v1.9.53',
     date: '2026-08-03 16:44:27',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: `✨ 公開 API 列表端點加入自定義擴展字段\n\n📋 變更內容\n• 新增 batchAttachExtFields() 工具函數：批量 IN(...) 查詢 ay_content_ext，按 contentid 合併到列表結果，避免 N+1 查詢\n• GET /api/v1/contents（公開列表）加入 ext_* 字段平鋪\n• GET /api/v1/contents/all（靜態打包批量列表）加入 ext_* 字段平鋪\n• GET /api/v1/tags?q=xxx（標籤搜索列表）加入 ext_* 字段平鋪\n• 與詳情 API 行為一致：僅平鋪非空的 ext_* 字段，空值不包含\n• 擴展字段由後台「自定義字段」管理，動態 ALTER TABLE 添加物理列`,
   },
   {

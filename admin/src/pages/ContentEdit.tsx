@@ -817,6 +817,7 @@ export default function ContentEdit() {
   const [draftPrompt, setDraftPrompt] = useState<{ title: string; savedAt: string } | null>(null)
   const draftCheckedRef = useRef(false) // 確保草稿檢查只執行一次
   const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
+  const savedRef = useRef(false) // 保存/發佈成功後設為 true，阻止卸載時再次寫入草稿
 
   /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
@@ -1093,6 +1094,7 @@ export default function ContentEdit() {
 
   /** 保存草稿到 localStorage */
   const saveDraft = useCallback(() => {
+    if (savedRef.current) return // 保存成功後不再寫入草稿
     if (!form.scode) return // 沒有欄目不保存
     // 從 Quill 編輯器獲取最新內容（form.content 可能滯後於編輯器）
     let currentContent = form.content
@@ -1569,7 +1571,8 @@ export default function ContentEdit() {
       } else {
         await api.post('/admin/contents', payload)
       }
-      // 保存/發佈成功：清除 localStorage 草稿
+      // 保存/發佈成功：標記已保存並清除 localStorage 草稿
+      savedRef.current = true
       try {
         localStorage.removeItem(draftKeyOf(form.scode, id))
       } catch {
