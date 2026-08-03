@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.52',
+    date: '2026-08-03 15:11:34',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 只讀時間戳強制文本輸入，避免渲染為開關按鈕\n\n📋 變更內容\n• backup_last_run / log_last_cleanup 在 DB 中存儲的 type='1'（開關類型），導致 renderConfigRow 渲染為切換按鈕\n• 修復：isSwitch 判斷增加 !READONLY_CONFIGS.has(config.name) 條件，只讀配置項強制使用文本輸入渲染\n• 效果：Settings.tsx 中這兩個時間戳字段顯示為灰化文本輸入框（placeholder「系統自動更新」），而非一個被禁用的無意義開關`,
+  },
+  {
     version: 'v1.9.51',
     date: '2026-08-03 14:17:18',
     icon: '🔧',
-    latest: true,
+    latest: false,
     changes: `🔧 備份配置種子數據 + 默認值修正\n\n📋 變更內容\n• 新增 0004_backup_config.sql 遷移：9 項備份配置種子數據（INSERT OR IGNORE 不覆蓋已有值）\n• 默認值：每週一 03:00 自動備份、每站保留 7 份、排除日誌數據、30 天自動清理日誌\n• getBackupScheduleConfig() 硬編碼默認值改為 enabled=1 / frequency=weekly / excludeLogs=1（與種子數據一致）\n• 新增 BACKUP_CONFIG_META 元數據映射表，handleUpdateBackupSchedule INSERT 時使用正確的 sorting/type/description\n• backup_last_run / log_last_cleanup INSERT sorting 改為 97/98（原為 94/95，type 改為 '2' 文本而非 '1' 開關）\n• Database.tsx 前端初始狀態同步更新（enabled=1, frequency=weekly, excludeLogs=1）\n• 手動備份 excludeLogs 默認改為 true（與定時配置一致）\n\n💡 問題背景：備份配置項此前無種子數據，後端硬編碼默認 enabled='0'，導致每次打開頁面都顯示「未開啟」`,
   },
   {

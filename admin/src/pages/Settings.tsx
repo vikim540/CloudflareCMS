@@ -398,7 +398,8 @@ export default function Settings() {
 
   /** 渲染單個配置行 */
   const renderConfigRow = (config: Config, disabled = false) => {
-    const isSwitch = config.type === '1'
+    // 只讀配置項（時間戳）強制使用文本輸入，忽略 DB 中錯誤的 type='1'（開關類型）
+    const isSwitch = config.type === '1' && !READONLY_CONFIGS.has(config.name)
     const val = currentValue(config)
     const isOn = val === '1'
     const hasChange = config.name in changes
