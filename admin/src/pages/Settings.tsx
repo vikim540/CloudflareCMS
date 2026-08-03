@@ -31,17 +31,39 @@ const CONFIG_GROUPS: ConfigGroup[] = [
   { min: 50, max: 61, title: '通知配置', icon: '🔔', desc: '郵件與 Webhook 通知開關' },
   { min: 62, max: 69, title: '搜索引擎驗證', icon: '🔍', desc: 'Google/Bing 搜索引擎站點驗證' },
   { min: 70, max: 79, title: 'S3 存儲配置', icon: '💾', desc: 'R2/S3 兼容存儲（默認鎖定，點擊解鎖後可修改）' },
+  { min: 80, max: 89, title: '內容設置', icon: '📝', desc: 'URL 規則、性能與內容配置' },
   { min: 90, max: 99, title: '郵件服務', icon: '📧', desc: 'SMTP/MailChannels 發信配置' },
-  { min: 210, max: 219, title: 'SEO 內鏈配置', icon: '🔗', desc: '文章關鍵詞自動替換為超連結' },
+  { min: 210, max: 219, title: '內容設置', icon: '📝', desc: 'URL 規則、性能與內容配置' },
 ]
+
+/** 存儲相關配置項名稱（跨 sorting 範圍識別，兼容不同站點數據庫的 sorting 差異） */
+const STORAGE_CONFIG_NAMES = new Set([
+  'storage_type', 's3_endpoint', 's3_bucket', 's3_region', 's3_public_url',
+  's3_access_key', 's3_secret_key',
+])
+
+/** 備份相關配置項名稱（sorting=90 但與郵件無關，應歸入存儲配置） */
+const BACKUP_CONFIG_NAMES = new Set([
+  'backup_schedule_enabled', 'backup_schedule_frequency', 'backup_schedule_time',
+  'backup_schedule_weekday', 'backup_schedule_keep', 'backup_exclude_logs',
+  'log_retention_days', 'backup_last_run', 'log_last_cleanup',
+])
+
+/** 備份配置虛擬分組（backup 配置 sorting=90，但邏輯上屬於存儲配置，用 min=82 識別） */
+const BACKUP_GROUP: ConfigGroup = { min: 82, max: 82, title: '備份配置', icon: '📦', desc: '定時備份與日誌清理設置' }
+
+/** 只讀配置項（系統自動更新，不可手動編輯） */
+const READONLY_CONFIGS = new Set([
+  'backup_last_run', 'log_last_cleanup',
+])
 
 /** Tab 定義 */
 const TABS = [
   { key: 'flags', label: '功能開關', icon: '🚩' },
-  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 62, 210] },
+  { key: 'basic', label: '基本配置', icon: '💬', groupMins: [20, 62, 80, 210] },
   { key: 'security', label: '安全配置', icon: '🛡️', groupMins: [30] },
   { key: 'webapi', label: 'WebAPI', icon: '🔌', groupMins: [40] },
-  { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70] },
+  { key: 'storage', label: '存儲配置', icon: '💾', groupMins: [70, 82] },
   { key: 'notify', label: '通知配置', icon: '🔔', groupMins: [50, 90] },
 ] as const
 
@@ -60,7 +82,7 @@ const WEBHOOK_SECTION_CONFIGS = new Set([
   ...SYSTEM_WEBHOOK_CONFIGS, ...FORM_WEBHOOK_CONFIGS,
 ])
 
-/** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要） */
+/** 需要隱藏的配置項（手機版/水印/URL 相關，前後端分離架構不需要；turnstile_secret_key v1.8.6 已遷移 Secrets Store） */
 const HIDDEN_CONFIGS = new Set([
   'open_wap', 'wap_domain', 'wap_site_dir',
   'watermark_open', 'watermark_text', 'watermark_text_font',
@@ -68,6 +90,7 @@ const HIDDEN_CONFIGS = new Set([
   'watermark_position',
   'url_rule_type', 'url_rule_content_path', 'url_index_404',
   'tpl_html_dir',
+  'turnstile_secret_key',
 ])
 
 /** Webhook 相關配置項（webhook_enabled 關閉時隱藏） */
@@ -324,25 +347,39 @@ export default function Settings() {
   const groupedConfigs = useMemo(() => {
     const groups: { group: ConfigGroup; items: Config[] }[] = []
     const others: Config[] = []
+    const seenNames = new Set<string>()
 
     for (const config of configs) {
       if (HIDDEN_CONFIGS.has(config.name)) continue
       // sorting 10-19 是站點信息，由單獨頁面管理
       if (config.sorting >= 10 && config.sorting <= 19) continue
-      // S3 存儲配置（sorting 70-79）僅超管可見
-      if (!isSuperAdmin && config.sorting >= 70 && config.sorting <= 79) continue
+      // 去重：同一配置名只保留第一個（注入的 S3 憑證 sorting 72/73 排在 DB 條目 sorting 89 之前）
+      if (seenNames.has(config.name)) continue
+      seenNames.add(config.name)
+      // 存儲與備份配置僅超管可見（與 Database 頁面權限一致）
+      if (!isSuperAdmin && (STORAGE_CONFIG_NAMES.has(config.name) || BACKUP_CONFIG_NAMES.has(config.name))) continue
 
       if (!mailEnabled) {
-        if (config.sorting >= 90 && config.sorting <= 99) continue
+        // 只隱藏郵件相關的 90-99 配置，不隱藏備份配置（backup 雖 sorting=90 但非郵件）
+        if (config.sorting >= 90 && config.sorting <= 99 && !BACKUP_CONFIG_NAMES.has(config.name)) continue
         if (MAIL_IN_NOTIFY_CONFIGS.has(config.name)) continue
       }
       if (!webhookEnabled) {
         if (WEBHOOK_CONFIGS.has(config.name)) continue
       }
 
-      const group = getGroup(config.sorting)
+      // 基於名稱路由（優先於 sorting），兼容不同站點數據庫的 sorting 差異
+      let group: ConfigGroup | null
+      if (STORAGE_CONFIG_NAMES.has(config.name)) {
+        group = CONFIG_GROUPS.find((g) => g.min === 70)!
+      } else if (BACKUP_CONFIG_NAMES.has(config.name)) {
+        group = BACKUP_GROUP
+      } else {
+        group = getGroup(config.sorting)
+      }
+
       if (group) {
-        let bucket = groups.find((g) => g.group.min === group.min)
+        let bucket = groups.find((g) => g.group.min === group!.min)
         if (!bucket) {
           bucket = { group, items: [] }
           groups.push(bucket)
@@ -498,9 +535,12 @@ export default function Settings() {
               type="text"
               value={val}
               onChange={(e) => updateValue(config.name, e.target.value)}
-              disabled={disabled}
-              className="w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted disabled:cursor-not-allowed"
-              placeholder="請輸入配置值"
+              disabled={disabled || READONLY_CONFIGS.has(config.name)}
+              className={cn(
+                'w-64 px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:bg-muted disabled:cursor-not-allowed',
+                READONLY_CONFIGS.has(config.name) && 'font-mono text-muted-foreground',
+              )}
+              placeholder={READONLY_CONFIGS.has(config.name) ? '系統自動更新' : '請輸入配置值'}
             />
           )}
         </div>
@@ -619,6 +659,20 @@ export default function Settings() {
                 </div>
               </div>
             )}
+            {/* 備份配置提示 */}
+            {displayGroup.min === 82 && (
+              <div className="mx-4 mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-blue-500 mt-0.5 shrink-0">💡</span>
+                  <div className="text-sm text-blue-900">
+                    <p className="font-medium mb-1">備份管理</p>
+                    <p className="text-blue-700">
+                      定時備份也可在「數據庫管理」頁面進行可視化操作（手動備份、一鍵備份所有站點、下載、恢復、日誌清理等）。上次執行時間由系統自動更新，無需手動編輯。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="px-4">
               {items.map((config) => renderConfigRow(config, isLocked))}
             </div>
@@ -725,9 +779,19 @@ export default function Settings() {
     if (!tab || !('groupMins' in tab)) return { groups: [] as { group: ConfigGroup; items: Config[] }[], others: [] as Config[] }
     const mins = tab.groupMins as readonly number[]
     const matched = groupedConfigs.groups.filter((g) => mins.includes(g.group.min))
+    // 合併同名分組（如「內容設置」在 endoscopy-cms 為 sorting 210-219，在 smile-cms 為 80-89）
+    const merged: { group: ConfigGroup; items: Config[] }[] = []
+    for (const g of matched) {
+      const existing = merged.find((m) => m.group.title === g.group.title)
+      if (existing) {
+        existing.items.push(...g.items)
+      } else {
+        merged.push({ group: g.group, items: [...g.items] })
+      }
+    }
     // "其他配置"只在"基本配置"tab 顯示，不在每個 tab 重複出現
     const others = activeTab === 'basic' ? groupedConfigs.others : []
-    return { groups: matched, others }
+    return { groups: merged, others }
   }, [activeTab, groupedConfigs])
 
   /** 通知 tab 中將 webhook 配置分離為系統更新 + 表單推送兩組 */

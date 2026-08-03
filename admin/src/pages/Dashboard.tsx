@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.50',
+    date: '2026-08-03 14:03:14',
+    icon: '🎨',
+    latest: true,
+    changes: `🎨 系統設置頁存儲配置歸類重組\n\n📋 變更內容\n• 將「其他配置」中的存儲/備份相關配置項歸入「存儲配置」tab\n• 基於名稱路由（STORAGE_CONFIG_NAMES / BACKUP_CONFIG_NAMES）替代 sorting 值，兼容不同站點數據庫的 sorting 差異\n• 修復 S3 憑證重複顯示問題（seenNames 去重，注入條目 sorting 72/73 優先於 DB 條目 sorting 89）\n• 修復 mail_enabled=false 時誤隱藏備份配置（只隱藏郵件相關 90-99，不隱藏 BACKUP_CONFIG_NAMES）\n• 隱藏 turnstile_secret_key（v1.8.6 已遷移至 Secrets Store）\n• 備份配置新增信息卡片（引導至數據庫管理頁面）+ 只讀字段標記（backup_last_run / log_last_cleanup）\n• 合併同名分組（內容設置 80-89 與 210-219），新增 BACKUP_GROUP 虛擬分組（min=82）`,
+  },
+  {
     version: 'v1.9.49',
     date: '2026-07-31 14:45:13',
     icon: '🛡️',
-    latest: true,
+    latest: false,
     changes: `🛡️ P1-P2 安全加固與可靠性提升（7 項）\n\n📋 變更內容\n• P1: Turnstile siteverify 改為重試 2 次 + fail-close（間隔 500ms），全部失敗才 fail-open 並記錄 console.error，避免 Cloudflare API 故障鎖死所有用戶\n• P1: flags.ts D1 配置緩存添加 TTL 60 秒，按站點隔離，防止跨 isolate 數據不一致\n• P1: ContentEdit 草稿自動保存 — 每 30 秒定時保存 + 頁面卸載前保存 + SPA 路由切換時保存，進入編輯頁檢測草稿並彈出恢復提示\n• P2: [[path]].ts 代理層 500 錯誤移除詳細請求信息，防止後端結構洩露\n• P2: 移除未使用依賴 class-variance-authority，減小 bundle 體積\n• P2: 全局 img 標籤添加 loading="lazy" + decoding="async"，減少首屏帶寬消耗\n• P2: storage.ts / model.ts 靜默 catch(() => {}) 改為 console.warn 記錄，便於排查問題`,
   },
   {
