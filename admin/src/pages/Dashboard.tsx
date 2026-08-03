@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.58',
+    date: '2026-08-03 17:55:00',
+    icon: '✨',
+    latest: true,
+    changes: `✨ List API 新增 content=full 參數\n\n📋 變更內容\n• GET /api/v1/contents 和 /api/v1/contents/all 新增 ?content=full 查詢參數\n• 默認行為不變（不返回正文），僅傳入 content=full 時返回完整正文 HTML（含編輯器標籤）\n• 用途：vision 站點無內容詳情頁，需在列表 API 中直接獲取完整正文渲染\n• 零破壞性：其他站點不傳參數則行為完全不變`,
+  },
+  {
     version: 'v1.9.57',
     date: '2026-08-03 17:34:35',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 圖片URL輸入框顯示當前值 + 草稿僅在修改後才保存\n\n📋 問題描述\n• 上傳圖片或保存文章後，「輸入圖片外鏈 URL」輸入框顯示為空，無法辨別是外鏈還是 S3 資源\n• 僅刷新頁面（無任何操作）2-3 次後彈出「檢測到未保存的草稿」提示\n\n修復方案\n• 縮略圖(ico)和單圖擴展字段的 URL 輸入框改為 value={urlInput || value}，未手動輸入時顯示當前已設定的 URL\n• 新增 dirtyRef 標記替代 savedRef + draftDiscardedRef，僅在用戶實際修改表單後才寫入草稿\n• 頁面載入時 dirtyRef=false，beforeunload/定時器均不觸發草稿保存\n• 用戶編輯任一字段時 dirtyRef=true，恢復草稿自動保存；保存成功或丟棄後重置為 false`,
   },
   {
@@ -838,8 +845,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
-  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=, max 100/頁)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=, max 500/頁, v1.7.9+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full, max 100/頁, content=full返回完整正文HTML v1.9.58+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=&content=full, max 500/頁, content=full同上 v1.9.58+)', auth: false },
   { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },

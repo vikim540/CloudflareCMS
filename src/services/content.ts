@@ -76,7 +76,9 @@ async function batchAttachExtFields(
   });
 }
 
-/** 公開內容列表 API（僅返回摘要字段，排除 content 正文，減小響應體積） */
+/** 公開內容列表 API（默認僅返回摘要字段，排除 content 正文，減小響應體積）
+ *  ?content=full — 返回完整正文 HTML（含編輯器標籤），供無詳情頁的站點在列表中展示內容
+ */
 export async function handleListContents(
   db: D1Database,
   params: URLSearchParams,
@@ -87,9 +89,11 @@ export async function handleListContents(
   const istop = params.get('istop');
   const isrecommend = params.get('isrecommend');
   const order = params.get('order') || 'date';
+  const includeContent = params.get('content') === 'full';
 
-  // 列表字段（僅排除 content 正文，其餘字段全部返回）
-  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
+  // 列表字段（默認排除 content 正文；content=full 時加入完整正文）
+  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname'
+    + (includeContent ? ', c.content' : '');
 
   const conditions: string[] = ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [];
@@ -348,6 +352,7 @@ export async function handleContentDetail(
 /** 批量獲取內容列表（靜態打包專用，pagesize 最大 500）
  *  與 handleListContents 區別：放寬 pagesize 上限，專供 Nuxt 靜態生成時批量拉取
  *  前端使用：先調用此端點獲取所有文章 ID/slug 列表，再逐一調用詳情 API 獲取正文
+ *  ?content=full — 同樣支持返回完整正文 HTML
  */
 export async function handleListAllContents(
   db: D1Database,
@@ -357,9 +362,11 @@ export async function handleListAllContents(
   const pagesize = Math.min(500, Math.max(1, parseInt(params.get('pagesize') || '200', 10) || 200));
   const scode = params.get('scode') || '';
   const order = params.get('order') || 'date';
+  const includeContent = params.get('content') === 'full';
 
-  // 摘要字段（同列表 API，排除 content 正文）
-  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname';
+  // 摘要字段（默認排除 content 正文；content=full 時加入完整正文）
+  const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname'
+    + (includeContent ? ', c.content' : '');
 
   const conditions: string[] = ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [];
