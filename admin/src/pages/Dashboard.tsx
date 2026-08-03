@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.57',
+    date: '2026-08-03 17:34:35',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 圖片URL輸入框顯示當前值 + 草稿僅在修改後才保存\n\n📋 問題描述\n• 上傳圖片或保存文章後，「輸入圖片外鏈 URL」輸入框顯示為空，無法辨別是外鏈還是 S3 資源\n• 僅刷新頁面（無任何操作）2-3 次後彈出「檢測到未保存的草稿」提示\n\n修復方案\n• 縮略圖(ico)和單圖擴展字段的 URL 輸入框改為 value={urlInput || value}，未手動輸入時顯示當前已設定的 URL\n• 新增 dirtyRef 標記替代 savedRef + draftDiscardedRef，僅在用戶實際修改表單後才寫入草稿\n• 頁面載入時 dirtyRef=false，beforeunload/定時器均不觸發草稿保存\n• 用戶編輯任一字段時 dirtyRef=true，恢復草稿自動保存；保存成功或丟棄後重置為 false`,
+  },
+  {
     version: 'v1.9.56',
     date: '2026-08-03 17:05:13',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 修復草稿丟棄後刷新仍提示 + 自定義字段修改未觸發保存\n\n📋 問題描述\n• 點擊「丟棄」草稿後刷新頁面，草稿提示再次彈出\n• 文章保存後修改自定義字段，顯示「此次無修改，未觸發保存」\n\n修復方案\n• 新增 draftDiscardedRef 標記，丟棄後阻止定時器/beforeunload 再次寫入 localStorage\n• 用戶修改任一字段時重置標記，恢復草稿自動保存\n• getChangedFields 新增 ext_fields 比對邏輯，自定義字段變更可正確觸發保存\n• originalDataRef 初始化及保存成功後同步 ext_fields 快照\n• 草稿數據結構新增 extValues，恢復草稿時一併還原自定義字段`,
   },
   {

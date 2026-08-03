@@ -491,7 +491,7 @@ function ExtFieldInput({
           <div className="flex gap-2 flex-wrap">
             <input
               type="text"
-              value={urlInput}
+              value={urlInput || value}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="輸入圖片外鏈 URL"
               className={DS.urlInput}
@@ -818,8 +818,7 @@ export default function ContentEdit() {
   const [draftPrompt, setDraftPrompt] = useState<{ title: string; savedAt: string } | null>(null)
   const draftCheckedRef = useRef(false) // 確保草稿檢查只執行一次
   const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
-  const savedRef = useRef(false) // 保存/發佈成功後設為 true，阻止卸載時再次寫入草稿
-  const draftDiscardedRef = useRef(false) // 用戶丟棄草稿後設為 true，阻止定時器/卸載再次寫入；用戶修改表單時重置為 false
+  const dirtyRef = useRef(false) // 用戶是否修改過表單（未修改時不寫入草稿，避免刷新觸發誤存）
 
   /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
@@ -988,8 +987,7 @@ export default function ContentEdit() {
 
   /** 更新擴展字段值 */
   const updateExtValue = (field: string, value: string) => {
-    draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
-    savedRef.current = false
+    dirtyRef.current = true
     setExtValues((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -1107,8 +1105,7 @@ export default function ContentEdit() {
 
   /** 保存草稿到 localStorage */
   const saveDraft = useCallback(() => {
-    if (savedRef.current) return // 保存成功後不再寫入草稿
-    if (draftDiscardedRef.current) return // 用戶已丟棄草稿，不再寫入
+    if (!dirtyRef.current) return // 未修改不保存，避免刷新觸發誤存
     if (!form.scode) return // 沒有欄目不保存
     // 從 Quill 編輯器獲取最新內容（form.content 可能滯後於編輯器）
     let currentContent = form.content
@@ -1185,15 +1182,16 @@ export default function ContentEdit() {
       if (draft.form.content && quillRef.current) {
         quillRef.current.clipboard.dangerouslyPasteHTML(draft.form.content)
       }
+      dirtyRef.current = true // 恢復草稿後視為已修改，後續編輯可繼續自動保存
     } catch {
       /* 恢復失敗，忽略 */
     }
     setDraftPrompt(null)
   }
 
-  /** 丟棄草稿：清除 localStorage 並關閉提示，阻止再次自動保存 */
+  /** 丟棄草稿：清除 localStorage 並關閉提示 */
   const discardDraft = () => {
-    draftDiscardedRef.current = true // 阻止定時器/beforeunload 再次寫入
+    dirtyRef.current = false // 重置為未修改狀態，避免定時器/beforeunload 再次寫入
     try {
       localStorage.removeItem(draftKeyOf(form.scode, id))
     } catch {
@@ -1353,8 +1351,7 @@ export default function ContentEdit() {
         quill.on('text-change', () => {
           if (quillRef.current) {
             const html = quillRef.current.root.innerHTML
-            draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
-            savedRef.current = false
+            dirtyRef.current = true
             setForm((prev) => ({ ...prev, content: html }))
           }
         })
@@ -1482,8 +1479,7 @@ export default function ContentEdit() {
 
   /** 表單欄位更新 */
   const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
-    draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
-    savedRef.current = false
+    dirtyRef.current = true
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -1611,8 +1607,8 @@ export default function ContentEdit() {
       } else {
         await api.post('/admin/contents', payload)
       }
-      // 保存/發佈成功：標記已保存並清除 localStorage 草稿
-      savedRef.current = true
+      // 保存/發佈成功：重置修改狀態並清除 localStorage 草稿
+      dirtyRef.current = false
       try {
         localStorage.removeItem(draftKeyOf(form.scode, id))
       } catch {
@@ -1856,8 +1852,7 @@ export default function ContentEdit() {
               <textarea
                 value={htmlSource}
                 onChange={(e) => {
-                  draftDiscardedRef.current = false
-                  savedRef.current = false
+                  dirtyRef.current = true
                   setHtmlSource(e.target.value)
                 }}
                 className={`w-full h-96 px-4 py-2.5 border border-input rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white transition-all duration-200 ${htmlMode ? '' : 'hidden'}`}
@@ -2034,7 +2029,7 @@ export default function ContentEdit() {
                 <div className="flex gap-2 flex-wrap">
                   <input
                     type="text"
-                    value={icoUrlInput}
+                    value={icoUrlInput || form.ico}
                     onChange={(e) => setIcoUrlInput(e.target.value)}
                     placeholder="輸入圖片外鏈 URL"
                     className={DS.urlInput}
