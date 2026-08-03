@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.56',
+    date: '2026-08-03 17:05:13',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 修復草稿丟棄後刷新仍提示 + 自定義字段修改未觸發保存\n\n📋 問題描述\n• 點擊「丟棄」草稿後刷新頁面，草稿提示再次彈出\n• 文章保存後修改自定義字段，顯示「此次無修改，未觸發保存」\n\n修復方案\n• 新增 draftDiscardedRef 標記，丟棄後阻止定時器/beforeunload 再次寫入 localStorage\n• 用戶修改任一字段時重置標記，恢復草稿自動保存\n• getChangedFields 新增 ext_fields 比對邏輯，自定義字段變更可正確觸發保存\n• originalDataRef 初始化及保存成功後同步 ext_fields 快照\n• 草稿數據結構新增 extValues，恢復草稿時一併還原自定義字段`,
+  },
+  {
     version: 'v1.9.55',
     date: '2026-08-03 16:51:58',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: `🎨 自定義字段單圖/多圖保持原比例顯示\n\n📋 變更內容\n• 單圖字段（type=5）：w-32 h-32 固定正方形 → max-w-48 max-h-48 w-auto h-auto object-contain 保持原比例\n• 多圖字段（type=10）：w-24 h-24 固定正方形 → max-w-32 max-h-32 w-auto h-auto object-contain 保持原比例\n• 避免非正方形圖片被強制裁切導致誤判是否上傳錯誤`,
   },
   {

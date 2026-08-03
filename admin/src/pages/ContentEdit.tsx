@@ -262,6 +262,7 @@ const EMPTY_FORM: FormData = {
 interface ContentDraft {
   form: FormData
   htmlSource: string
+  extValues: Record<string, string>
   savedAt: string
 }
 
@@ -818,6 +819,7 @@ export default function ContentEdit() {
   const draftCheckedRef = useRef(false) // 確保草稿檢查只執行一次
   const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
   const savedRef = useRef(false) // 保存/發佈成功後設為 true，阻止卸載時再次寫入草稿
+  const draftDiscardedRef = useRef(false) // 用戶丟棄草稿後設為 true，阻止定時器/卸載再次寫入；用戶修改表單時重置為 false
 
   /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
@@ -869,6 +871,7 @@ export default function ContentEdit() {
           date: localDate,
         })
         // 保存原始數據快照（用於保存時比對修改字段）
+        // ext_fields 初始為空對象，後續由 fetchExtFields 載入擴展值時填充
         originalDataRef.current = {
           title: content.title ?? '',
           titlecolor: content.titlecolor ?? '',
@@ -888,6 +891,7 @@ export default function ContentEdit() {
           outlink: content.outlink ?? '',
           subtitle: content.subtitle ?? '',
           date: localDate,
+          ext_fields: {} as Record<string, string>,
         }
       }
     } catch (err) {
@@ -955,6 +959,13 @@ export default function ContentEdit() {
           }
         }
         setExtValues(initial)
+        // 編輯模式載入時，將擴展字段快照寫入 originalDataRef（供 getChangedFields 比對）
+        if (contentId && originalDataRef.current) {
+          originalDataRef.current = {
+            ...originalDataRef.current,
+            ext_fields: { ...initial },
+          }
+        }
       } catch {
         setExtFields([])
         setExtValues({})
@@ -977,6 +988,8 @@ export default function ContentEdit() {
 
   /** 更新擴展字段值 */
   const updateExtValue = (field: string, value: string) => {
+    draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
+    savedRef.current = false
     setExtValues((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -1095,6 +1108,7 @@ export default function ContentEdit() {
   /** 保存草稿到 localStorage */
   const saveDraft = useCallback(() => {
     if (savedRef.current) return // 保存成功後不再寫入草稿
+    if (draftDiscardedRef.current) return // 用戶已丟棄草稿，不再寫入
     if (!form.scode) return // 沒有欄目不保存
     // 從 Quill 編輯器獲取最新內容（form.content 可能滯後於編輯器）
     let currentContent = form.content
@@ -1104,6 +1118,7 @@ export default function ContentEdit() {
     const draft: ContentDraft = {
       form: { ...form, content: currentContent },
       htmlSource,
+      extValues: { ...extValues },
       savedAt: new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Hong_Kong' }),
     }
     try {
@@ -1111,7 +1126,7 @@ export default function ContentEdit() {
     } catch {
       /* localStorage 滿或不可用，靜默失敗 */
     }
-  }, [form, htmlSource, id])
+  }, [form, htmlSource, extValues, id])
 
   // 保持 saveDraftRef 指向最新的 saveDraft（給定時器和卸載回調使用）
   useEffect(() => {
@@ -1162,6 +1177,10 @@ export default function ContentEdit() {
       const draft = JSON.parse(raw) as ContentDraft
       setForm(draft.form)
       setHtmlSource(draft.htmlSource)
+      // 恢復自定義擴展字段（兼容舊草稿無 extValues 的情況）
+      if (draft.extValues) {
+        setExtValues(draft.extValues)
+      }
       // Quill 編輯器已初始化時，手動寫入內容
       if (draft.form.content && quillRef.current) {
         quillRef.current.clipboard.dangerouslyPasteHTML(draft.form.content)
@@ -1172,8 +1191,9 @@ export default function ContentEdit() {
     setDraftPrompt(null)
   }
 
-  /** 丟棄草稿：清除 localStorage 並關閉提示 */
+  /** 丟棄草稿：清除 localStorage 並關閉提示，阻止再次自動保存 */
   const discardDraft = () => {
+    draftDiscardedRef.current = true // 阻止定時器/beforeunload 再次寫入
     try {
       localStorage.removeItem(draftKeyOf(form.scode, id))
     } catch {
@@ -1333,6 +1353,8 @@ export default function ContentEdit() {
         quill.on('text-change', () => {
           if (quillRef.current) {
             const html = quillRef.current.root.innerHTML
+            draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
+            savedRef.current = false
             setForm((prev) => ({ ...prev, content: html }))
           }
         })
@@ -1460,6 +1482,8 @@ export default function ContentEdit() {
 
   /** 表單欄位更新 */
   const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
+    draftDiscardedRef.current = false // 用戶重新編輯，恢復草稿自動保存
+    savedRef.current = false
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -1502,6 +1526,16 @@ export default function ContentEdit() {
       const newVal = String(current[key] ?? '')
       if (oldVal !== newVal) {
         changed.push(FIELD_LABELS[key])
+      }
+    }
+    // 比對自定義擴展字段（ext_*）
+    const origExt = (orig.ext_fields as Record<string, string>) || {}
+    for (const [field, value] of Object.entries(extValues)) {
+      const oldVal = origExt[field] ?? ''
+      const newVal = value ?? ''
+      if (oldVal !== newVal) {
+        changed.push('自定義字段')
+        break // 只報告一次，避免多個 ext 字段佔滿提示
       }
     }
     return { changedCount: changed.length, fields: changed }
@@ -1566,7 +1600,13 @@ export default function ContentEdit() {
       if (isEdit) {
         await api.put(`/admin/contents/${id}`, payload)
         // 保存成功後更新原始快照（避免再次比對時報告剛保存的修改）
-        originalDataRef.current = { ...payload, istop: payload.istop === '1', isrecommend: payload.isrecommend === '1', isheadline: payload.isheadline === '1' }
+        originalDataRef.current = {
+          ...payload,
+          istop: payload.istop === '1',
+          isrecommend: payload.isrecommend === '1',
+          isheadline: payload.isheadline === '1',
+          ext_fields: { ...extValues }, // 同步擴展字段快照
+        }
         setSaveHint(null)
       } else {
         await api.post('/admin/contents', payload)
@@ -1815,7 +1855,11 @@ export default function ContentEdit() {
               <div ref={editorRef} className={`border border-input rounded-lg overflow-hidden ${htmlMode ? 'hidden' : ''}`} />
               <textarea
                 value={htmlSource}
-                onChange={(e) => setHtmlSource(e.target.value)}
+                onChange={(e) => {
+                  draftDiscardedRef.current = false
+                  savedRef.current = false
+                  setHtmlSource(e.target.value)
+                }}
                 className={`w-full h-96 px-4 py-2.5 border border-input rounded-lg font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring focus:bg-white transition-all duration-200 ${htmlMode ? '' : 'hidden'}`}
                 placeholder="<p>HTML 源碼...</p>"
                 spellCheck={false}
