@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.55',
+    date: '2026-08-03 16:51:58',
+    icon: '🎨',
+    latest: true,
+    changes: `🎨 自定義字段單圖/多圖保持原比例顯示\n\n📋 變更內容\n• 單圖字段（type=5）：w-32 h-32 固定正方形 → max-w-48 max-h-48 w-auto h-auto object-contain 保持原比例\n• 多圖字段（type=10）：w-24 h-24 固定正方形 → max-w-32 max-h-32 w-auto h-auto object-contain 保持原比例\n• 避免非正方形圖片被強制裁切導致誤判是否上傳錯誤`,
+  },
+  {
     version: 'v1.9.54',
     date: '2026-08-03 16:49:32',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 修復保存成功後草稿被卸載回調重新寫入的 bug\n\n📋 問題描述\n• 文章保存/發佈成功後，navigate('/contents') 觸發組件卸載\n• 卸載時的 saveDraftRef.current() 回調再次保存草稿到 localStorage\n• 導致下次新建文章時彈出「檢測到未保存的草稿」提示\n\n修復方案\n• 新增 savedRef 標記，保存成功後設為 true\n• saveDraft 函數開頭檢查 savedRef.current，為 true 時直接返回不保存\n• 確保卸載回調不會在保存成功後重新寫入草稿`,
   },
   {

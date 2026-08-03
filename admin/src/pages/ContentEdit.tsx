@@ -477,7 +477,7 @@ function ExtFieldInput({
               alt={field.name}
               onRemove={() => onChange('')}
               containerClassName="border rounded"
-              imgClassName="w-32 h-32"
+              imgClassName="max-w-48 max-h-48 w-auto h-auto object-contain"
             />
           )}
           <input
@@ -622,7 +622,7 @@ function ExtFieldInput({
                     alt={`${field.name}-${idx}`}
                     onRemove={() => removeImage(idx)}
                     containerClassName="border rounded"
-                    imgClassName="w-24 h-24"
+                    imgClassName="max-w-32 max-h-32 w-auto h-auto object-contain"
                   />
                 ))}
             </div>
