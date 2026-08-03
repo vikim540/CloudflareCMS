@@ -36,6 +36,46 @@ const PUBLIC_DATE_FILTER = "(c.date <= datetime('now', '+8 hours') OR c.date = '
 /** 公開 API 日期過濾條件（無表別名版，用於不帶 c. 前綴的查詢） */
 const PUBLIC_DATE_FILTER_RAW = "(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)";
 
+/**
+ * 批量為列表結果附加自定義擴展字段（ext_*）
+ * 避免 N+1 查詢：用 IN(...) 一次查全部，再在內存中按 contentid 合併
+ * 僅平鋪非空的 ext_* 字段到每條記錄上，與詳情 API 行為一致
+ */
+async function batchAttachExtFields(
+  db: D1Database,
+  items: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+  if (items.length === 0) return items;
+  const ids = items.map((r) => r.id).filter(Boolean);
+  if (ids.length === 0) return items;
+
+  const placeholders = ids.map(() => '?').join(',');
+  const extRows = await db.prepare(
+    `SELECT * FROM ay_content_ext WHERE contentid IN (${placeholders})`,
+  ).bind(...ids).all<Record<string, unknown>>();
+
+  // 建立 contentid -> extMap 映射（僅 ext_ 前綴且非空字段）
+  const extMap = new Map<number, Record<string, unknown>>();
+  for (const row of extRows.results) {
+    const cid = row.contentid as number;
+    if (cid === null || cid === undefined) continue;
+    const ext: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (k.startsWith('ext_') && v !== null && v !== undefined && v !== '') {
+        ext[k] = v;
+      }
+    }
+    if (Object.keys(ext).length > 0) extMap.set(cid, ext);
+  }
+
+  // 合併到列表結果
+  return items.map((item) => {
+    const cid = item.id as number;
+    const ext = extMap.get(cid);
+    return ext ? { ...item, ...ext } : item;
+  });
+}
+
 /** 公開內容列表 API（僅返回摘要字段，排除 content 正文，減小響應體積） */
 export async function handleListContents(
   db: D1Database,
@@ -101,7 +141,10 @@ export async function handleListContents(
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
-  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
+  // 批量附加自定義擴展字段（ext_*），與詳情 API 行為一致
+  const items = await batchAttachExtFields(db, listResult.results as Record<string, unknown>[]);
+
+  return okList(items, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
 /**
@@ -347,7 +390,10 @@ export async function handleListAllContents(
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
-  return okList(listResult.results, createMeta(page, pagesize, total), '成功');
+  // 批量附加自定義擴展字段（ext_*），與列表 API 行為一致
+  const items = await batchAttachExtFields(db, listResult.results as Record<string, unknown>[]);
+
+  return okList(items, createMeta(page, pagesize, total), '成功');
 }
 
 /** 後台內容詳情（無 status 過濾、無訪問量追蹤、不被 Workers Cache 緩存）
@@ -677,5 +723,8 @@ export async function handleListContentsByTag(
   const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
   const total = countResult?.total ?? 0;
 
-  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), `找到 ${total} 篇含「${q}」標籤的文章`);
+  // 批量附加自定義擴展字段（ext_*），與列表 API 行為一致
+  const items = await batchAttachExtFields(db, listResult.results as Record<string, unknown>[]);
+
+  return okList(items, createMeta(pagination.page, pagination.pagesize, total), `找到 ${total} 篇含「${q}」標籤的文章`);
 }

@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.53',
+    date: '2026-08-03 16:44:27',
+    icon: '✨',
+    latest: true,
+    changes: `✨ 公開 API 列表端點加入自定義擴展字段\n\n📋 變更內容\n• 新增 batchAttachExtFields() 工具函數：批量 IN(...) 查詢 ay_content_ext，按 contentid 合併到列表結果，避免 N+1 查詢\n• GET /api/v1/contents（公開列表）加入 ext_* 字段平鋪\n• GET /api/v1/contents/all（靜態打包批量列表）加入 ext_* 字段平鋪\n• GET /api/v1/tags?q=xxx（標籤搜索列表）加入 ext_* 字段平鋪\n• 與詳情 API 行為一致：僅平鋪非空的 ext_* 字段，空值不包含\n• 擴展字段由後台「自定義字段」管理，動態 ALTER TABLE 添加物理列`,
+  },
+  {
     version: 'v1.9.52',
     date: '2026-08-03 15:11:34',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 只讀時間戳強制文本輸入，避免渲染為開關按鈕\n\n📋 變更內容\n• backup_last_run / log_last_cleanup 在 DB 中存儲的 type='1'（開關類型），導致 renderConfigRow 渲染為切換按鈕\n• 修復：isSwitch 判斷增加 !READONLY_CONFIGS.has(config.name) 條件，只讀配置項強制使用文本輸入渲染\n• 效果：Settings.tsx 中這兩個時間戳字段顯示為灰化文本輸入框（placeholder「系統自動更新」），而非一個被禁用的無意義開關`,
   },
   {
