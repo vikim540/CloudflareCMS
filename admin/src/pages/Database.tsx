@@ -90,18 +90,18 @@ export default function DatabasePage() {
   const [creating, setCreating] = useState(false)
   const [actionFile, setActionFile] = useState<string | null>(null)
 
-  // 備份選項：是否排除日誌數據
-  const [excludeLogs, setExcludeLogs] = useState(false)
+  // 備份選項：是否排除日誌數據（默認排除，與定時備份配置一致）
+  const [excludeLogs, setExcludeLogs] = useState(true)
 
-  // 定時備份配置
+  // 定時備份配置（默認值與 0004_backup_config.sql 種子數據一致）
   const [schedule, setSchedule] = useState<BackupSchedule>({
-    enabled: '0',
-    frequency: 'daily',
+    enabled: '1',
+    frequency: 'weekly',
     time: '03:00',
     weekday: '1',
     keep: 7,
     lastRun: '',
-    excludeLogs: '0',
+    excludeLogs: '1',
     logRetentionDays: 30,
     lastLogCleanup: '',
   })

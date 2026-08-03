@@ -1,6 +1,6 @@
 # AGENTS.md — 項目約束與開發規範
 
-> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.50**（2026-08-03）
+> **強制約束文件**。所有代碼生成、修改、審查必須遵守。當前版本：**v1.9.51**（2026-08-03）
 
 ## 語言選擇優先級
 
@@ -80,7 +80,7 @@ Cloudflarerustcms/
 │   ├── vite.config.ts          # 輸出目錄 deploy（非 build！fixEmptyChunksPlugin）
 │   ├── wrangler.jsonc          # Pages 部署配置 + Service Binding（binding: API → cfstack-cms）
 │   └── package.json
-├── migrations/                 # D1 遷移（冪等語法，0001_init.sql + 0002_booking.sql + 0003_indexes.sql）
+├── migrations/                 # D1 遷移（冪等語法，0001_init.sql + 0002_booking.sql + 0003_indexes.sql + 0004_backup_config.sql）
 ├── pnpm-workspace.yaml         # pnpm 11.x 配置（onlyBuiltDependencies + allowBuilds + dangerouslyAllowAllBuilds）
 └── wrangler.jsonc              # Worker 配置（bindings + cron + cache + placement）
 ```

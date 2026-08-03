@@ -61,10 +61,17 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.51',
+    date: '2026-08-03 14:17:18',
+    icon: '🔧',
+    latest: true,
+    changes: `🔧 備份配置種子數據 + 默認值修正\n\n📋 變更內容\n• 新增 0004_backup_config.sql 遷移：9 項備份配置種子數據（INSERT OR IGNORE 不覆蓋已有值）\n• 默認值：每週一 03:00 自動備份、每站保留 7 份、排除日誌數據、30 天自動清理日誌\n• getBackupScheduleConfig() 硬編碼默認值改為 enabled=1 / frequency=weekly / excludeLogs=1（與種子數據一致）\n• 新增 BACKUP_CONFIG_META 元數據映射表，handleUpdateBackupSchedule INSERT 時使用正確的 sorting/type/description\n• backup_last_run / log_last_cleanup INSERT sorting 改為 97/98（原為 94/95，type 改為 '2' 文本而非 '1' 開關）\n• Database.tsx 前端初始狀態同步更新（enabled=1, frequency=weekly, excludeLogs=1）\n• 手動備份 excludeLogs 默認改為 true（與定時配置一致）\n\n💡 問題背景：備份配置項此前無種子數據，後端硬編碼默認 enabled='0'，導致每次打開頁面都顯示「未開啟」`,
+  },
+  {
     version: 'v1.9.50',
     date: '2026-08-03 14:03:14',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: `🎨 系統設置頁存儲配置歸類重組\n\n📋 變更內容\n• 將「其他配置」中的存儲/備份相關配置項歸入「存儲配置」tab\n• 基於名稱路由（STORAGE_CONFIG_NAMES / BACKUP_CONFIG_NAMES）替代 sorting 值，兼容不同站點數據庫的 sorting 差異\n• 修復 S3 憑證重複顯示問題（seenNames 去重，注入條目 sorting 72/73 優先於 DB 條目 sorting 89）\n• 修復 mail_enabled=false 時誤隱藏備份配置（只隱藏郵件相關 90-99，不隱藏 BACKUP_CONFIG_NAMES）\n• 隱藏 turnstile_secret_key（v1.8.6 已遷移至 Secrets Store）\n• 備份配置新增信息卡片（引導至數據庫管理頁面）+ 只讀字段標記（backup_last_run / log_last_cleanup）\n• 合併同名分組（內容設置 80-89 與 210-219），新增 BACKUP_GROUP 虛擬分組（min=82）`,
   },
   {

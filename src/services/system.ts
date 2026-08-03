@@ -1460,16 +1460,33 @@ interface BackupScheduleConfig {
   lastLogCleanup: string;   // 上次日誌清理時間
 }
 
-/** 讀取定時備份配置 */
+/**
+ * 備份配置項的 DB 元數據（sorting / type / description）
+ * 用於 handleUpdateBackupSchedule 和系統自動寫入時的 INSERT
+ * 與 0004_backup_config.sql 種子數據保持一致
+ */
+const BACKUP_CONFIG_META: Record<string, { sorting: number; type: string; description: string }> = {
+  backup_schedule_enabled:   { sorting: 90, type: '1', description: '定時備份開關' },
+  backup_schedule_frequency: { sorting: 91, type: '2', description: '備份頻率(daily/weekly)' },
+  backup_schedule_time:      { sorting: 92, type: '2', description: '備份時間(HH:mm)' },
+  backup_schedule_weekday:   { sorting: 93, type: '2', description: '備份星期(0=週日,1=週一,2=週二...)' },
+  backup_schedule_keep:      { sorting: 94, type: '2', description: '每站保留備份份數' },
+  backup_exclude_logs:       { sorting: 95, type: '1', description: '備份排除日誌數據(1=排除,0=包含)' },
+  log_retention_days:        { sorting: 96, type: '2', description: '日誌保留天數(0=不自動清理)' },
+  backup_last_run:           { sorting: 97, type: '2', description: '上次定時備份執行時間（系統自動更新）' },
+  log_last_cleanup:          { sorting: 98, type: '2', description: '上次日誌清理執行時間（系統自動更新）' },
+};
+
+/** 讀取定時備份配置（默認值與 0004_backup_config.sql 種子數據一致） */
 async function getBackupScheduleConfig(db: D1Database, kv: KVNamespace): Promise<BackupScheduleConfig> {
   const [enabled, frequency, time, weekday, keep, lastRun, excludeLogs, logRetentionDays, lastLogCleanup] = await Promise.all([
-    getConfig(db, kv, 'backup_schedule_enabled', '0'),
-    getConfig(db, kv, 'backup_schedule_frequency', 'daily'),
+    getConfig(db, kv, 'backup_schedule_enabled', '1'),
+    getConfig(db, kv, 'backup_schedule_frequency', 'weekly'),
     getConfig(db, kv, 'backup_schedule_time', '03:00'),
     getConfig(db, kv, 'backup_schedule_weekday', '1'),
     getConfig(db, kv, 'backup_schedule_keep', '7'),
     getConfig(db, kv, 'backup_last_run', ''),
-    getConfig(db, kv, 'backup_exclude_logs', '0'),
+    getConfig(db, kv, 'backup_exclude_logs', '1'),
     getConfig(db, kv, 'log_retention_days', '30'),
     getConfig(db, kv, 'log_last_cleanup', ''),
   ]);
@@ -1516,13 +1533,14 @@ export async function handleUpdateBackupSchedule(
   }
 
   for (const item of updates) {
-    // 先檢查是否存在，存在則 UPDATE，不存在則 INSERT
+    // 先檢查是否存在，存在則 UPDATE，不存在則 INSERT（使用 BACKUP_CONFIG_META 元數據）
     const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind(item.name).first<{ id: number }>();
     if (existing) {
       await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(item.value, item.name).run();
     } else {
+      const meta = BACKUP_CONFIG_META[item.name] ?? { sorting: 90, type: '1', description: '定時備份配置' };
       await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
-        .bind(item.name, item.value, '1', 90, '定時備份配置').run();
+        .bind(item.name, item.value, meta.type, meta.sorting, meta.description).run();
     }
   }
 
@@ -1671,12 +1689,13 @@ export async function handleScheduledBackup(
       });
 
       // 更新 last_run（任務已投遞，而非等備份完成）
-      const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
-      if (existing) {
+      const existingRun = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
+      if (existingRun) {
         await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
       } else {
+        const meta = BACKUP_CONFIG_META['backup_last_run'];
         await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
-          .bind('backup_last_run', nowHk, '1', 94, '上次定時備份執行時間').run();
+          .bind('backup_last_run', nowHk, meta.type, meta.sorting, meta.description).run();
       }
       await kv.delete('config:all');
 
@@ -1752,12 +1771,13 @@ async function executeScheduledBackupSync(
     await s3PutObject(s3Config, backupKey, data, 'application/gzip');
 
     // 更新 last_run
-    const existing = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
-    if (existing) {
+    const existingRun = await db.prepare('SELECT id FROM ay_config WHERE name = ?').bind('backup_last_run').first<{ id: number }>();
+    if (existingRun) {
       await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(nowHk, 'backup_last_run').run();
     } else {
+      const meta = BACKUP_CONFIG_META['backup_last_run'];
       await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
-        .bind('backup_last_run', nowHk, '1', 94, '上次定時備份執行時間').run();
+        .bind('backup_last_run', nowHk, meta.type, meta.sorting, meta.description).run();
     }
     await kv.delete('config:all');
 
@@ -1941,8 +1961,9 @@ async function updateLogCleanupTimestamp(db: D1Database, kv: KVNamespace, timest
   if (existing) {
     await db.prepare('UPDATE ay_config SET value = ? WHERE name = ?').bind(timestamp, 'log_last_cleanup').run();
   } else {
+    const meta = BACKUP_CONFIG_META['log_last_cleanup'];
     await db.prepare('INSERT INTO ay_config (name, value, type, sorting, description) VALUES (?, ?, ?, ?, ?)')
-      .bind('log_last_cleanup', timestamp, '1', 95, '上次日誌清理執行時間').run();
+      .bind('log_last_cleanup', timestamp, meta.type, meta.sorting, meta.description).run();
   }
   await kv.delete('config:all');
 }
