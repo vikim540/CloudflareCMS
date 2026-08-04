@@ -1214,6 +1214,28 @@ app.put('/api/v1/admin/slides/batch-sorting', async (c) => {
   return extraService.handleBatchUpdateSlideSorting(siteDB(c), items);
 });
 
+// ⚠️ trash 子路徑路由必須在 :id 路由之前（同 batch-sorting 原則）
+app.get('/api/v1/admin/slides/trash', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const params = new URL(c.req.url).searchParams;
+  return extraService.handleAdminListTrashSlides(siteDB(c), params);
+});
+
+app.put('/api/v1/admin/slides/:id/restore', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return extraService.handleRestoreSlide(siteDB(c), id);
+});
+
+app.delete('/api/v1/admin/slides/:id/permanent', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return extraService.handlePermanentDeleteSlide(siteDB(c), id);
+});
+
 app.put('/api/v1/admin/slides/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);

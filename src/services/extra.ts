@@ -261,7 +261,7 @@ export async function handleListLinks(
 // 模塊 3: 幻燈片 (ay_slide)
 // ============================================================================
 
-/** 後台幻燈片列表 (分頁, 支持 gid 篩選) */
+/** 後台幻燈片列表 (分頁, 支持 gid 篩選, 排除回收站 status='-1') */
 export async function handleAdminListSlides(
   db: D1Database,
   params: URLSearchParams,
@@ -269,7 +269,7 @@ export async function handleAdminListSlides(
   const pagination = fromQuery(params);
   const gid = params.get('gid') || '';
 
-  const conditions: string[] = [];
+  const conditions: string[] = ["status != '-1'"];
   const binds: (string | number)[] = [];
 
   if (gid) {
@@ -277,7 +277,7 @@ export async function handleAdminListSlides(
     binds.push(gid);
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
   const off = offset(pagination);
 
   const listSql = `SELECT * FROM ay_slide ${whereClause} ORDER BY sorting ASC, id ASC LIMIT ? OFFSET ?`;
@@ -350,8 +350,13 @@ export async function handleUpdateSlide(
   binds.push(now);
   binds.push(id);
 
-  const sql = `UPDATE ay_slide SET ${sets.join(', ')} WHERE id = ?`;
-  await db.prepare(sql).bind(...binds).run();
+  // 排除回收站中的幻燈片（status='-1'），禁止編輯回收站項目
+  const sql = `UPDATE ay_slide SET ${sets.join(', ')} WHERE id = ? AND status != '-1'`;
+  const result = await db.prepare(sql).bind(...binds).run();
+
+  if (result.meta.changes === 0) {
+    return err('幻燈片不存在或已在回收站中', 1004);
+  }
 
   return ok('幻燈片更新成功');
 }
@@ -368,15 +373,15 @@ export async function handleCopySlide(
     return err('請指定目標分組', 1001);
   }
 
-  // 讀取源幻燈片
-  const source = await db.prepare('SELECT * FROM ay_slide WHERE id = ?').bind(id).first<Record<string, unknown>>();
+  // 讀取源幻燈片（排除回收站項目）
+  const source = await db.prepare("SELECT * FROM ay_slide WHERE id = ? AND status != '-1'").bind(id).first<Record<string, unknown>>();
   if (!source) {
-    return err('源幻燈片不存在', 1004);
+    return err('源幻燈片不存在或已在回收站中', 1004);
   }
 
-  // 計算目標分組下的排序值（最大值 + 1）
+  // 計算目標分組下的排序值（最大值 + 1，排除回收站項目）
   const maxResult = await db.prepare(
-    'SELECT MAX(sorting) as max_sorting FROM ay_slide WHERE gid = ?',
+    "SELECT MAX(sorting) as max_sorting FROM ay_slide WHERE gid = ? AND status != '-1'",
   ).bind(targetGid).first<{ max_sorting: number | null }>();
   const newSorting = (maxResult?.max_sorting ?? 0) + 1;
 
@@ -419,10 +424,72 @@ export async function handleBatchUpdateSlideSorting(
   return ok('排序更新成功');
 }
 
-/** 刪除幻燈片 */
+/** 刪除幻燈片 (軟刪除到回收站: status='-1') */
 export async function handleDeleteSlide(db: D1Database, id: number): Promise<Response> {
-  await db.prepare('DELETE FROM ay_slide WHERE id = ?').bind(id).run();
-  return ok('幻燈片刪除成功');
+  const now = nowStr();
+  const result = await db.prepare(
+    "UPDATE ay_slide SET status = '-1', update_time = ? WHERE id = ? AND status != '-1'",
+  ).bind(now, id).run();
+
+  if (result.meta.changes > 0) {
+    return ok('已移入回收站');
+  }
+  return err('幻燈片不存在或已在回收站中', 1004);
+}
+
+/** 回收站幻燈片列表 (status='-1') */
+export async function handleAdminListTrashSlides(
+  db: D1Database,
+  params: URLSearchParams,
+): Promise<Response> {
+  const pagination = fromQuery(params);
+  const gid = params.get('gid') || '';
+
+  const conditions: string[] = ["status = '-1'"];
+  const binds: (string | number)[] = [];
+
+  if (gid) {
+    conditions.push('gid = ?');
+    binds.push(gid);
+  }
+
+  const whereClause = `WHERE ${conditions.join(' AND ')}`;
+  const off = offset(pagination);
+
+  const listSql = `SELECT * FROM ay_slide ${whereClause} ORDER BY update_time DESC, id DESC LIMIT ? OFFSET ?`;
+  const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
+
+  const countSql = `SELECT COUNT(*) as total FROM ay_slide ${whereClause}`;
+  const countResult = await db.prepare(countSql).bind(...binds).first<{ total: number }>();
+  const total = countResult?.total ?? 0;
+
+  return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
+}
+
+/** 從回收站恢復幻燈片 (status='0' 隱藏狀態，用戶可手動切換顯示) */
+export async function handleRestoreSlide(db: D1Database, id: number): Promise<Response> {
+  const now = nowStr();
+  const result = await db.prepare(
+    "UPDATE ay_slide SET status = '0', update_time = ? WHERE id = ? AND status = '-1'",
+  ).bind(now, id).run();
+
+  if (result.meta.changes > 0) {
+    return ok('已從回收站恢復（預設隱藏狀態，請手動切換顯示）');
+  }
+  return err('幻燈片不在回收站中', 1004);
+}
+
+/** 永久刪除幻燈片 (物理刪除; 僅允許刪除回收站中的幻燈片) */
+export async function handlePermanentDeleteSlide(db: D1Database, id: number): Promise<Response> {
+  const result = await db.prepare(
+    "DELETE FROM ay_slide WHERE id = ? AND status = '-1'",
+  ).bind(id).run();
+
+  if (result.meta.changes === 0) {
+    return err('幻燈片不在回收站中，無法永久刪除', 1004);
+  }
+
+  return ok('已永久刪除');
 }
 
 /** 公開幻燈片列表 (支持 gid 篩選，僅返回 status='1' 的可見幻燈片) */

@@ -61,10 +61,39 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.61',
+    date: '2026-08-04 09:00:04',
+    icon: '🗑️',
+    latest: true,
+    changes: `🗑️ 幻燈片刪除回收站功能
+
+📋 功能說明
+• 幻燈片刪除改為軟刪除（status='-1'），移入回收站而非物理刪除
+• 回收站視圖：獨立表格展示已刪除幻燈片，按刪除時間倒序排列
+• 恢復功能：從回收站恢復為隱藏狀態（status='0'），用戶手動切換顯示
+• 永久刪除：僅允許刪除回收站中的幻燈片，二次確認後物理刪除
+
+🔧 後端變更
+• handleDeleteSlide：DELETE → UPDATE SET status='-1'（軟刪除）
+• 新增 handleAdminListTrashSlides / handleRestoreSlide / handlePermanentDeleteSlide
+• handleAdminListSlides 排除 status='-1'
+• handleUpdateSlide / handleCopySlide 加 status!='-1' 守衛
+• 新增路由：GET /trash、PUT /:id/restore、DELETE /:id/permanent
+
+🎨 前端變更
+• Slides.tsx 新增 trashMode 狀態 + 回收站表格視圖
+• 刪除按鈕文案改為「回收站」，提示「移入回收站」
+• 回收站操作按鈕：♻️ 恢復 / ❌ 永久刪除
+
+📊 設計決策
+• 復用 status='-1' 表示回收站（與內容回收站模式一致，無需數據庫遷移）
+• 恢復預設為隱藏狀態（status='0'），避免恢復後意外顯示到公開 API`,
+  },
+  {
     version: 'v1.9.60',
     date: '2026-08-04 08:39:08',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 幻燈片分頁截斷修復 + Create API 返回新 ID
 
 🔧 修復內容
@@ -936,7 +965,10 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表 (?gid=&pagesize=, 默認20/頁 max100)', auth: true },
   { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片 (返回新建ID v1.9.60+)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
-  { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片 (軟刪除→回收站 v1.9.61+)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/slides/trash', desc: '回收站幻燈片列表 (v1.9.61+)', auth: true },
+  { method: 'PUT', path: '/api/v1/admin/slides/:id/restore', desc: '從回收站恢復 (v1.9.61+)', auth: true },
+  { method: 'DELETE', path: '/api/v1/admin/slides/:id/permanent', desc: '永久刪除 (僅回收站項目 v1.9.61+)', auth: true },
   { method: 'GET', path: '/api/v1/admin/slides/groups', desc: '幻燈片分組列表 (v1.7.7+)', auth: true },
   { method: 'POST', path: '/api/v1/admin/slides/groups', desc: '新增幻燈片分組 (v1.7.7+)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/groups/:gid', desc: '更新幻燈片分組名稱 (v1.7.7+)', auth: true },

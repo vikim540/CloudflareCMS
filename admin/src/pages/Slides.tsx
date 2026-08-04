@@ -100,6 +100,9 @@ export default function Slides() {
   const [copyGid, setCopyGid] = useState<string>('1')
   const [copying, setCopying] = useState(false)
 
+  // ─── 回收站狀態 ─────────────────────────────────────────
+  const [trashMode, setTrashMode] = useState(false)
+
   // ─── 上傳 hook（統一壓縮+上傳+進度+錯誤處理） ──────────
   // autoCompress=false：圖片已通過 ImageCompressDialog 壓縮，非圖片無需壓縮
   const { uploading, progress, error: uploadError, uploadSingle, clearError } = useImageUpload({
@@ -163,19 +166,22 @@ export default function Slides() {
     setPendingSlideImage({ file, target: 'mobile' })
   }
 
-  /** 載入幻燈片列表 */
+  /** 載入幻燈片列表（普通列表 or 回收站） */
   const fetchSlides = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Slide[]>('/admin/slides?pagesize=100')
+      const endpoint = trashMode
+        ? '/admin/slides/trash?pagesize=100'
+        : '/admin/slides?pagesize=100'
+      const res = await api.get<Slide[]>(endpoint)
       setSlides(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [trashMode])
 
   useEffect(() => {
     fetchSlides()
@@ -324,15 +330,42 @@ export default function Slides() {
     }
   }
 
-  /** 刪除幻燈片 */
+  /** 刪除幻燈片（移入回收站） */
   const handleDelete = async (id: number) => {
-    if (!window.confirm('確定要刪除此幻燈片嗎?')) return
+    if (!window.confirm('確定要將此幻燈片移入回收站嗎？')) return
     setActionLoading(id)
     try {
       await api.del(`/admin/slides/${id}`)
       await fetchSlides()
     } catch (err) {
       setError(err instanceof Error ? err.message : '刪除失敗')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  /** 從回收站恢復幻燈片 */
+  const handleRestore = async (id: number) => {
+    setActionLoading(id)
+    try {
+      await api.put(`/admin/slides/${id}/restore`)
+      await fetchSlides()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '恢復失敗')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  /** 永久刪除幻燈片（不可恢復） */
+  const handlePermanentDelete = async (id: number) => {
+    if (!window.confirm('⚠️ 確定要永久刪除此幻燈片嗎？此操作不可恢復！')) return
+    setActionLoading(id)
+    try {
+      await api.del(`/admin/slides/${id}/permanent`)
+      await fetchSlides()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '永久刪除失敗')
     } finally {
       setActionLoading(null)
     }
@@ -451,14 +484,37 @@ export default function Slides() {
     <div className="p-6">
       {/* 頁首 */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">幻燈片管理</h1>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
-        >
-          <span className="mr-1">➕</span>
-          新增幻燈片
-        </button>
+        <h1 className="text-2xl font-bold">
+          {trashMode ? '🗑️ 幻燈片回收站' : '幻燈片管理'}
+        </h1>
+        <div className="flex items-center gap-2">
+          {trashMode ? (
+            <button
+              onClick={() => setTrashMode(false)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 border rounded-md hover:bg-accent transition-colors text-sm"
+            >
+              <span className="mr-1">←</span>
+              返回列表
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+              >
+                <span className="mr-1">➕</span>
+                新增幻燈片
+              </button>
+              <button
+                onClick={() => setTrashMode(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 border rounded-md hover:bg-accent transition-colors text-sm"
+              >
+                <span className="mr-1">🗑️</span>
+                回收站
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* 錯誤提示 */}
@@ -469,8 +525,8 @@ export default function Slides() {
         </div>
       )}
 
-      {/* 分組標籤欄 */}
-      {!loading && slides.length > 0 && (
+      {/* 分組標籤欄（非回收站模式） */}
+      {!loading && !trashMode && slides.length > 0 && (
         <div className="mb-4 flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setActiveGroup('all')}
@@ -590,26 +646,28 @@ export default function Slides() {
       {/* 空狀態 */}
       {!loading && slides.length === 0 && !error && (
         <>
-          <EmptyState icon="🖼️" text="尚未創建任何幻燈片" />
-          <div className="flex justify-center -mt-16 pb-8">
-            <button
-              onClick={openCreate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
-            >
-              <span className="mr-1">➕</span>
-              新增幻燈片
-            </button>
-          </div>
+          <EmptyState icon={trashMode ? '🗑️' : '🖼️'} text={trashMode ? '回收站是空的' : '尚未創建任何幻燈片'} />
+          {!trashMode && (
+            <div className="flex justify-center -mt-16 pb-8">
+              <button
+                onClick={openCreate}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:opacity-90 transition-opacity text-sm"
+              >
+                <span className="mr-1">➕</span>
+                新增幻燈片
+              </button>
+            </div>
+          )}
         </>
       )}
 
-      {/* 當前分組無數據 */}
-      {!loading && slides.length > 0 && filteredSlides.length === 0 && (
+      {/* 當前分組無數據（僅普通模式） */}
+      {!loading && !trashMode && slides.length > 0 && filteredSlides.length === 0 && (
         <EmptyState icon="📭" text="此分組下暫無幻燈片" />
       )}
 
-      {/* 幻燈片表格 */}
-      {!loading && filteredSlides.length > 0 && (
+      {/* 幻燈片表格（普通模式） */}
+      {!loading && !trashMode && filteredSlides.length > 0 && (
         <div className="bg-white rounded-lg border overflow-hidden">
           {/* 排序更新提示 */}
           {sortingUpdate && (
@@ -780,10 +838,10 @@ export default function Slides() {
                           onClick={() => handleDelete(item.id)}
                           disabled={actionLoading === item.id}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="刪除"
+                          title="移入回收站"
                         >
                           <span className="text-sm">🗑️</span>
-                          刪除
+                          回收站
                         </button>
                       </div>
                     </td>
@@ -807,6 +865,84 @@ export default function Slides() {
                 {sortingUpdate ? '⏳ 保存中...' : `💾 保存排序（${Object.keys(dirtySorts).length} 項）`}
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 回收站表格（trash 模式） */}
+      {!loading && trashMode && slides.length > 0 && (
+        <div className="bg-white rounded-lg border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-secondary/50">
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">分組</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">桌面版圖片</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">標題</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">刪除時間</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {slides.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b last:border-0 hover:bg-accent/50 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-muted-foreground">{item.id}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                        {getGroupDisplayName(item.gid ?? '0', groupNames)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {item.pic ? (
+                        <img
+                          src={item.pic}
+                          alt={item.title || '幻燈片'}
+                          className="w-32 h-18 rounded border bg-gray-50 object-contain"
+                          loading="lazy"
+                          decoding="async"
+                          style={{ maxHeight: '72px' }}
+                        />
+                      ) : (
+                        <span className="text-muted-foreground text-xs">無圖片</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-medium">{item.title || '-'}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {(item as Slide & { update_time?: string }).update_time || '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleRestore(item.id)}
+                          disabled={actionLoading === item.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                          title="恢復到列表（預設隱藏狀態）"
+                        >
+                          <span className="text-sm">♻️</span>
+                          恢復
+                        </button>
+                        <button
+                          onClick={() => handlePermanentDelete(item.id)}
+                          disabled={actionLoading === item.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                          title="永久刪除（不可恢復）"
+                        >
+                          <span className="text-sm">❌</span>
+                          永久刪除
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-2 bg-slate-50 text-xs text-muted-foreground border-t flex items-center gap-2">
+            <span>💡 恢復後的幻燈片預設為隱藏狀態，需在列表中手動切換顯示</span>
           </div>
         </div>
       )}
