@@ -71,7 +71,7 @@ export async function handleCreateSingle(
   ).run();
 
   if (result.meta.changes > 0) {
-    return ok('單頁創建成功');
+    return okData({ id: result.meta.last_row_id }, '單頁創建成功');
   }
   return err('單頁創建失敗', 1005);
 }
@@ -192,7 +192,7 @@ export async function handleCreateLink(
   ).run();
 
   if (result.meta.changes > 0) {
-    return ok('友情連結創建成功');
+    return okData({ id: result.meta.last_row_id }, '友情連結創建成功');
   }
   return err('友情連結創建失敗', 1005);
 }
@@ -317,7 +317,7 @@ export async function handleCreateSlide(
   ).run();
 
   if (result.meta.changes > 0) {
-    return ok('幻燈片創建成功');
+    return okData({ id: result.meta.last_row_id }, '幻燈片創建成功');
   }
   return err('幻燈片創建失敗', 1005);
 }

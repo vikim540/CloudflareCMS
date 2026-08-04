@@ -115,7 +115,7 @@ export default function Roles() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Role[]>('/admin/roles')
+      const res = await api.get<Role[]>('/admin/roles?pagesize=100')
       setRoles(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')

@@ -168,7 +168,7 @@ export default function Slides() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Slide[]>('/admin/slides')
+      const res = await api.get<Slide[]>('/admin/slides?pagesize=100')
       setSlides(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')

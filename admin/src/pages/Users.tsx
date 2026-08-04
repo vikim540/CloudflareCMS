@@ -118,7 +118,7 @@ export default function Users() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<User[]>('/admin/users')
+      const res = await api.get<User[]>('/admin/users?pagesize=100')
       setUsers(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')
@@ -130,7 +130,7 @@ export default function Users() {
   /** 載入角色列表 */
   const fetchRoles = useCallback(async () => {
     try {
-      const res = await api.get<Role[]>('/admin/roles')
+      const res = await api.get<Role[]>('/admin/roles?pagesize=100')
       setRoles(res.data ?? [])
     } catch {
       /* 忽略角色載入錯誤 */

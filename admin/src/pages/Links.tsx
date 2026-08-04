@@ -49,7 +49,7 @@ export default function Links() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<LinkItem[]>('/admin/links')
+      const res = await api.get<LinkItem[]>('/admin/links?pagesize=100')
       setLinks(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')

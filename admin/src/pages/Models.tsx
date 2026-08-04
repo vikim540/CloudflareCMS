@@ -59,7 +59,7 @@ export default function Models() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Model[]>('/admin/models')
+      const res = await api.get<Model[]>('/admin/models?pagesize=100')
       setModels(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')

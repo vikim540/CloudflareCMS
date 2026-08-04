@@ -250,7 +250,7 @@ export default function Categories() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Sort[]>('/admin/sorts')
+      const res = await api.get<Sort[]>('/admin/sorts?pagesize=100')
       const data = Array.isArray(res.data) ? res.data : []
       setTree(data)
       // 預設展開第一層節點

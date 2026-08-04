@@ -52,7 +52,7 @@ export default function Singles() {
     setLoading(true)
     setError('')
     try {
-      const res = await api.get<Single[]>('/admin/singles')
+      const res = await api.get<Single[]>('/admin/singles?pagesize=100')
       setSingles(res.data ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入失敗')

@@ -61,10 +61,28 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.60',
+    date: '2026-08-04 08:39:08',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 幻燈片分頁截斷修復 + Create API 返回新 ID
+
+🔧 修復內容
+• 前端 7 個管理列表頁面添加 ?pagesize=100 參數
+  - Slides / Links / Singles / Categories / Users / Roles / Models
+  - 根因：前端未傳 pagesize，後端默認只返回 20 條，跨分組總數超 20 時新建數據被截斷不可見
+• 後端 handleCreateSlide / handleCreateLink / handleCreateSingle 改為 okData 返回新建記錄 ID
+  - 原先只返回 ok(msg)，前端無法驗證創建結果
+
+⚠️ 影響範圍
+• 幻燈片管理：修復 Vision 站點分組 4 新增幻燈片保存後不顯示的問題
+• 友情連結 / 單頁 / 欄目 / 用戶 / 角色 / 模型：預防性修復相同分頁截斷隱患`,
+  },
+  {
     version: 'v1.9.59',
     date: '2026-08-04 08:19:51',
     icon: '🎨',
-    latest: true,
+    latest: false,
     changes: `🎨 Vercel-Inspired 設計系統導入（純樣式專業化，零系統破壞）
 
 📋 變更內容
@@ -915,8 +933,8 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'POST', path: '/api/v1/admin/notify/test-mail', desc: '測試郵件發送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/test-webhook', desc: '測試 Webhook 推送', auth: true },
   { method: 'POST', path: '/api/v1/admin/notify/version-check', desc: '版本更新自動通知（KV 去重）', auth: true },
-  { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表', auth: true },
-  { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片', auth: true },
+  { method: 'GET', path: '/api/v1/admin/slides', desc: '幻燈片列表 (?gid=&pagesize=, 默認20/頁 max100)', auth: true },
+  { method: 'POST', path: '/api/v1/admin/slides', desc: '新增幻燈片 (返回新建ID v1.9.60+)', auth: true },
   { method: 'PUT', path: '/api/v1/admin/slides/:id', desc: '更新幻燈片', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/slides/:id', desc: '刪除幻燈片', auth: true },
   { method: 'GET', path: '/api/v1/admin/slides/groups', desc: '幻燈片分組列表 (v1.7.7+)', auth: true },
