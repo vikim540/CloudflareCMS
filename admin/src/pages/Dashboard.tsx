@@ -61,10 +61,26 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.59',
+    date: '2026-08-04 08:19:51',
+    icon: '🎨',
+    latest: true,
+    changes: `🎨 Vercel-Inspired 設計系統導入（純樣式專業化，零系統破壞）
+
+📋 變更內容
+• tailwind.config.js 新增 Vercel 設計 token（色彩/圓角/字體/陰影五級系統）
+• index.html 載入 Inter + JetBrains Mono 字體（Google Fonts preconnect）
+• _headers CSP 更新允許 Google Fonts（font-src + style-src）
+• index.css 全局樣式：Inter 字體 + canvas-soft 背景 + ink 選取色 + subtle 滾動條
+• Login.tsx：設計 token 應用（shadow-level-3 卡片 + h-10 輸入框 + rounded-sm 按鈕）
+• Layout.tsx：側邊欄設計 token（border-hairline + shadow-level-5 下拉 + warning-soft 徽章）
+• 全程使用 Tailwind 類名引用設計 token，零原始 CSS，零系統破壞`,
+  },
+  {
     version: 'v1.9.58',
     date: '2026-08-03 17:55:00',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: `✨ List API 新增 content=full 參數\n\n📋 變更內容\n• GET /api/v1/contents 和 /api/v1/contents/all 新增 ?content=full 查詢參數\n• 默認行為不變（不返回正文），僅傳入 content=full 時返回完整正文 HTML（含編輯器標籤）\n• 用途：vision 站點無內容詳情頁，需在列表 API 中直接獲取完整正文渲染\n• 零破壞性：其他站點不傳參數則行為完全不變`,
   },
   {

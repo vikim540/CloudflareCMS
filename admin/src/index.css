@@ -2,8 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Vercel-Inspired Global Styles (DESIGN.md) ─── */
+
 * {
-  border-color: hsl(240 5.9% 90%);
+  border-color: #ebebeb; /* hairline */
 }
 
 html, body, #root {
@@ -13,16 +15,44 @@ html, body, #root {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', sans-serif;
+  /* Inter with geometric alternates + CJK fallback */
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', 'WenQuanYi Micro Hei', sans-serif;
+  /* Inter ss01/ss02: geometric alternates per DESIGN.md note */
+  font-feature-settings: 'ss01', 'ss02', 'cv11';
   -webkit-font-smoothing: antialiased;
-  background: hsl(240 4.8% 95.9%);
+  -moz-osx-font-smoothing: grayscale;
+  /* canvas-soft — Vercel's default page background (98% white) */
+  background: #fafafa;
+  color: #171717; /* ink */
+  letter-spacing: -0.011em; /* slightly negative tracking for body */
 }
 
-/* Scrollbar */
+/* Selection — ink-on-light per DESIGN.md */
+::selection {
+  background: #171717;
+  color: #f2f2f2;
+}
+
+/* ─── Scrollbar (subtle, Vercel-style) ─── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: hsl(240 5.9% 80%); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: hsl(240 5.9% 60%); }
+::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #a1a1a1; } /* hairline-strong */
+
+/* ─── Focus ring (Vercel blue, not gray) ─── */
+*:focus-visible {
+  outline: 2px solid #0070f3;
+  outline-offset: 2px;
+}
+
+/* ─── Input placeholder color ─── */
+input::placeholder, textarea::placeholder {
+  color: #888888; /* mute */
+  opacity: 1;
+}
+
+/* ─── Font weight ceiling: 600 (per DESIGN.md — never 700+) ─── */
+b, strong, th, .font-bold { font-weight: 600 !important; }
 
 /* 棋盤格背景（用於透明圖片預覽） */
 .bg-checkered {

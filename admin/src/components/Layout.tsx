@@ -407,8 +407,8 @@ function LayoutInner() {
     <FeatureFlagProvider>
     <div className="flex h-screen overflow-hidden">
       {/* 側邊欄 */}
-      <aside className="w-56 bg-white border-r flex flex-col shrink-0 h-screen">
-        <div className="h-14 flex items-center px-6 border-b relative" ref={siteDropdownRef}>
+      <aside className="w-56 bg-background border-r border-hairline flex flex-col shrink-0 h-screen">
+        <div className="h-14 flex items-center px-6 border-b border-hairline relative" ref={siteDropdownRef}>
           {/* 站點選擇器：顯示當前站點名稱，點擊展開下拉選單 */}
           <button
             onClick={() => setSiteDropdownOpen(!siteDropdownOpen)}
@@ -424,7 +424,7 @@ function LayoutInner() {
           </button>
           {/* 站點下拉選單 */}
           {siteDropdownOpen && sites.length > 1 && (
-            <div className="absolute top-full left-0 mt-px w-56 bg-white border border-t-0 shadow-lg z-50 max-h-80 overflow-y-auto">
+            <div className="absolute top-full left-0 mt-px w-56 bg-background border border-hairline border-t-0 shadow-level-5 z-50 max-h-80 overflow-y-auto">
               {sites.map((site) => (
                 <button
                   key={site.siteId}
@@ -467,11 +467,11 @@ function LayoutInner() {
             <div className="px-6 py-4 space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 animate-pulse">
-                  <div className="w-4 h-4 bg-slate-200 rounded shrink-0"></div>
-                  <div className="flex-1 h-4 bg-slate-200 rounded"></div>
+                  <div className="w-4 h-4 bg-muted rounded shrink-0"></div>
+                  <div className="flex-1 h-4 bg-muted rounded"></div>
                 </div>
               ))}
-              <p className="text-xs text-slate-300 pt-2">載入選單中...</p>
+              <p className="text-xs text-muted-foreground/50 pt-2">載入選單中...</p>
             </div>
           ) : (
             <>
@@ -533,7 +533,7 @@ function LayoutInner() {
             </>
           )}
         </nav>
-        <div className="p-4 border-t">
+        <div className="p-4 border-t border-hairline">
           {/* 當前用戶信息 */}
           {userInfo && (
             <div className="flex items-center gap-2 mb-3 px-2 text-xs text-muted-foreground">
@@ -542,7 +542,7 @@ function LayoutInner() {
                 {userInfo.realname || userInfo.username}
               </span>
               {userInfo.isSuper && (
-                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">
+                <span className="text-[10px] bg-warning-soft text-warning-deep px-1.5 py-0.5 rounded-full">
                   超管
                 </span>
               )}
@@ -565,15 +565,15 @@ function LayoutInner() {
 
       {/* ─── 權限拒絕 toast ─── */}
       {permToast && (
-        <div className="fixed top-4 right-4 z-[100] flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 text-red-700 rounded-lg shadow-lg animate-in fade-in slide-in-from-top-2">
+        <div className="fixed top-4 right-4 z-[100] flex items-center gap-3 px-4 py-3 bg-destructive/5 border border-destructive/20 text-destructive rounded-lg shadow-level-4 animate-in fade-in slide-in-from-top-2">
           <span className="text-lg shrink-0">🚫</span>
           <div>
             <p className="font-semibold text-sm">{permToast}</p>
-            <p className="text-xs text-red-500 mt-0.5">当前角色无此功能的访问权限</p>
+            <p className="text-xs text-destructive/70 mt-0.5">当前角色无此功能的访问权限</p>
           </div>
           <button
             onClick={() => setPermToast(null)}
-            className="ml-2 text-red-400 hover:text-red-600 text-lg leading-none shrink-0"
+            className="ml-2 text-destructive/40 hover:text-destructive text-lg leading-none shrink-0"
             aria-label="關閉"
           >
             ❌
