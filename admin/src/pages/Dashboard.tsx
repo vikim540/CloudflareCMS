@@ -61,10 +61,28 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.65',
+    date: '2026-08-07 17:02:34',
+    icon: '✨',
+    latest: true,
+    changes: `✨ 預覽面板高度填滿 + 編輯器滾動同步預覽
+
+📋 功能改進
+• 預覽 iframe 高度填滿：sticky 容器改為 flex column + h-[calc(100vh-3rem)]，iframe 用 flex-1 填滿剩餘空間，消除底部空隙
+• 編輯器滾動同步預覽：監聽 window scroll，計算 Quill 編輯器在視口中的滾動進度（0~1），按比例滾動 iframe 內容
+• 滾動同步示例：編輯器滾動到某標題時，預覽自動滾動到對應位置
+
+🔧 技術實現
+• 改用 DOM 注入取代 srcDoc 重載：previewFrameDoc 僅含 CSS（srcDoc），內容通過 iframe.contentDocument.querySelector 直接注入 innerHTML
+• DOM 注入優勢：保留 iframe 滾動位置（srcDoc 更新會重置滾動），適配滾動同步需求
+• onLoad 回調：iframe 重載後（CSS 變更）重新注入內容 + requestAnimationFrame 觸發滾動同步
+• 滾動進度算法：rect.top >= 0 → progress=0；rect.bottom <= vh → progress=1；否則 progress = -rect.top / (rect.height - vh)`,
+  },
+  {
     version: 'v1.9.64',
     date: '2026-08-07 16:54:49',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 預覽面板 sticky 生效修復
 
 🔧 修復內容

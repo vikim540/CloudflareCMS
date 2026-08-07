@@ -823,7 +823,7 @@ export default function ContentEdit() {
   // ─── 預覽功能（v1.9.62） ───
   const [showPreview, setShowPreview] = useState(false)
   const [previewCss, setPreviewCss] = useState('')
-  const [previewHtml, setPreviewHtml] = useState('')
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   // refs 保持最新值供 interval 讀取（避免閉包捕獲舊值）
   const htmlModeRef = useRef(htmlMode)
   const htmlSourceRef = useRef(htmlSource)
@@ -1185,26 +1185,62 @@ export default function ContentEdit() {
       .catch(() => { /* 靜默失敗，預覽仍可用預設樣式 */ })
   }, [])
 
-  // ─── 預覽即時更新（interval 讀取 Quill DOM，避免閉包陷阱） ───
+  /** 取得當前編輯器 HTML（Quill 模式 or HTML 源碼模式） */
+  const getEditorHtml = useCallback(() => {
+    return htmlModeRef.current
+      ? htmlSourceRef.current
+      : (quillRef.current?.root.innerHTML || formContentRef.current)
+  }, [])
+
+  /** 將編輯器內容注入預覽 iframe（DOM 直寫，保留滾動位置） */
+  const injectPreviewContent = useCallback(() => {
+    const doc = iframeRef.current?.contentDocument
+    if (!doc) return
+    const container = doc.querySelector('.article-content')
+    if (container) container.innerHTML = getEditorHtml()
+  }, [getEditorHtml])
+
+  /** 預覽 iframe 框架文檔（僅含 CSS，內容由 DOM 注入，避免 srcDoc 重載重置滾動） */
+  const previewFrameDoc = useMemo(() => {
+    const css = previewCss.replace(/\[data-v-[a-fA-F0-9]+\]/g, '')
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>img{max-width:100%;height:auto;}\n${css}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body><div class="article-content text-desc mb-8 lg:mb-15"></div></body></html>`
+  }, [previewCss])
+
+  // ─── 預覽即時更新（DOM 注入，不觸發 iframe 重載，保留滾動位置） ───
   useEffect(() => {
     if (!showPreview) return
-    const update = () => {
-      const html = htmlModeRef.current
-        ? htmlSourceRef.current
-        : (quillRef.current?.root.innerHTML || formContentRef.current)
-      setPreviewHtml(html)
-    }
-    update() // 立即更新一次
-    const timer = setInterval(update, 1500) // 每 1.5 秒同步
+    injectPreviewContent()
+    const timer = setInterval(injectPreviewContent, 1500)
     return () => clearInterval(timer)
-  }, [showPreview])
+  }, [showPreview, injectPreviewContent])
 
-  /** 預覽 iframe 完整 HTML（剝離 Vue scoped 屬性 + 注入站點 CSS + 圖片防溢出） */
-  const previewDoc = useMemo(() => {
-    // 自動剝離 Vue scoped 屬性 [data-v-xxxxx]，使預覽 CSS 在 iframe 中正常匹配選擇器
-    const css = previewCss.replace(/\[data-v-[a-fA-F0-9]+\]/g, '')
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>img{max-width:100%;height:auto;}\n${css}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body><div class="article-content text-desc mb-8 lg:mb-15">${previewHtml}</div></body></html>`
-  }, [previewCss, previewHtml])
+  // ─── 滾動同步：編輯器視口位置 → 預覽 iframe 滾動（v1.9.65） ───
+  useEffect(() => {
+    if (!showPreview) return
+    const handleScroll = () => {
+      const editor = quillRef.current?.root
+      const doc = iframeRef.current?.contentDocument
+      if (!editor || !doc || !doc.body) return
+      const rect = editor.getBoundingClientRect()
+      const vh = window.innerHeight
+      // 計算編輯器在視口中的滾動進度（0=頂部，1=底部）
+      let progress = 0
+      if (rect.top >= 0) {
+        progress = 0
+      } else if (rect.bottom <= vh) {
+        progress = 1
+      } else {
+        const scrollable = rect.height - vh
+        progress = scrollable > 0 ? Math.min(1, Math.max(0, -rect.top / scrollable)) : 0
+      }
+      // 按比例滾動 iframe 內容
+      const maxScroll = doc.body.scrollHeight - doc.body.clientHeight
+      if (maxScroll > 0) doc.body.scrollTop = progress * maxScroll
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll() // 初始同步
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [showPreview])
 
   /** 恢復草稿：將草稿數據寫回表單和編輯器 */
   const restoreDraft = () => {
@@ -2298,21 +2334,27 @@ export default function ContentEdit() {
       </form>
       </div>{/* 左側編輯區結束 */}
 
-      {/* 右側預覽面板（v1.9.62） */}
+      {/* 右側預覽面板（v1.9.62，v1.9.65 滾動同步 + 高度填滿） */}
       {showPreview && (
         <div className="flex-1 min-w-0">
-          <div className="sticky top-6">
-            <div className="flex items-center justify-between mb-3 px-1">
+          <div className="sticky top-6 h-[calc(100vh-3rem)] flex flex-col">
+            <div className="flex items-center justify-between mb-3 px-1 shrink-0">
               <span className="text-sm font-medium text-muted-foreground">
                 👁️ 前台預覽
-                <span className="ml-2 text-xs text-muted-foreground/70">每 1.5 秒自動同步</span>
+                <span className="ml-2 text-xs text-muted-foreground/70">滾動同步 · 每 1.5 秒更新</span>
               </span>
               <span className="text-xs text-muted-foreground">{previewCss ? '🎨 已載入站點 CSS' : '⚠️ 未配置 CSS'}</span>
             </div>
             <iframe
-              srcDoc={previewDoc}
+              ref={iframeRef}
+              srcDoc={previewFrameDoc}
+              onLoad={() => {
+                injectPreviewContent()
+                // iframe 重載後滾動位置被重置，延遲一幀觸發滾動同步
+                requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')))
+              }}
               title="文章預覽"
-              className="w-full h-[calc(100vh-8rem)] border border-gray-200 rounded-xl bg-white shadow-sm"
+              className="flex-1 w-full border border-gray-200 rounded-xl bg-white shadow-sm"
               sandbox="allow-same-origin"
             />
           </div>
