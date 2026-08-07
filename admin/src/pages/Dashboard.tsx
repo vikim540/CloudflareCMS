@@ -61,10 +61,24 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.67',
+    date: '2026-08-07 17:48:43',
+    icon: '♻️',
+    latest: true,
+    changes: `♻️ 預覽架構重構：Shadow DOM 取代 iframe
+
+🔧 重構內容
+• iframe → Shadow DOM：CSS 隔離不變，但同文檔操作消除跨邊界複雜度
+• 移除 iframe 相關邏輯：srcDoc、onLoad、sandbox、contentDocument 跨文檔訪問
+• 滾動同步簡化：預覽容器是同文檔 div，直接操作 scrollTop，無需跨文檔監聽
+• CSS 更新獨立：previewCss 變更僅更新 <style> textContent，不重建影子根
+• 內容注入精準：僅更新 .article-content innerHTML，保留滾動位置`,
+  },
+  {
     version: 'v1.9.66',
     date: '2026-08-07 17:37:27',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 修復編輯器滾動同步預覽不生效
 
 🔧 修復內容

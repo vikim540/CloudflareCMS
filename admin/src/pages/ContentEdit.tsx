@@ -820,11 +820,11 @@ export default function ContentEdit() {
   const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
   const dirtyRef = useRef(false) // 用戶是否修改過表單（未修改時不寫入草稿，避免刷新觸發誤存）
 
-  // ─── 預覽功能（v1.9.62） ───
+  // ─── 預覽功能（v1.9.62，v1.9.67 改用 Shadow DOM 取代 iframe） ───
   const [showPreview, setShowPreview] = useState(false)
   const [previewCss, setPreviewCss] = useState('')
-  const iframeRef = useRef<HTMLIFrameElement>(null)
-  const scrollSyncRef = useRef<(() => void) | null>(null) // 供 iframe onLoad 觸發滾動同步
+  const previewRef = useRef<HTMLDivElement>(null) // Shadow DOM host
+  const shadowRootRef = useRef<ShadowRoot | null>(null) // 影子根引用
   // refs 保持最新值供 interval 讀取（避免閉包捕獲舊值）
   const htmlModeRef = useRef(htmlMode)
   const htmlSourceRef = useRef(htmlSource)
@@ -1193,21 +1193,48 @@ export default function ContentEdit() {
       : (quillRef.current?.root.innerHTML || formContentRef.current)
   }, [])
 
-  /** 將編輯器內容注入預覽 iframe（DOM 直寫，保留滾動位置） */
+  /** 構建預覽 CSS（剝離 Vue scoped 屬性） */
+  const buildPreviewStyle = useCallback(() => {
+    const css = previewCss.replace(/\[data-v-[a-fA-F0-9]+\]/g, '')
+    return `img{max-width:100%;height:auto;}\n${css}\n.preview-body{padding:20px;max-width:900px;margin:0 auto;}`
+  }, [previewCss])
+
+  /** 將編輯器內容注入預覽 Shadow DOM（精準更新 innerHTML，保留滾動位置） */
   const injectPreviewContent = useCallback(() => {
-    const doc = iframeRef.current?.contentDocument
-    if (!doc) return
-    const container = doc.querySelector('.article-content')
+    const root = shadowRootRef.current
+    if (!root) return
+    const container = root.querySelector('.article-content')
     if (container) container.innerHTML = getEditorHtml()
   }, [getEditorHtml])
 
-  /** 預覽 iframe 框架文檔（僅含 CSS，內容由 DOM 注入，避免 srcDoc 重載重置滾動） */
-  const previewFrameDoc = useMemo(() => {
-    const css = previewCss.replace(/\[data-v-[a-fA-F0-9]+\]/g, '')
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>img{max-width:100%;height:auto;}\n${css}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body><div class="article-content text-desc mb-8 lg:mb-15"></div></body></html>`
-  }, [previewCss])
+  // ─── Shadow DOM 初始化（showPreview 開啟時掛載影子根 + 結構） ───
+  useEffect(() => {
+    if (!showPreview || !previewRef.current) return
+    const host = previewRef.current
+    // 掛載影子根（僅一次）
+    if (!host.shadowRoot) {
+      host.attachShadow({ mode: 'open' })
+    }
+    const root = host.shadowRoot!
+    shadowRootRef.current = root
+    // 注入結構：<style>（內容由 CSS effect 填充）+ 內容容器
+    root.innerHTML = `<style></style><div class="preview-body article-content text-desc mb-8 lg:mb-15"></div>`
+    // 立即注入 CSS 和內容
+    const styleEl = root.querySelector('style')
+    if (styleEl) styleEl.textContent = buildPreviewStyle()
+    injectPreviewContent()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPreview])
 
-  // ─── 預覽即時更新（DOM 注入，不觸發 iframe 重載，保留滾動位置） ───
+  // ─── 預覽 CSS 變更時更新 <style> 元素（不重建影子根，保留滾動位置） ───
+  useEffect(() => {
+    const root = shadowRootRef.current
+    if (!root) return
+    const styleEl = root.querySelector('style')
+    if (styleEl) styleEl.textContent = buildPreviewStyle()
+  }, [previewCss, buildPreviewStyle])
+
+  // ─── 預覽即時更新（每 1.5 秒注入編輯器內容，不觸發重載，保留滾動位置） ───
   useEffect(() => {
     if (!showPreview) return
     injectPreviewContent()
@@ -1215,13 +1242,13 @@ export default function ContentEdit() {
     return () => clearInterval(timer)
   }, [showPreview, injectPreviewContent])
 
-  // ─── 滾動同步：編輯器視口位置 → 預覽 iframe 滾動（v1.9.65，v1.9.66 修復滾動容器） ───
+  // ─── 滾動同步：編輯器滾動進度 → 預覽容器滾動（v1.9.67 Shadow DOM 同文檔原生監聽） ───
   useEffect(() => {
     if (!showPreview) return
     const handleScroll = () => {
       const editor = quillRef.current?.root
-      const doc = iframeRef.current?.contentDocument
-      if (!editor || !doc || !doc.body) return
+      const previewEl = previewRef.current
+      if (!editor || !previewEl) return
       const rect = editor.getBoundingClientRect()
       const vh = window.innerHeight
       // 計算編輯器在視口中的滾動進度（0=頂部，1=底部）
@@ -1234,13 +1261,11 @@ export default function ContentEdit() {
         const scrollable = rect.height - vh
         progress = scrollable > 0 ? Math.min(1, Math.max(0, -rect.top / scrollable)) : 0
       }
-      // 按比例滾動 iframe 內容
-      const maxScroll = doc.body.scrollHeight - doc.body.clientHeight
-      if (maxScroll > 0) doc.body.scrollTop = progress * maxScroll
+      // 按比例滾動預覽容器（同文檔，直接操作 DOM）
+      const maxScroll = previewEl.scrollHeight - previewEl.clientHeight
+      if (maxScroll > 0) previewEl.scrollTop = progress * maxScroll
     }
-    scrollSyncRef.current = handleScroll // 供 iframe onLoad 調用
     // 從編輯器向上查找真正的滾動容器（Layout 的 <main> overflow-y-auto）
-    // window 本身不滾動，必須掛到滾動容器上才會觸發事件
     const editorEl = quillRef.current?.root || null
     let scrollContainer: Element | null = editorEl
     while (scrollContainer && scrollContainer !== document.body) {
@@ -2348,7 +2373,7 @@ export default function ContentEdit() {
       </form>
       </div>{/* 左側編輯區結束 */}
 
-      {/* 右側預覽面板（v1.9.62，v1.9.65 滾動同步 + 高度填滿） */}
+      {/* 右側預覽面板（v1.9.62，v1.9.67 Shadow DOM 取代 iframe） */}
       {showPreview && (
         <div className="flex-1 min-w-0">
           <div className="sticky top-6 h-[calc(100vh-3rem)] flex flex-col">
@@ -2359,17 +2384,9 @@ export default function ContentEdit() {
               </span>
               <span className="text-xs text-muted-foreground">{previewCss ? '🎨 已載入站點 CSS' : '⚠️ 未配置 CSS'}</span>
             </div>
-            <iframe
-              ref={iframeRef}
-              srcDoc={previewFrameDoc}
-              onLoad={() => {
-                injectPreviewContent()
-                // iframe 重載後滾動位置被重置，延遲一幀觸發滾動同步
-                requestAnimationFrame(() => scrollSyncRef.current?.())
-              }}
-              title="文章預覽"
-              className="flex-1 w-full border border-gray-200 rounded-xl bg-white shadow-sm"
-              sandbox="allow-same-origin"
+            <div
+              ref={previewRef}
+              className="flex-1 w-full border border-gray-200 rounded-xl bg-white shadow-sm overflow-y-auto"
             />
           </div>
         </div>
