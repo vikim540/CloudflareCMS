@@ -824,6 +824,7 @@ export default function ContentEdit() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewCss, setPreviewCss] = useState('')
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const scrollSyncRef = useRef<(() => void) | null>(null) // 供 iframe onLoad 觸發滾動同步
   // refs 保持最新值供 interval 讀取（避免閉包捕獲舊值）
   const htmlModeRef = useRef(htmlMode)
   const htmlSourceRef = useRef(htmlSource)
@@ -1214,7 +1215,7 @@ export default function ContentEdit() {
     return () => clearInterval(timer)
   }, [showPreview, injectPreviewContent])
 
-  // ─── 滾動同步：編輯器視口位置 → 預覽 iframe 滾動（v1.9.65） ───
+  // ─── 滾動同步：編輯器視口位置 → 預覽 iframe 滾動（v1.9.65，v1.9.66 修復滾動容器） ───
   useEffect(() => {
     if (!showPreview) return
     const handleScroll = () => {
@@ -1237,9 +1238,22 @@ export default function ContentEdit() {
       const maxScroll = doc.body.scrollHeight - doc.body.clientHeight
       if (maxScroll > 0) doc.body.scrollTop = progress * maxScroll
     }
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    scrollSyncRef.current = handleScroll // 供 iframe onLoad 調用
+    // 從編輯器向上查找真正的滾動容器（Layout 的 <main> overflow-y-auto）
+    // window 本身不滾動，必須掛到滾動容器上才會觸發事件
+    const editorEl = quillRef.current?.root || null
+    let scrollContainer: Element | null = editorEl
+    while (scrollContainer && scrollContainer !== document.body) {
+      const style = getComputedStyle(scrollContainer)
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+        break
+      }
+      scrollContainer = scrollContainer.parentElement
+    }
+    const target = scrollContainer || window
+    target.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll() // 初始同步
-    return () => window.removeEventListener('scroll', handleScroll)
+    return () => target.removeEventListener('scroll', handleScroll)
   }, [showPreview])
 
   /** 恢復草稿：將草稿數據寫回表單和編輯器 */
@@ -2351,7 +2365,7 @@ export default function ContentEdit() {
               onLoad={() => {
                 injectPreviewContent()
                 // iframe 重載後滾動位置被重置，延遲一幀觸發滾動同步
-                requestAnimationFrame(() => window.dispatchEvent(new Event('scroll')))
+                requestAnimationFrame(() => scrollSyncRef.current?.())
               }}
               title="文章預覽"
               className="flex-1 w-full border border-gray-200 rounded-xl bg-white shadow-sm"

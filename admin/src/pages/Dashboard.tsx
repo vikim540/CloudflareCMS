@@ -61,10 +61,22 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.66',
+    date: '2026-08-07 17:37:27',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 修復編輯器滾動同步預覽不生效
+
+🔧 修復內容
+• 根因：滾動監聽掛在 window 上，但實際滾動容器是 Layout 的 <main overflow-y-auto>，window 本身不滾動導致事件永不觸發
+• 修復：從 Quill 編輯器 root 向上遍歷 DOM 樹，自動查找第一個 overflow-y: auto/scroll 且可滾動的祖先元素作為監聽目標
+• iframe onLoad 觸發：改用 scrollSyncRef 存儲 handleScroll，避免 window.dispatchEvent 失效`,
+  },
+  {
     version: 'v1.9.65',
     date: '2026-08-07 17:02:34',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: `✨ 預覽面板高度填滿 + 編輯器滾動同步預覽
 
 📋 功能改進
