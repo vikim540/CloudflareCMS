@@ -61,10 +61,22 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.64',
+    date: '2026-08-07 16:54:49',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 預覽面板 sticky 生效修復
+
+🔧 修復內容
+• 移除 flex 容器 items-start，改用默認 stretch 讓右側面板拉伸至與左側等高
+• 左側編輯區加 self-start，避免不必要的拉伸
+• 右側預覽面板 sticky top-6 現在正常生效：左側滾動時右側預覽固定在屏幕上方`,
+  },
+  {
     version: 'v1.9.63',
     date: '2026-08-07 16:44:25',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 預覽 CSS 兼容 Vue scoped 屬性 + article-content 包裹 + 圖片防溢出
 
 🔧 修復內容

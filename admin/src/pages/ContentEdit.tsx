@@ -1672,8 +1672,8 @@ export default function ContentEdit() {
 
   return (
     <div className={showPreview ? 'p-6' : 'p-6 max-w-5xl'}>
-     <div className={showPreview ? 'flex gap-4 items-start' : ''}>
-      <div className={showPreview ? 'flex-1 min-w-0' : ''}>
+     <div className={showPreview ? 'flex gap-4' : ''}>
+      <div className={showPreview ? 'flex-1 min-w-0 self-start' : ''}>
       {/* 頁首 */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
