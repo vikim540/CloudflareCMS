@@ -715,10 +715,10 @@ export async function handleListTags(db: D1Database): Promise<Response> {
 // 模塊 7: 站點信息 (ay_site) - 單記錄
 // ============================================================================
 
-/** 站點字段白名單（香港本地化：移除 icp 內地備案、theme 模板） */
+/** 站點字段白名單（香港本地化：移除 icp 內地備案、theme 模板；v1.9.62 新增 preview_css） */
 const SITE_FIELDS = [
   'name', 'title', 'subtitle', 'domain', 'keywords', 'description',
-  'logo', 'copyright', 'statistical', 'lang',
+  'logo', 'copyright', 'statistical', 'lang', 'preview_css',
 ];
 
 /** 獲取或創建站點信息 (FirstOrCreate) */
@@ -726,10 +726,10 @@ async function getOrCreateSite(db: D1Database, acode: string = 'endoscopy'): Pro
   const existing = await db.prepare('SELECT * FROM ay_site LIMIT 1').first();
   if (existing) return existing;
 
-  // 不存在則創建空記錄
+  // 不存在則創建空記錄（v1.9.62 新增 preview_css 字段）
   await db.prepare(
-    'INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, copyright, statistical, lang) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).bind(acode, '', '', '', '', '', '', '', '', '', 'zh-hk').run();
+    'INSERT INTO ay_site (acode, name, title, subtitle, domain, keywords, description, logo, copyright, statistical, lang, preview_css) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).bind(acode, '', '', '', '', '', '', '', '', '', 'zh-hk', '').run();
   return (await db.prepare('SELECT * FROM ay_site LIMIT 1').first())!;
 }
 

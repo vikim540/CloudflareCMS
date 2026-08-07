@@ -61,10 +61,41 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.62',
+    date: '2026-08-07 16:36:14',
+    icon: '👁️',
+    latest: true,
+    changes: `👁️ 文章編輯器預覽功能（站點 CSS 注入 + 分屏預覽）
+
+📋 功能說明
+• 文章編輯頁新增「👁️ 預覽」按鈕，點擊切換分屏模式（左編輯右預覽）
+• 預覽面板使用 iframe 渲染，注入站點配置中的前台 CSS，消除編輯器與前台渲染的樣式割裂
+• 每 1.5 秒自動同步編輯器內容到預覽 iframe，支持 Quill 編輯器模式與 HTML 源碼模式
+• 站點信息頁新增「🎨 預覽 CSS」文本域，管理員可填入前台網站 CSS
+
+🔧 後端變更
+• ay_site 表新增 preview_css 字段（遷移 0005_preview_css.sql）
+• SITE_FIELDS 白名單新增 preview_css，站點 API 讀寫支持
+• getOrCreateSite 初始化包含 preview_css 空值
+
+🎨 前端變更
+• ContentEdit.tsx：佈局從 p-6 max-w-5xl 改為條件分屏（showPreview ? p-6 : p-6 max-w-5xl）
+• 頁首新增預覽開關按鈕（justify-between 佈局）
+• 預覽面板：sticky 定位 + iframe srcDoc + sandbox 安全限制
+• SiteInfo.tsx：新增 preview_css 文本域（10行，font-mono，含示例 placeholder）
+• 使用 refs 避免 interval 閉包陷阱（htmlModeRef / htmlSourceRef / formContentRef）
+
+📊 設計決策
+• 選擇 iframe srcDoc 而非 postMessage：實現簡潔，React 自動重渲染 iframe
+• 選擇分屏而非彈窗：用戶可同時編輯和預覽，實時反饋
+• sandbox="allow-same-origin"：允許 CSS 渲染但阻止腳本執行
+• 預覽 CSS 存儲在站點級別（ay_site），各站點獨立配置`,
+  },
+  {
     version: 'v1.9.61',
     date: '2026-08-04 09:00:04',
     icon: '🗑️',
-    latest: true,
+    latest: false,
     changes: `🗑️ 幻燈片刪除回收站功能
 
 📋 功能說明

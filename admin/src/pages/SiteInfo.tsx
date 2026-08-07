@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { LoadingState } from '../components/StateDisplay'
 import { cn } from '../lib/utils'
 
-/** 站點信息數據結構（香港本地化：移除 icp 內地備案、theme 模板） */
+/** 站點信息數據結構（香港本地化：移除 icp 內地備案、theme 模板；v1.9.62 新增 preview_css） */
 interface SiteInfo {
   name: string
   title: string
@@ -14,6 +14,7 @@ interface SiteInfo {
   logo: string
   copyright: string
   statistical: string
+  preview_css: string
 }
 
 /** 空表單初始值 */
@@ -27,6 +28,7 @@ const EMPTY_FORM: SiteInfo = {
   logo: '',
   copyright: '',
   statistical: '',
+  preview_css: '',
 }
 
 export default function SiteInfoPage() {
@@ -234,6 +236,25 @@ export default function SiteInfoPage() {
             rows={4}
             className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono text-xs"
             placeholder="第三方統計代碼（如 Google Analytics）"
+          />
+        </div>
+
+        {/* 預覽 CSS（v1.9.62 文章編輯器預覽功能） */}
+        <div className="border-t pt-5">
+          <label className="block text-sm font-medium mb-1.5">
+            🎨 預覽 CSS
+            <span className="ml-2 text-xs text-muted-foreground font-normal">文章編輯器預覽時注入的前台樣式</span>
+          </label>
+          <p className="text-xs text-muted-foreground mb-2">
+            填入前台網站的 CSS，文章編輯時點擊「👁️ 預覽」可即時查看文章在前台的實際渲染效果。留空則預覽僅使用瀏覽器預設樣式。
+          </p>
+          <textarea
+            value={form.preview_css}
+            onChange={(e) => updateField('preview_css', e.target.value)}
+            rows={10}
+            className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono text-xs bg-gray-50"
+            placeholder={"/* 例：前台文章頁的排版樣式 */\nbody { font-family: 'Noto Sans TC', sans-serif; line-height: 1.8; color: #333; }\nimg { max-width: 100%; height: auto; }\nh2 { color: #1a56db; margin-top: 1.5em; }"}
+            spellCheck={false}
           />
         </div>
 

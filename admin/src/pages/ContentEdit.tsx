@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -820,6 +820,18 @@ export default function ContentEdit() {
   const saveDraftRef = useRef<() => void>(() => {}) // 最新保存函數引用（給定時器/卸載用）
   const dirtyRef = useRef(false) // 用戶是否修改過表單（未修改時不寫入草稿，避免刷新觸發誤存）
 
+  // ─── 預覽功能（v1.9.62） ───
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewCss, setPreviewCss] = useState('')
+  const [previewHtml, setPreviewHtml] = useState('')
+  // refs 保持最新值供 interval 讀取（避免閉包捕獲舊值）
+  const htmlModeRef = useRef(htmlMode)
+  const htmlSourceRef = useRef(htmlSource)
+  const formContentRef = useRef(form.content)
+  htmlModeRef.current = htmlMode
+  htmlSourceRef.current = htmlSource
+  formContentRef.current = form.content
+
   /** 載入欄目樹 (支持按 mcode 過濾，使用 /all 端點無需 M202 權限) */
   const fetchCategories = useCallback(async () => {
     try {
@@ -1165,6 +1177,33 @@ export default function ContentEdit() {
       /* 草稿解析失敗，忽略 */
     }
   }, [form.scode, isEdit, loading, id])
+
+  // ─── 預覽 CSS 載入（v1.9.62，掛載時拉取一次站點配置） ───
+  useEffect(() => {
+    api.get<{ preview_css?: string }>('/admin/site')
+      .then((res) => setPreviewCss(res.data?.preview_css || ''))
+      .catch(() => { /* 靜默失敗，預覽仍可用預設樣式 */ })
+  }, [])
+
+  // ─── 預覽即時更新（interval 讀取 Quill DOM，避免閉包陷阱） ───
+  useEffect(() => {
+    if (!showPreview) return
+    const update = () => {
+      const html = htmlModeRef.current
+        ? htmlSourceRef.current
+        : (quillRef.current?.root.innerHTML || formContentRef.current)
+      setPreviewHtml(html)
+    }
+    update() // 立即更新一次
+    const timer = setInterval(update, 1500) // 每 1.5 秒同步
+    return () => clearInterval(timer)
+  }, [showPreview])
+
+  /** 預覽 iframe 完整 HTML（注入站點 CSS + 文章標題） */
+  const previewDoc = useMemo(
+    () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${previewCss}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body>${previewHtml}</body></html>`,
+    [previewCss, previewHtml],
+  )
 
   /** 恢復草稿：將草稿數據寫回表單和編輯器 */
   const restoreDraft = () => {
@@ -1631,9 +1670,12 @@ export default function ContentEdit() {
   }
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className={showPreview ? 'p-6' : 'p-6 max-w-5xl'}>
+     <div className={showPreview ? 'flex gap-4 items-start' : ''}>
+      <div className={showPreview ? 'flex-1 min-w-0' : ''}>
       {/* 頁首 */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
         <button
           onClick={() => navigate('/contents')}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -1642,6 +1684,22 @@ export default function ContentEdit() {
           <span>返回</span>
         </button>
         <h1 className="text-2xl font-bold">{isEdit ? '編輯內容' : '新建內容'}</h1>
+        </div>
+        {/* 預覽開關（v1.9.62） */}
+        <button
+          type="button"
+          onClick={() => setShowPreview(!showPreview)}
+          className={cn(
+            'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all duration-200',
+            showPreview
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-white border-input hover:bg-accent hover:border-gray-300',
+          )}
+          title={showPreview ? '切換回純編輯模式' : '開啟預覽面板，即時查看前台渲染效果'}
+        >
+          <span>{showPreview ? '✏️' : '👁️'}</span>
+          <span>{showPreview ? '編輯模式' : '預覽'}</span>
+        </button>
       </div>
 
       {/* 錯誤提示 */}
@@ -2237,6 +2295,29 @@ export default function ContentEdit() {
           </button>
         </div>
       </form>
+      </div>{/* 左側編輯區結束 */}
+
+      {/* 右側預覽面板（v1.9.62） */}
+      {showPreview && (
+        <div className="flex-1 min-w-0">
+          <div className="sticky top-6">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-sm font-medium text-muted-foreground">
+                👁️ 前台預覽
+                <span className="ml-2 text-xs text-muted-foreground/70">每 1.5 秒自動同步</span>
+              </span>
+              <span className="text-xs text-muted-foreground">{previewCss ? '🎨 已載入站點 CSS' : '⚠️ 未配置 CSS'}</span>
+            </div>
+            <iframe
+              srcDoc={previewDoc}
+              title="文章預覽"
+              className="w-full h-[calc(100vh-8rem)] border border-gray-200 rounded-xl bg-white shadow-sm"
+              sandbox="allow-same-origin"
+            />
+          </div>
+        </div>
+      )}
+     </div>{/* flex 佈局結束 */}
 
       {/* 媒體庫選擇器 - 縮略圖 */}
       <MediaPickerModal
