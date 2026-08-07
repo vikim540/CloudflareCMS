@@ -1199,11 +1199,12 @@ export default function ContentEdit() {
     return () => clearInterval(timer)
   }, [showPreview])
 
-  /** 預覽 iframe 完整 HTML（注入站點 CSS + 文章標題） */
-  const previewDoc = useMemo(
-    () => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${previewCss}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body>${previewHtml}</body></html>`,
-    [previewCss, previewHtml],
-  )
+  /** 預覽 iframe 完整 HTML（剝離 Vue scoped 屬性 + 注入站點 CSS + 圖片防溢出） */
+  const previewDoc = useMemo(() => {
+    // 自動剝離 Vue scoped 屬性 [data-v-xxxxx]，使預覽 CSS 在 iframe 中正常匹配選擇器
+    const css = previewCss.replace(/\[data-v-[a-fA-F0-9]+\]/g, '')
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>img{max-width:100%;height:auto;}\n${css}\nbody{padding:20px;max-width:900px;margin:0 auto;}</style></head><body><div class="article-content text-desc mb-8 lg:mb-15">${previewHtml}</div></body></html>`
+  }, [previewCss, previewHtml])
 
   /** 恢復草稿：將草稿數據寫回表單和編輯器 */
   const restoreDraft = () => {

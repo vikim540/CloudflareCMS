@@ -61,10 +61,23 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.63',
+    date: '2026-08-07 16:44:25',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 預覽 CSS 兼容 Vue scoped 屬性 + article-content 包裹 + 圖片防溢出
+
+🔧 修復內容
+• 自動剝離 Vue scoped 屬性 [data-v-xxxxx]：正則 replace 使 CSS 選擇器在預覽 iframe 中正常匹配
+• 預覽內容包裹於 article-content 容器：模擬前台真實 DOM 結構
+• 圖片默認 max-width:100% + height:auto：防止圖片溢出預覽容器
+• SiteInfo 預覽 CSS 提示文案更新：說明 scoped 屬性自動處理機制`,
+  },
+  {
     version: 'v1.9.62',
     date: '2026-08-07 16:36:14',
     icon: '👁️',
-    latest: true,
+    latest: false,
     changes: `👁️ 文章編輯器預覽功能（站點 CSS 注入 + 分屏預覽）
 
 📋 功能說明

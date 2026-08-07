@@ -246,7 +246,7 @@ export default function SiteInfoPage() {
             <span className="ml-2 text-xs text-muted-foreground font-normal">文章編輯器預覽時注入的前台樣式</span>
           </label>
           <p className="text-xs text-muted-foreground mb-2">
-            填入前台網站的 CSS，文章編輯時點擊「👁️ 預覽」可即時查看文章在前台的實際渲染效果。留空則預覽僅使用瀏覽器預設樣式。
+            填入前台網站的 CSS，文章編輯時點擊「👁️ 預覽」可即時查看文章在前台的實際渲染效果。Vue scoped 屬性（如 [data-v-xxxxx]）會自動剝離，圖片默認 max-width:100% 防溢出，內容自動包裹於 article-content 容器中。
           </p>
           <textarea
             value={form.preview_css}
