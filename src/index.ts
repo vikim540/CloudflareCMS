@@ -1,4 +1,4 @@
-﻿/**  
+/**  
  * Cloudflare CMS Worker - 主入口
  * 基於 PbootCMS 3.2.12 數據庫結構,純 API 後端
  *
@@ -17,7 +17,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship, SecretsStoreSecret } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
-import { isTokenBlacklisted, hasPermission, hasMenuPermission, reloadUserPermissions } from './services/auth';
+import { isTokenBlacklisted, hasMenuPermission, reloadUserPermissions } from './services/auth';
 import { ok, okData, err, forbidden } from './utils/response';
 import { siteDB, primaryDB, currentSiteId, currentSiteName, resolveBinding, parseSiteRegistry, listRegisteredSites, D1RestClient, createD1Database } from './utils/sitedb';
 import * as authService from './services/auth';
@@ -216,14 +216,18 @@ async function requireAuth(c: Context<AppEnv>): Promise<JwtClaims | null> {
 // ===== 菜單權限攔截中間件 =====
 
 /** 模塊級緩存: 菜單 URL → mcode 映射 (避免每次請求查詢數據庫) */
+/** TTL 5 分鐘，防止多 isolate 場景下菜單變更後緩存長期不一致 */
+const URL_MCODE_CACHE_TTL = 5 * 60 * 1000;
 let urlMcodeCache: Map<string, string> | null = null;
+let urlMcodeCacheExpires = 0;
 
 /**
- * 查詢數據庫中所有菜單的 URL → mcode 映射 (模塊級緩存)
- * 菜單變更後需調用 clearUrlMcodeCache() 清除緩存
+ * 查詢數據庫中所有菜單的 URL → mcode 映射 (模塊級緩存，TTL 5 分鐘)
+ * 菜單變更後調用 clearUrlMcodeCache() 立即清除，否則最長 5 分鐘自動過期
  */
 async function getUrlMcodeMap(db: D1Database): Promise<Map<string, string>> {
-  if (urlMcodeCache) return urlMcodeCache;
+  const now = Date.now();
+  if (urlMcodeCache && now < urlMcodeCacheExpires) return urlMcodeCache;
   const result = await db
     .prepare("SELECT mcode, url FROM ay_menu WHERE url IS NOT NULL AND url != ''")
     .all<{ mcode: string; url: string }>();
@@ -232,12 +236,14 @@ async function getUrlMcodeMap(db: D1Database): Promise<Map<string, string>> {
     if (row.url) map.set(row.url, row.mcode);
   }
   urlMcodeCache = map;
+  urlMcodeCacheExpires = now + URL_MCODE_CACHE_TTL;
   return map;
 }
 
 /** 清除 URL → mcode 緩存 (菜單 CRUD 後調用) */
 function clearUrlMcodeCache(): void {
   urlMcodeCache = null;
+  urlMcodeCacheExpires = 0;
 }
 
 /**
@@ -641,7 +647,7 @@ app.use('/api/v1/admin/links/*', requireMenuPermission('/admin/seo/link'));     
 app.use('/api/v1/admin/slides/*', requireMenuPermission('/admin/seo/slide'));           // M402 幻燈片
 app.use('/api/v1/admin/booking/*', requireMenuPermission('/admin/booking'));             // M302 講座預約
 app.use('/api/v1/admin/internallinks/*', requireMenuPermission('/admin/seo/tags'));   // M403 文章內鏈
-app.use('/api/v1/admin/labels/*', requireMenuPermission('/admin/seo/label'));           // M404 自定義標籤
+// M404 自定義標籤已移除（headless CMS 無模板引擎，功能與 config API 重疊）
 app.use('/api/v1/admin/site/*', requireMenuPermission('/admin/system/site'));           // M501 站點信息
 app.use('/api/v1/admin/company/*', requireMenuPermission('/admin/system/company'));     // M502 公司信息
 

@@ -249,22 +249,9 @@ export async function isTokenBlacklisted(
 }
 
 /**
- * 權限校驗輔助函數
- * 超級管理員 (isSuper=true) 跳過所有檢查
- * 普通用戶檢查 permissions 數組中是否包含 `${resource}:${action}` 鍵
- */
-export function hasPermission(claims: JwtClaims, resource: string, action: string): boolean {
-  if (claims.isSuper) return true;
-  const key = `${resource}:${action}`;
-  return claims.permissions.includes(key);
-}
-
-/**
  * 檢查用戶是否有指定菜單的訪問權限
  * 超級管理員跳過所有檢查
- * 普通用戶檢查 permissions 數組中是否包含該 mcode
- *
- * 與 hasPermission 不同, 此函數基於菜單 mcode (如 "M504") 校驗,
+ * 普通用戶檢查 permissions 數組中是否包含該 mcode（如 "M504"）
  * 適用於基於菜單的 API 路由權限攔截
  */
 export function hasMenuPermission(claims: JwtClaims, mcode: string): boolean {
