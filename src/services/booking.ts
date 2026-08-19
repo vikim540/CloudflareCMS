@@ -19,7 +19,7 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { ok, okData, okList, err } from '../utils/response';
-import { nowStr } from '../utils/datetime';
+import { nowStr, todayStr } from '../utils/datetime';
 import { fromQuery, offset } from '../utils/pagination';
 import { createMeta } from '../utils/response';
 
@@ -247,7 +247,7 @@ export async function handleListBookingCalendars(
 // 模塊 2: 預約排期 (ay_booking_schedule)
 // ============================================================================
 
-/** 後台預約排期列表（分頁 + 篩選） */
+/** 後台預約排期列表（分頁 + 篩選 + 自動過期 + 倒序） */
 export async function handleAdminListBookingSchedules(
   db: D1Database,
   params: URLSearchParams,
@@ -259,6 +259,13 @@ export async function handleAdminListBookingSchedules(
   const dateFrom = params.get('date_from') || '';
   const dateTo = params.get('date_to') || '';
   const status = params.get('status') || '';
+
+  // 自動過期：昨日及更早的排期，status='1' → 自動改為 '0'
+  const today = todayStr();
+  const now = nowStr();
+  await db.prepare(
+    "UPDATE ay_booking_schedule SET status = '0', update_time = ? WHERE booking_date < ? AND status = '1'",
+  ).bind(now, today).run();
 
   const conditions: string[] = [];
   const binds: (string | number)[] = [];
@@ -291,7 +298,8 @@ export async function handleAdminListBookingSchedules(
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const off = offset(pagination);
 
-  const listSql = `SELECT * FROM ay_booking_schedule ${whereClause} ORDER BY booking_date ASC, sorting ASC, id ASC LIMIT ? OFFSET ?`;
+  // 倒序：未來日期優先展示，同日內按 sorting ASC
+  const listSql = `SELECT * FROM ay_booking_schedule ${whereClause} ORDER BY booking_date DESC, sorting ASC, id ASC LIMIT ? OFFSET ?`;
   const listResult = await db.prepare(listSql).bind(...binds, pagination.pagesize, off).all();
 
   const countSql = `SELECT COUNT(*) as total FROM ay_booking_schedule ${whereClause}`;

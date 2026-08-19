@@ -61,10 +61,23 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.68',
+    date: '2026-08-19 17:01:09',
+    icon: '📅',
+    latest: true,
+    changes: `📅 講座預約排期管理優化
+
+🔧 優化內容
+• 列表倒序：booking_date DESC，未來日期優先展示，同日內按 sorting ASC
+• 自動過期：昨日及更早的排期 status='1' → 自動改為 '0'（每次列表載入時觸發）
+• 過期 UI：日期列劃線+⛔ 標記，狀態列顯示「⛔ 已過期」取代開關按鈕
+• 篩選簡化：日期範圍（date_from ~ date_to）改為月份選擇器（<input type="month">），自動換算首末日期`,
+  },
+  {
     version: 'v1.9.67',
     date: '2026-08-07 17:48:43',
     icon: '♻️',
-    latest: true,
+    latest: false,
     changes: `♻️ 預覽架構重構：Shadow DOM 取代 iframe
 
 🔧 重構內容

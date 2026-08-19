@@ -393,8 +393,8 @@ export default function BookingSchedule() {
   // ─── 篩選狀態 ──────────────────────────────────────────
   const [filterServiceType, setFilterServiceType] = useState<string>('all')
   const [filterLocation, setFilterLocation] = useState<string>('all')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterMonth, setFilterMonth] = useState('')
+  const todayStr = getTodayStr()
 
   // ─── 分頁狀態 ──────────────────────────────────────────
   const [page, setPage] = useState(1)
@@ -510,8 +510,12 @@ export default function BookingSchedule() {
         if (filterLocation !== 'all') {
           params.set('location', filterLocation)
         }
-        if (filterDateFrom) params.set('date_from', filterDateFrom)
-        if (filterDateTo) params.set('date_to', filterDateTo)
+        if (filterMonth) {
+          const [year, month] = filterMonth.split('-').map(Number)
+          const lastDay = new Date(year, month, 0).getDate()
+          params.set('date_from', `${filterMonth}-01`)
+          params.set('date_to', `${filterMonth}-${String(lastDay).padStart(2, '0')}`)
+        }
         const res = await api.get<BookingSchedule[]>(
           `/admin/booking/schedules?${params.toString()}`,
         )
@@ -530,14 +534,13 @@ export default function BookingSchedule() {
     return () => {
       cancelled = true
     }
-  }, [page, filterServiceType, filterLocation, filterDateFrom, filterDateTo, refreshCounter])
+  }, [page, filterServiceType, filterLocation, filterMonth, refreshCounter])
 
   /** 重置篩選 */
   const handleResetFilter = () => {
     setFilterServiceType('all')
     setFilterLocation('all')
-    setFilterDateFrom('')
-    setFilterDateTo('')
+    setFilterMonth('')
     setPage(1)
     setSelectedIds(new Set())
   }
@@ -990,24 +993,14 @@ export default function BookingSchedule() {
           </select>
         </div>
 
-        {/* 日期範圍篩選 */}
+        {/* 月份篩選 */}
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground whitespace-nowrap">日期範圍</label>
+          <label className="text-sm text-muted-foreground whitespace-nowrap">月份</label>
           <input
-            type="date"
-            value={filterDateFrom}
+            type="month"
+            value={filterMonth}
             onChange={(e) => {
-              setFilterDateFrom(e.target.value)
-              setPage(1)
-            }}
-            className="px-3 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
-          />
-          <span className="text-muted-foreground">~</span>
-          <input
-            type="date"
-            value={filterDateTo}
-            onChange={(e) => {
-              setFilterDateTo(e.target.value)
+              setFilterMonth(e.target.value)
               setPage(1)
             }}
             className="px-3 py-1.5 border rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-sm"
@@ -1239,7 +1232,13 @@ export default function BookingSchedule() {
                         />
                       </td>
                       {/* 日期 */}
-                      <td className="px-4 py-3 font-medium">{item.booking_date || '-'}</td>
+                      <td className="px-4 py-3 font-medium">
+                        {item.booking_date < todayStr ? (
+                          <span className="text-muted-foreground/50 line-through">{item.booking_date || '-'} ⛔</span>
+                        ) : (
+                          item.booking_date || '-'
+                        )}
+                      </td>
                       {/* 時段 */}
                       <td className="px-4 py-3">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-600">
@@ -1268,24 +1267,32 @@ export default function BookingSchedule() {
                       </td>
                       {/* 狀態 */}
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => handleToggleStatus(item)}
-                          className={cn(
-                            'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
-                            item.status === '1' ? 'bg-primary' : 'bg-muted',
-                          )}
-                          title={item.status === '1' ? '點擊停用' : '點擊啟用'}
-                        >
-                          <span
-                            className={cn(
-                              'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
-                              item.status === '1' ? 'translate-x-5' : 'translate-x-1',
-                            )}
-                          />
-                        </button>
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          {STATUS_LABELS[item.status] ?? item.status}
-                        </span>
+                        {item.booking_date < todayStr ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground/50">
+                            ⛔ 已過期
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleToggleStatus(item)}
+                              className={cn(
+                                'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                                item.status === '1' ? 'bg-primary' : 'bg-muted',
+                              )}
+                              title={item.status === '1' ? '點擊停用' : '點擊啟用'}
+                            >
+                              <span
+                                className={cn(
+                                  'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
+                                  item.status === '1' ? 'translate-x-5' : 'translate-x-1',
+                                )}
+                              />
+                            </button>
+                            <span className="ml-2 text-xs text-muted-foreground">
+                              {STATUS_LABELS[item.status] ?? item.status}
+                            </span>
+                          </>
+                        )}
                       </td>
                       {/* 操作 */}
                       <td className="px-4 py-3">
