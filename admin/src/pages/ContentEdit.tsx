@@ -1797,20 +1797,38 @@ export default function ContentEdit() {
         <h1 className="text-2xl font-bold">{isEdit ? '編輯內容' : '新建內容'}</h1>
         </div>
         {/* 預覽開關（v1.9.62） */}
-        <button
-          type="button"
-          onClick={() => setShowPreview(!showPreview)}
-          className={cn(
-            'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all duration-200',
-            showPreview
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'bg-white border-input hover:bg-accent hover:border-gray-300',
+        <div className="flex items-center gap-2">
+          {isEdit && id && (
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/api/v1/contents/${id}?status=0`
+                navigator.clipboard.writeText(url).then(() => {
+                  alert('已複製預覽連結到剪貼簿：\n' + url)
+                })
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border bg-white border-input hover:bg-accent hover:border-gray-300 transition-all duration-200"
+              title="複製草稿預覽連結（含 status=0 參數）"
+            >
+              <span>🔗</span>
+              <span>預覽連結</span>
+            </button>
           )}
-          title={showPreview ? '切換回純編輯模式' : '開啟預覽面板，即時查看前台渲染效果'}
-        >
-          <span>{showPreview ? '✏️' : '👁️'}</span>
-          <span>{showPreview ? '編輯模式' : '預覽'}</span>
-        </button>
+          <button
+            type="button"
+            onClick={() => setShowPreview(!showPreview)}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-all duration-200',
+              showPreview
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-white border-input hover:bg-accent hover:border-gray-300',
+            )}
+            title={showPreview ? '切換回純編輯模式' : '開啟預覽面板，即時查看前台渲染效果'}
+          >
+            <span>{showPreview ? '✏️' : '👁️'}</span>
+            <span>{showPreview ? '編輯模式' : '預覽'}</span>
+          </button>
+        </div>
       </div>
 
       {/* 錯誤提示 */}

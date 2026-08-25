@@ -61,10 +61,28 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.76',
+    date: '2026-08-25 15:44:49',
+    icon: '🔗',
+    latest: true,
+    changes: `🔗 草稿預覽連結按鈕
+
+📝 功能
+• 編輯編輯頁面新增「預覽連結」按鈕（🔗 圖標）
+• 點擊自動生成帶 ?status=0 參數的 API URL 並複製到剪貼簿
+• 用於直接訪問草稿內容（公開 API 默認只返回已發布內容）
+
+🔧 技術細節
+• URL 格式：/api/v1/contents/{id}?status=0
+• status=0 參數使 API 查詢 status='0' 的草稿內容
+• 草稿模式跳過日期過濾，不計入訪問量
+• alert 提示複製成功`,
+  },
+  {
     version: 'v1.9.75',
     date: '2026-08-25 11:08:32',
     icon: '📝',
-    latest: true,
+    latest: false,
     changes: `📝 草稿狀態優化：API 不區分 status=2，前端 UI 區分待發佈/不發佈
 
 🔧 設計原則
