@@ -169,8 +169,23 @@ export function matchFaqElement(el: HTMLElement): unknown[] | null {
       return [{ insert: { 'faq-group-block': { items } } }, { insert: '\n' }]
     }
   }
-
   return null
+}
+
+/** 從編輯器 DOM 中提取 FAQ 問答配對（用於點擊編輯） */
+export function extractFaqPairsFromDom(faqDiv: HTMLElement): { question: string; answer: string }[] {
+  const pairs: { question: string; answer: string }[] = []
+  faqDiv.querySelectorAll('details.faq-item').forEach((details) => {
+    const titleEl = details.querySelector('h3.faq-title')
+    const summary = details.querySelector('summary')
+    const answerText = details.querySelector('[itemprop="text"]')
+    const answerDiv = answerText || details.querySelector('.faq-answer') || details.querySelector('div')
+    pairs.push({
+      question: titleEl ? titleEl.textContent || '' : (summary ? summary.textContent || '' : ''),
+      answer: answerDiv ? answerDiv.innerHTML : '',
+    })
+  })
+  return pairs
 }
 
 /** FAQ 群組 + 項目的編輯器內 CSS 樣式 */
@@ -182,7 +197,29 @@ export const faqPluginCSS = `
     padding: 8px 12px;
     margin: 12px 0;
     background: #f9fafb;
+    position: relative;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
   }
+  .ql-editor .faq:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+  .ql-editor .faq::after {
+    content: "✏️ 點擊編輯";
+    position: absolute;
+    top: -10px;
+    right: 8px;
+    font-size: 11px;
+    color: #3b82f6;
+    background: #fff;
+    padding: 1px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+  }
+  .ql-editor .faq:hover::after { opacity: 1; }
   .ql-editor details.faq-item {
     border: 1px solid #e5e7eb;
     border-radius: 8px;

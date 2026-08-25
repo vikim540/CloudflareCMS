@@ -61,10 +61,26 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.71',
+    date: '2026-08-25 10:25:36',
+    icon: '✏️',
+    latest: true,
+    changes: `✏️ FAQ 問答編輯功能優化
+
+🔧 新增內容
+• FAQ 塊可點擊編輯：在編輯器中點擊已有 FAQ 塊，自動打開 Modal 預填數據
+  - hover 時顯示藍色邊框 + "✏️ 點擊編輯" 提示
+  - 點擊後提取 FAQ 問答數據，Modal 標題切換為「編輯 FAQ 問答」
+  - 確認後刪除原 FAQ 塊，在原位置插入更新後的內容
+• FaqPickerModal 新增 initialPairs + mode props 支援新增/編輯雙模式
+• faqPlugin 匯出 extractFaqPairsFromDom() 從 DOM 提取 FAQ 數據
+• QuillInstance 類型補充 getIndex + deleteText 方法聲明`,
+  },
+  {
     version: 'v1.9.70',
     date: '2026-08-25 09:54:35',
     icon: '🐛',
-    latest: true,
+    latest: false,
     changes: `🐛 草稿自動發布 bug 修復 + 公開 API status 參數
 
 🔧 Bug 修復

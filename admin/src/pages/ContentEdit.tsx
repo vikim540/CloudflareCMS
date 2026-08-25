@@ -12,7 +12,7 @@ import { TagInput } from '../components/TagInput'
 import { LoadingState } from '../components/StateDisplay'
 import { useImageUpload } from '../hooks/useImageUpload'
 // Quill 編輯器插件模組（admin/src/lib/quill/）
-import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
+import { registerFaqPlugin, matchFaqElement, faqPluginCSS, extractFaqPairsFromDom } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
 import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
 import { cleanupQuillHtml, toolbarButtonCSS } from '../lib/quill/htmlCleanup'
@@ -39,6 +39,8 @@ interface QuillInstance {
   setContents: (delta: unknown) => void
   getSelection: (focus?: boolean) => { index: number; length: number } | null
   getLength: () => number
+  getIndex: (blot: unknown) => number
+  deleteText: (index: number, length: number, source?: string) => void
   insertEmbed: (index: number, type: string, value: string | Record<string, string>) => void
   on: (event: string, callback: () => void) => void
   clipboard: {
@@ -770,6 +772,8 @@ export default function ContentEdit() {
   const [quillImagePicker, setQuillImagePicker] = useState(false) // Quill 編輯器媒體庫選擇器
   const [quillVideoPicker, setQuillVideoPicker] = useState(false) // Quill 編輯器視頻插入器
   const [quillFaqPicker, setQuillFaqPicker] = useState(false) // Quill 編輯器 FAQ 插入器
+  const [faqEditIndex, setFaqEditIndex] = useState<number | null>(null) // FAQ 編輯模式：目標 blot 索引（null = 新增模式）
+  const [faqEditPairs, setFaqEditPairs] = useState<{ question: string; answer: string }[]>([]) // 編輯模式預填數據
   const [allTags, setAllTags] = useState<string[]>([]) // 歷史標籤列表（供快速補充）
   const [aiTagLoading, setAiTagLoading] = useState(false) // AI 標籤建議載入狀態
   const [showBulkTags, setShowBulkTags] = useState(false) // 批量導入標籤展開狀態
@@ -1377,6 +1381,8 @@ export default function ContentEdit() {
                   setQuillVideoPicker(true)
                 },
                 'faq-picker': function () {
+                  setFaqEditIndex(null)
+                  setFaqEditPairs([])
                   setQuillFaqPicker(true)
                 },
                 'html-source': function () {
@@ -1456,6 +1462,33 @@ export default function ContentEdit() {
         if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
         const faqBtn = editorContainer.querySelector('.ql-faq-picker')
         if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
+
+        // ─── FAQ 塊點擊編輯：點擊 .faq 容器 → 提取數據 → 打開 Modal 編輯 ───
+        quill.root.addEventListener('click', (e: MouseEvent) => {
+          const target = e.target as HTMLElement
+          const faqDiv = target.closest('.faq') as HTMLElement | null
+          if (!faqDiv) return
+
+          // 提取 FAQ 數據
+          const pairs = extractFaqPairsFromDom(faqDiv)
+          if (pairs.length === 0) return
+
+          // 查找 Quill blot 索引
+          const w = window as unknown as { Quill?: { find: (node: HTMLElement, bubble?: boolean) => unknown } }
+          const blot = w.Quill?.find(faqDiv, true)
+          if (!blot) return
+
+          const index = quill.getIndex(blot as never)
+          if (index < 0) return
+
+          e.preventDefault()
+          e.stopPropagation()
+
+          // 進入編輯模式
+          setFaqEditIndex(index)
+          setFaqEditPairs(pairs)
+          setQuillFaqPicker(true)
+        })
 
         // 設置已有內容
         if (form.content) {
@@ -2430,18 +2463,34 @@ export default function ContentEdit() {
         }}
       />
 
-      {/* Quill 編輯器 FAQ 問答插入器 */}
+      {/* Quill 編輯器 FAQ 問答插入器（支援新增 + 編輯模式） */}
       <FaqPickerModal
         open={quillFaqPicker}
-        onClose={() => setQuillFaqPicker(false)}
+        onClose={() => {
+          setQuillFaqPicker(false)
+          setFaqEditIndex(null)
+          setFaqEditPairs([])
+        }}
+        mode={faqEditIndex !== null ? 'edit' : 'insert'}
+        initialPairs={faqEditIndex !== null ? faqEditPairs : undefined}
         onInsert={(html) => {
-          if (quillRef.current) {
+          if (!quillRef.current) return
+          if (faqEditIndex !== null) {
+            // 編輯模式：刪除舊 FAQ 塊（BlockEmbed 佔 1 字元），在原位置插入新內容
+            quillRef.current.deleteText(faqEditIndex, 1)
+            ;(quillRef.current.clipboard as unknown as {
+              dangerouslyPasteHTML: (index: number, html: string, source: string) => void
+            }).dangerouslyPasteHTML(faqEditIndex, html, 'user')
+          } else {
+            // 新增模式：在游標位置插入
             const range = quillRef.current.getSelection(true) ?? quillRef.current.getSelection()
             const index = Number(range?.index ?? quillRef.current.getLength())
             ;(quillRef.current.clipboard as unknown as {
               dangerouslyPasteHTML: (index: number, html: string, source: string) => void
             }).dangerouslyPasteHTML(index, html, 'user')
           }
+          setFaqEditIndex(null)
+          setFaqEditPairs([])
         }}
       />
 

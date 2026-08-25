@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 /**
  * FAQ Q&A 配對結構
@@ -102,15 +102,31 @@ export default function FaqPickerModal({
   open,
   onClose,
   onInsert,
+  initialPairs,
+  mode = 'insert',
 }: {
   open: boolean
   onClose: () => void
-  /** 插入完成後的回調，返回 HTML 字符串（整組 <div class="faq"> 塊） */
+  /** 確認後的回調，返回 HTML 字符串（整組 <div class="faq"> 塊） */
   onInsert: (html: string) => void
+  /** 編輯模式時傳入已有的問答數據 */
+  initialPairs?: { question: string; answer: string }[]
+  /** 模式：insert 新增 / edit 編輯已有 */
+  mode?: 'insert' | 'edit'
 }) {
   const [pairs, setPairs] = useState<FaqPair[]>([
     { id: genId(), question: '', answer: '' },
   ])
+
+  // Modal 打開時，根據模式初始化 pairs
+  useEffect(() => {
+    if (!open) return
+    if (initialPairs && initialPairs.length > 0) {
+      setPairs(initialPairs.map((p) => ({ id: genId(), question: p.question, answer: p.answer })))
+    } else {
+      setPairs([{ id: genId(), question: '', answer: '' }])
+    }
+  }, [open, initialPairs])
 
   /** 新增一組問答 */
   const addPair = () => {
@@ -132,14 +148,11 @@ export default function FaqPickerModal({
     setPairs((prev) => prev.map((p) => (p.id === id ? { ...p, answer: value } : p)))
   }
 
-  /** 確認插入 */
+  /** 確認插入/更新 */
   const handleConfirm = () => {
     const html = buildFaqGroupHtml(pairs)
     if (!html) return
     onInsert(html)
-
-    // 重置狀態
-    setPairs([{ id: genId(), question: '', answer: '' }])
     onClose()
   }
 
@@ -159,7 +172,9 @@ export default function FaqPickerModal({
         {/* 頭部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div>
-            <h2 className="text-lg font-semibold">❓ 插入 FAQ 問答</h2>
+            <h2 className="text-lg font-semibold">
+              {mode === 'edit' ? '✏️ 編輯 FAQ 問答' : '❓ 插入 FAQ 問答'}
+            </h2>
             <p className="text-xs text-gray-500 mt-1">
               生成 <code className="bg-gray-100 px-1 rounded">&lt;details&gt;</code> 標籤，含 Google 微數據（microdata）+ JSON-LD 雙重結構化數據（SEO）
             </p>
@@ -269,7 +284,7 @@ export default function FaqPickerModal({
               disabled={validPairs.length === 0}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              插入 FAQ
+              {mode === 'edit' ? '更新 FAQ' : '插入 FAQ'}
             </button>
           </div>
         </div>
