@@ -90,12 +90,16 @@ export async function handleListContents(
   const isrecommend = params.get('isrecommend');
   const order = params.get('order') || 'date';
   const includeContent = params.get('content') === 'full';
+  const preview = params.get('preview') === '1';
 
   // 列表字段（默認排除 content 正文；content=full 時加入完整正文）
   const summaryFields = 'c.id, c.acode, c.scode, c.subscode, c.title, c.titlecolor, c.subtitle, c.filename, c.author, c.source, c.outlink, c.date, c.ico, c.pics, c.picstitle, c.tags, c.enclosure, c.keywords, c.description, c.sorting, c.status, c.istop, c.isrecommend, c.isheadline, c.visits, c.likes, c.oppose, c.create_user, c.update_user, c.create_time, c.update_time, c.gtype, c.gid, c.gnote, c.urlname'
     + (includeContent ? ', c.content' : '');
 
-  const conditions: string[] = ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
+  // 預覽模式：允許草稿（status IN '0','1'），跳過日期過濾
+  const conditions: string[] = preview
+    ? ["c.status IN ('0', '1')", "c.scode != ''"]
+    : ["c.status = '1'", "c.scode != ''", PUBLIC_DATE_FILTER];
   const binds: (string | number)[] = [];
 
   // 欄目篩選 (含子孫欄目)
@@ -237,18 +241,24 @@ export async function handleContentDetail(
   idOrSlug: string,
   track: boolean,
   kv?: KVNamespace,
+  preview: boolean = false,
 ): Promise<Response> {
   const isNumericId = /^\d+$/.test(idOrSlug);
   let content: Record<string, unknown> & { visits?: number; id?: number } | null;
 
+  // 預覽模式：允許草稿（status IN '0','1'），跳過日期過濾
+  // 正常模式：僅已發布（status='1'），且日期已到
+  const statusCondition = preview ? "status IN ('0', '1')" : "status = '1'";
+  const dateCondition = preview ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
+
   if (isNumericId) {
     content = await db.prepare(
-      `SELECT * FROM ay_content WHERE id = ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW}`,
+      `SELECT * FROM ay_content WHERE id = ? AND ${statusCondition} ${dateCondition}`,
     ).bind(Number(idOrSlug)).first();
   } else {
     // slug 查詢（filename 字段，已有索引 idx_content_filename）
     content = await db.prepare(
-      `SELECT * FROM ay_content WHERE filename = ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW}`,
+      `SELECT * FROM ay_content WHERE filename = ? AND ${statusCondition} ${dateCondition}`,
     ).bind(idOrSlug).first();
   }
 
@@ -257,8 +267,8 @@ export async function handleContentDetail(
   const contentId = content.id as number;
   const contentScode = (content.scode as string) || '';
 
-  // 累加訪問量
-  if (track) {
+  // 累加訪問量（預覽模式不計入訪問量）
+  if (track && !preview) {
     await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(contentId).run();
     content.visits = (content.visits || 0) + 1;
   }
@@ -298,13 +308,15 @@ export async function handleContentDetail(
     const scodeList = await getDescendantScodes(db, contentScode);
     if (scodeList.length > 0) {
       const placeholders = scodeList.map(() => '?').join(',');
+      const prevNextStatus = preview ? "status IN ('0', '1')" : "status = '1'";
+      const prevNextDate = preview ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
       // 上一篇：同欄目樹範圍內 id 比當前小的最近一篇
       prev = await db.prepare(
-        `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW} AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
+        `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND ${prevNextStatus} ${prevNextDate} AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
       ).bind(contentId, ...scodeList).first();
       // 下一篇：同欄目樹範圍內 id 比當前大的最近一篇
       next = await db.prepare(
-        `SELECT id, title, filename, date FROM ay_content WHERE id > ? AND status = '1' AND ${PUBLIC_DATE_FILTER_RAW} AND scode IN (${placeholders}) ORDER BY id ASC LIMIT 1`,
+        `SELECT id, title, filename, date FROM ay_content WHERE id > ? AND ${prevNextStatus} ${prevNextDate} AND scode IN (${placeholders}) ORDER BY id ASC LIMIT 1`,
       ).bind(contentId, ...scodeList).first();
     }
   }

@@ -426,7 +426,8 @@ app.get('/api/v1/contents/all', publicRateLimit(), async (c) => {
 app.get('/api/v1/contents/:idOrSlug', async (c) => {
   const idOrSlug = c.req.param('idOrSlug');
   const track = c.req.query('track') === '1';
-  return contentService.handleContentDetail(siteDB(c), idOrSlug, track, c.env.CONFIG_CACHE);
+  const preview = c.req.query('preview') === '1';
+  return contentService.handleContentDetail(siteDB(c), idOrSlug, track, c.env.CONFIG_CACHE, preview);
 });
 
 // ===== 前台公開接口 - 擴展模塊 =====

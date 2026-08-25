@@ -61,10 +61,27 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.69',
+    date: '2026-08-25 09:43:54',
+    icon: '👁️',
+    latest: true,
+    changes: `👁️ 公開 API 支持草稿預覽
+
+🔧 新增內容
+• 公開詳情 API 加 preview 參數：GET /api/v1/contents/:idOrSlug?preview=1
+  - 預覽模式允許查詢 status='0' 草稿（正常模式僅 status='1'）
+  - 跳過日期過濾（草稿可能有未來排期日期）
+  - 不計入訪問量（預覽不影響統計）
+  - prev/next 也允許草稿
+• 公開列表 API 加 preview 參數：GET /api/v1/contents?preview=1
+  - 列表可返回草稿文章，供前端預覽路由使用
+• 用途：前端廣告站可設置 /preview/:slug 路由，調用 preview API 展示草稿內容`,
+  },
+  {
     version: 'v1.9.68',
     date: '2026-08-19 17:01:09',
     icon: '📅',
-    latest: true,
+    latest: false,
     changes: `📅 講座預約排期管理優化
 
 🔧 優化內容
@@ -1021,9 +1038,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
-  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full, max 100/頁, content=full返回完整正文HTML v1.9.58+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full&preview=1, max 100/頁, content=full返回完整正文HTML, preview=1含草稿 v1.9.69+)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=&content=full, max 500/頁, content=full同上 v1.9.58+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (?preview=1 預覽草稿, content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
