@@ -61,11 +61,35 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.74',
+    date: '2026-08-25 11:01:54',
+    icon: '📝',
+    latest: true,
+    changes: `📝 草稿狀態優化：單一草稿 tab + 徽章區分 + 自動清空日期
+
+🔧 優化設計
+• 單一「草稿」tab（status=draft）查詢 status IN ('0','2')，用徽章區分：
+  - 🟠 待發佈：status=0 + 未來日期（Cron 到時自動發布）
+  - ⚪ 草稿：status=0 無未來日期
+  - 🟡 不發佈：status=2（永不自動發布）
+• 選擇「草稿（不發佈）」時自動清空發佈日期 + 禁用日期輸入框
+• 解決 v1.9.72 三個草稿 tab 邏輯重疊問題，保留 status='2' 區分能力
+
+🔧 後端（content.ts）
+• handleAdminListContents：新增 status='draft' 查 IN('0','2')，status='2' 獨立篩選
+• 公開 API：status=2 預覽，status=all 包含 '2'
+• handleCreateContent：status='2' 時預設空日期（與 status='0' 一致）
+
+🔧 前端
+• ContentEdit.tsx：狀態下拉三選項 + onChange 選 '2' 時自動清空 date + disabled
+• Contents.tsx：草稿 tab key='draft'，getStatusBadge switch 重構（'2'→不發佈）`,
+  },
+  {
     version: 'v1.9.73',
     date: '2026-08-25 10:50:59',
     icon: '🔄',
-    latest: true,
-    changes: `🔄 回退 v1.9.72 草稿狀態細分，簡化為單一草稿狀態
+    latest: false,
+    changes: `🔄 回退 v1.9.72 草稿狀態細分（已被 v1.9.74 重新優化實現）
 
 🔧 回退原因
 • v1.9.72 新增 status='2' 導致 tab 邏輯不自洽：「待發布」「草稿（待發佈）」「草稿（不發佈）」三者重疊
@@ -1112,9 +1136,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
-  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full&status=0/all, max 100/頁, content=full返回完整正文HTML, status=0僅草稿/status=all草稿+已發布 v1.9.70+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full&status=0/2/all, max 100/頁, content=full返回完整正文HTML, status=0草稿待發佈/2草稿不發佈/all全部 v1.9.74+)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=&content=full, max 500/頁, content=full同上 v1.9.58+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (?status=0 草稿預覽, content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (?status=0/2/all 草稿預覽, content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
@@ -1136,7 +1160,7 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'PUT', path: '/api/v1/admin/forms/submissions/:id', desc: '更新表單狀態', auth: true },
   { method: 'DELETE', path: '/api/v1/admin/forms/submissions/:id', desc: '刪除表單記錄', auth: true },
   // 管理接口 (300次/分/用戶)
-  { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?scode=&mcode=&status=&page=, status: 1=已發布/0=草稿/all=全部/scheduled=待發布 v1.9.73+)', auth: true },
+  { method: 'GET', path: '/api/v1/admin/contents', desc: '後台內容列表 (?scode=&mcode=&status=&page=, status: 1=已發布/0=草稿待發佈/2=草稿不發佈/draft=全部草稿/all=全部/scheduled=待發布 v1.9.74+)', auth: true },
   { method: 'GET', path: '/api/v1/admin/contents/:id', desc: '後台內容詳情（無緩存，編輯用）', auth: true },
   { method: 'GET', path: '/api/v1/admin/contents/all-tags', desc: '歷史標籤列表', auth: true },
   { method: 'POST', path: '/api/v1/admin/contents', desc: '新建內容', auth: true },

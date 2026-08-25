@@ -104,8 +104,8 @@ function loadQuill(): Promise<void> {
   return quillLoading
 }
 
-/** 內容狀態: '1'=已發布, '0'=草稿 */
-type ContentStatus = '1' | '0'
+/** 內容狀態: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈） */
+type ContentStatus = '1' | '0' | '2'
 
 /** 內容數據結構 */
 interface Content {
@@ -873,7 +873,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '1' ? '1' : '0',
+          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -895,7 +895,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '1' ? '1' : '0',
+          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -1958,11 +1958,16 @@ export default function ContentEdit() {
                 <label className={DS.label}>狀態</label>
                 <select
                   value={form.status}
-                  onChange={(e) => updateField('status', e.target.value as ContentStatus)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as ContentStatus
+                    updateField('status', newStatus)
+                    if (newStatus === '2') updateField('date', '')
+                  }}
                   className={DS.select}
                 >
                   <option value="1">已發布</option>
-                  <option value="0">草稿</option>
+                  <option value="0">草稿（待發佈）</option>
+                  <option value="2">草稿（不發佈）</option>
                 </select>
               </div>
             </div>
@@ -1987,8 +1992,11 @@ export default function ContentEdit() {
                   value={form.date}
                   onChange={(e) => updateField('date', e.target.value)}
                   className={DS.input}
+                  disabled={form.status === '2'}
                 />
-                <p className="mt-1.5 text-xs text-muted-foreground">設置未來時間可實現定時發布</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {form.status === '2' ? '🔒 草稿（不發佈）模式，日期已禁用' : '設置未來時間可實現定時發布'}
+                </p>
               </div>
             </div>
 
