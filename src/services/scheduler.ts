@@ -150,18 +150,21 @@ export async function handleScheduledPublish(
     }
   }
 
-  // 3. 兜底處理: 已過期但仍為草稿的文章直接發布
-  //    覆蓋場景: Queue 消息丟失、定時超過 24 小時、本地開發無 Queue
+  // 3. 兜底處理: 僅發布 24 小時內到期的草稿（Queue 消息丟失場景的安全網）
+  //    v1.9.70 修復：原邏輯發布所有過期草稿，導致新建草稿（date 默認 now）被誤發布
+  //    現在僅限 date 在過去 24 小時內的草稿，與掃描窗口對齊
   try {
     const result = await db.prepare(
       `UPDATE ay_content SET status = '1'
        WHERE status = '0'
-       AND date <= datetime('now', '+8 hours') AND date != ''`,
+       AND date != '' AND date IS NOT NULL
+       AND date <= datetime('now', '+8 hours')
+       AND date > datetime('now', '+8 hours', '-24 hours')`,
     ).run();
 
     const changes = result.meta?.changes ?? 0;
     if (changes > 0) {
-      await logEvent(db, 'publish', `兜底定時發布: ${changes} 篇文章已過期, 直接發布`);
+      await logEvent(db, 'publish', `兜底定時發布: ${changes} 篇文章到期, 直接發布`);
     }
   } catch (e) {
     console.error('handleScheduledPublish: 兜底發布失敗:', e);

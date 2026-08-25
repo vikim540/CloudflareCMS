@@ -61,21 +61,35 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.70',
+    date: '2026-08-25 09:54:35',
+    icon: '🐛',
+    latest: true,
+    changes: `🐛 草稿自動發布 bug 修復 + 公開 API status 參數
+
+🔧 Bug 修復
+• 根因 1：Cron 兜底發布邏輯（scheduler.ts）每 15 分鐘把所有過期草稿自動發布
+  - 新建草稿 date 默認 now → 立即過期 → Cron 自動發布（用戶未操作）
+  - 修復：兜底發布僅限 date 在過去 24h 內的草稿（與掃描窗口對齊）
+• 根因 2：handleCreateContent 的 body.status || '1' falsy bug
+  - 數字 0 是 falsy，0 || '1' 返回 '1'（草稿變已發布）
+  - 修復：改為 body.status !== undefined ? String(body.status) : '1'
+• 根因 3：新建草稿 date 默認 now（立即過期）
+  - 修復：草稿（status='0'）默認空日期，不觸發 Cron 發布
+
+🔧 API 改進
+• 公開 API 改用 status 參數取代 preview=1
+  - GET /api/v1/contents?status=0 → 僅草稿
+  - GET /api/v1/contents?status=all → 草稿+已發布
+  - GET /api/v1/contents/:id?status=0 → 草稿詳情
+  - 草稿模式跳過日期過濾，不計入訪問量`,
+  },
+  {
     version: 'v1.9.69',
     date: '2026-08-25 09:43:54',
     icon: '👁️',
-    latest: true,
-    changes: `👁️ 公開 API 支持草稿預覽
-
-🔧 新增內容
-• 公開詳情 API 加 preview 參數：GET /api/v1/contents/:idOrSlug?preview=1
-  - 預覽模式允許查詢 status='0' 草稿（正常模式僅 status='1'）
-  - 跳過日期過濾（草稿可能有未來排期日期）
-  - 不計入訪問量（預覽不影響統計）
-  - prev/next 也允許草稿
-• 公開列表 API 加 preview 參數：GET /api/v1/contents?preview=1
-  - 列表可返回草稿文章，供前端預覽路由使用
-• 用途：前端廣告站可設置 /preview/:slug 路由，調用 preview API 展示草稿內容`,
+    latest: false,
+    changes: `👁️ 公開 API 支持草稿預覽（已被 v1.9.70 status 參數取代）`,
   },
   {
     version: 'v1.9.68',
@@ -1038,9 +1052,9 @@ const API_ENDPOINTS: ApiEndpoint[] = [
   { method: 'GET', path: '/api/v1/company', desc: '公司信息（公開聯繫方式）', auth: false },
   { method: 'GET', path: '/api/v1/sorts', desc: '欄目樹', auth: false },
   { method: 'GET', path: '/api/v1/sorts/:scode', desc: '欄目詳情', auth: false },
-  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full&preview=1, max 100/頁, content=full返回完整正文HTML, preview=1含草稿 v1.9.69+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents', desc: '內容列表 (?scode=&page=&pagesize=&content=full&status=0, max 100/頁, content=full返回完整正文HTML, status=0僅草稿/status=all草稿+已發布 v1.9.70+)', auth: false },
   { method: 'GET', path: '/api/v1/contents/all', desc: '批量內容列表-靜態打包用 (?scode=&page=&pagesize=&content=full, max 500/頁, content=full同上 v1.9.58+)', auth: false },
-  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (?preview=1 預覽草稿, content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
+  { method: 'GET', path: '/api/v1/contents/:idOrSlug', desc: '內容詳情 (?status=0 草稿預覽, content平鋪sortname+ext_*字段, prev/next同欄目樹, faqJson FAQ JSON-LD, v1.8.1+)', auth: false },
   { method: 'GET', path: '/api/v1/search', desc: '語義搜索 (?q=關鍵詞&topK=10&threshold=0.5)', auth: false },
   { method: 'GET', path: '/api/v1/slides', desc: '幻燈片列表 (?gid=)', auth: false },
   { method: 'GET', path: '/api/v1/links', desc: '友情連結 (?gid=)', auth: false },
