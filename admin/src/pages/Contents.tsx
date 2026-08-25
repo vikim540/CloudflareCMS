@@ -5,8 +5,8 @@ import { api } from '../lib/api'
 import { cn, formatDate, type Category, flattenCategories, getPageNumbers } from '../lib/utils'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
-/** 內容狀態: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈）, '-1'=回收站 */
-type ContentStatus = '1' | '0' | '2' | '-1'
+/** 內容狀態: '1'=已發布, '0'=草稿, '-1'=回收站 */
+type ContentStatus = '1' | '0' | '-1'
 
 /** 內容數據結構 */
 interface Content {
@@ -66,8 +66,7 @@ const STATUS_TABS = [
   { key: 'all', label: '全部' },
   { key: '1', label: '已發布' },
   { key: 'scheduled', label: '待發布' },
-  { key: '0', label: '草稿（待發佈）' },
-  { key: '2', label: '草稿（不發佈）' },
+  { key: '0', label: '草稿' },
 ] as const
 
 /** 判斷文章日期是否在未來（香港時區 UTC+8） */
@@ -79,8 +78,8 @@ function isFutureDate(dateStr: string): boolean {
 
 /** 根據狀態+日期取得徽章樣式（未來日期顯示「待發布」） */
 function getStatusBadge(status: ContentStatus, date: string): { label: string; className: string } {
-  // 未來日期的文章統一顯示為「待發布」，但草稿（不發佈）除外（永不發布）
-  if (isFutureDate(date) && status !== '-1' && status !== '2') {
+  // 未來日期的文章統一顯示為「待發布」，無論 status 是 0 還是 1
+  if (isFutureDate(date) && status !== '-1') {
     return { label: '待發布', className: 'bg-orange-100 text-orange-700' }
   }
   switch (status) {
@@ -88,8 +87,6 @@ function getStatusBadge(status: ContentStatus, date: string): { label: string; c
       return { label: '已發布', className: 'bg-green-100 text-green-700' }
     case '0':
       return { label: '草稿', className: 'bg-gray-100 text-gray-600' }
-    case '2':
-      return { label: '草稿（不發佈）', className: 'bg-yellow-100 text-yellow-700' }
     case '-1':
       return { label: '回收站', className: 'bg-red-100 text-red-700' }
     default:

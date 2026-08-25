@@ -104,8 +104,8 @@ function loadQuill(): Promise<void> {
   return quillLoading
 }
 
-/** 內容狀態: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈） */
-type ContentStatus = '1' | '0' | '2'
+/** 內容狀態: '1'=已發布, '0'=草稿 */
+type ContentStatus = '1' | '0'
 
 /** 內容數據結構 */
 interface Content {
@@ -873,7 +873,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
+          status: content.status === '1' ? '1' : '0',
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -895,7 +895,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
+          status: content.status === '1' ? '1' : '0',
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -1962,8 +1962,7 @@ export default function ContentEdit() {
                   className={DS.select}
                 >
                   <option value="1">已發布</option>
-                  <option value="0">草稿（待發佈）</option>
-                  <option value="2">草稿（不發佈）</option>
+                  <option value="0">草稿</option>
                 </select>
               </div>
             </div>
