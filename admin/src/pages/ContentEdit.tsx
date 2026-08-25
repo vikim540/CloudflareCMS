@@ -104,7 +104,8 @@ function loadQuill(): Promise<void> {
   return quillLoading
 }
 
-/** 內容狀態: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈） */
+/** 內容狀態（前端 UI 用）: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈）
+ *  '2' 僅前端使用，提交 API 時轉為 '0'（API 不區分 status=2） */
 type ContentStatus = '1' | '0' | '2'
 
 /** 內容數據結構 */
@@ -873,7 +874,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
+          status: content.status === '1' ? '1' : (content.date ? '0' : '2'),
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -895,7 +896,7 @@ export default function ContentEdit() {
           content: content.content ?? '',
           keywords: content.keywords ?? '',
           description: content.description ?? '',
-          status: content.status === '2' ? '2' : content.status === '1' ? '1' : '0',
+          status: content.status === '1' ? '1' : (content.date ? '0' : '2'),
           istop: content.istop === '1',
           isrecommend: content.isrecommend === '1',
           isheadline: content.isheadline === '1',
@@ -1727,7 +1728,7 @@ export default function ContentEdit() {
         content,
         keywords: form.keywords,
         description: form.description,
-        status: form.status,
+        status: form.status === '2' ? '0' : form.status,
         istop: form.istop ? '1' : '0',
         isrecommend: form.isrecommend ? '1' : '0',
         isheadline: form.isheadline ? '1' : '0',
@@ -1746,6 +1747,7 @@ export default function ContentEdit() {
         // 保存成功後更新原始快照（避免再次比對時報告剛保存的修改）
         originalDataRef.current = {
           ...payload,
+          status: form.status, // 保留前端 UI 值（'2' 不轉換，與 form 一致）
           istop: payload.istop === '1',
           isrecommend: payload.isrecommend === '1',
           isheadline: payload.isheadline === '1',

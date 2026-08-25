@@ -5,8 +5,8 @@ import { api } from '../lib/api'
 import { cn, formatDate, type Category, flattenCategories, getPageNumbers } from '../lib/utils'
 import { LoadingState, EmptyState } from '../components/StateDisplay'
 
-/** 內容狀態: '1'=已發布, '0'=草稿（待發佈）, '2'=草稿（不發佈）, '-1'=回收站 */
-type ContentStatus = '1' | '0' | '2' | '-1'
+/** 內容狀態: '1'=已發布, '0'=草稿, '-1'=回收站 */
+type ContentStatus = '1' | '0' | '-1'
 
 /** 內容數據結構 */
 interface Content {
@@ -66,7 +66,7 @@ const STATUS_TABS = [
   { key: 'all', label: '全部' },
   { key: '1', label: '已發布' },
   { key: 'scheduled', label: '待發布' },
-  { key: 'draft', label: '草稿' },
+  { key: '0', label: '草稿' },
 ] as const
 
 /** 判斷文章日期是否在未來（香港時區 UTC+8） */
@@ -79,8 +79,6 @@ function isFutureDate(dateStr: string): boolean {
 /** 根據狀態+日期取得徽章樣式 */
 function getStatusBadge(status: ContentStatus, date: string): { label: string; className: string } {
   switch (status) {
-    case '2':
-      return { label: '不發佈', className: 'bg-yellow-100 text-yellow-700' }
     case '1':
       if (isFutureDate(date)) return { label: '待發布', className: 'bg-orange-100 text-orange-700' }
       return { label: '已發布', className: 'bg-green-100 text-green-700' }
