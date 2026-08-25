@@ -101,8 +101,10 @@ export async function handleListContents(
   const conditions: string[] = ["c.scode != ''"];
   if (statusParam === '0') {
     conditions.push("c.status = '0'");
+  } else if (statusParam === '2') {
+    conditions.push("c.status = '2'");
   } else if (statusParam === 'all') {
-    conditions.push("c.status IN ('0', '1')");
+    conditions.push("c.status IN ('0', '1', '2')");
   } else {
     conditions.push("c.status = '1'", PUBLIC_DATE_FILTER);
   }
@@ -255,9 +257,10 @@ export async function handleContentDetail(
   // status 參數控制：默認僅已發布，'0' 僅草稿，'all' 草稿+已發布
   // 草稿模式跳過日期過濾（草稿可能有未來排期日期）
   const statusCondition = statusFilter === '0' ? "status = '0'"
-    : statusFilter === 'all' ? "status IN ('0', '1')"
+    : statusFilter === '2' ? "status = '2'"
+    : statusFilter === 'all' ? "status IN ('0', '1', '2')"
     : "status = '1'";
-  const dateCondition = (statusFilter === '0' || statusFilter === 'all') ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
+  const dateCondition = (statusFilter === '0' || statusFilter === '2' || statusFilter === 'all') ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
 
   if (isNumericId) {
     content = await db.prepare(
@@ -276,7 +279,7 @@ export async function handleContentDetail(
   const contentScode = (content.scode as string) || '';
 
   // 累加訪問量（草稿預覽不計入訪問量）
-  if (track && statusFilter !== '0' && statusFilter !== 'all') {
+  if (track && statusFilter !== '0' && statusFilter !== '2' && statusFilter !== 'all') {
     await db.prepare('UPDATE ay_content SET visits = visits + 1 WHERE id = ?').bind(contentId).run();
     content.visits = (content.visits || 0) + 1;
   }
@@ -316,8 +319,8 @@ export async function handleContentDetail(
     const scodeList = await getDescendantScodes(db, contentScode);
     if (scodeList.length > 0) {
       const placeholders = scodeList.map(() => '?').join(',');
-      const prevNextStatus = (statusFilter === '0' || statusFilter === 'all') ? "status IN ('0', '1')" : "status = '1'";
-      const prevNextDate = (statusFilter === '0' || statusFilter === 'all') ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
+      const prevNextStatus = (statusFilter === '0' || statusFilter === '2' || statusFilter === 'all') ? "status IN ('0', '1', '2')" : "status = '1'";
+      const prevNextDate = (statusFilter === '0' || statusFilter === '2' || statusFilter === 'all') ? '' : `AND ${PUBLIC_DATE_FILTER_RAW}`;
       // 上一篇：同欄目樹範圍內 id 比當前小的最近一篇
       prev = await db.prepare(
         `SELECT id, title, filename, date FROM ay_content WHERE id < ? AND ${prevNextStatus} ${prevNextDate} AND scode IN (${placeholders}) ORDER BY id DESC LIMIT 1`,
@@ -455,23 +458,31 @@ export async function handleAdminListContents(
   const conditions: string[] = ["scode != ''"];
   const binds: (string | number)[] = [];
 
-  // 狀態篩選（scheduled = 待發布：status 0 或 1 且日期在未來）
+  // 狀態篩選
+  // status='0' = 草稿（待發佈）：有日期的草稿，到時自動發布
+  // status='2' = 草稿（不發佈）：純草稿，Cron 永不發布（v1.9.72 新增）
   if (status === 'all') {
-    conditions.push("status >= '0'");
+    conditions.push("status IN ('0', '1', '2')");
   } else if (status === 'trash') {
     conditions.push("status = '-1'");
   } else if (status === 'scheduled') {
     // 待發布：已標記為草稿/已發布但日期在未來，尚未到達發布時間
     conditions.push("status IN ('0', '1')");
     conditions.push("date > datetime('now', '+8 hours')");
+  } else if (status === 'draft') {
+    // 全部草稿：status=0 或 status=2（待發佈 + 不發佈）
+    conditions.push("status IN ('0', '2')");
   } else if (status === '1') {
     // 已發布：status=1 且日期已到或為空（未來日期的歸入「待發布」）
     conditions.push("status = '1'");
     conditions.push("(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)");
   } else if (status === '0') {
-    // 草稿：status=0 且日期已到或為空（未來日期的歸入「待發布」）
+    // 草稿（待發佈）：status=0 且日期已到或為空（未來日期的歸入「待發布」）
     conditions.push("status = '0'");
     conditions.push("(date <= datetime('now', '+8 hours') OR date = '' OR date IS NULL)");
+  } else if (status === '2') {
+    // 草稿（不發佈）：status=2，純草稿永不自動發布
+    conditions.push("status = '2'");
   } else {
     conditions.push('status = ?');
     binds.push(status);
@@ -532,7 +543,7 @@ export async function handleCreateContent(
   const now = nowStr();
   // 草稿不設默認日期，避免 Cron 兜底發布誤發布（v1.9.70 修復）
   const statusVal = body.status !== undefined ? String(body.status) : '1';
-  const date = body.date || (statusVal === '0' ? '' : now);
+  const date = body.date || (statusVal === '0' || statusVal === '2' ? '' : now);
 
   // P1: HTML 淨化（content 用 sanitizeHtml 保留富文本，description/keywords 剝離標籤）
   const safeContent = sanitizeHtml(typeof body.content === 'string' ? body.content : '');
