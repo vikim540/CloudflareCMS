@@ -64,3 +64,11 @@ b, strong, th, .font-bold { font-weight: 600 !important; }
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
 }
+
+/* ─── Quill 編輯器下拉選單修復 ─── */
+/* 確保標題/字體/字號下拉選單不被父容器裁剪 */
+.ql-picker-options {
+  z-index: 9999;
+  max-height: 300px;
+  overflow-y: auto;
+}

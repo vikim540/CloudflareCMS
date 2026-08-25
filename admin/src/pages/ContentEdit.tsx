@@ -2025,7 +2025,7 @@ export default function ContentEdit() {
               </label>
               {/* 編輯器與 HTML 源碼 textarea 都保持掛載，用 CSS 切換顯示 */}
               {/* 避免 htmlMode 切換時 Quill DOM 被卸載導致編輯器消失 */}
-              <div ref={editorRef} className={`border border-input rounded-lg overflow-hidden ${htmlMode ? 'hidden' : ''}`} />
+              <div ref={editorRef} className={`border border-input rounded-lg ${htmlMode ? 'hidden' : ''}`} />
               <textarea
                 value={htmlSource}
                 onChange={(e) => {
