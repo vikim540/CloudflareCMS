@@ -344,17 +344,15 @@ export async function getS3Config(
   s3Secrets?: S3Secrets,
 ): Promise<S3Config | null> {
   const configs = await getAllConfigs(db, kv);
-  const endpoint = configs['s3_endpoint'];
-  // v1.9.38: Secrets Store 優先，返回 null 時回退到 D1 明文憑證
-  const accessKey = s3Secrets
-    ? (await s3Secrets.accessKeyStore.get()) ?? configs['s3_access_key'] ?? ''
-    : configs['s3_access_key'];
-  const secretKey = s3Secrets
-    ? (await s3Secrets.secretKeyStore.get()) ?? configs['s3_secret_key'] ?? ''
-    : configs['s3_secret_key'];
-  const bucket = configs['s3_bucket'];
-  const region = configs['s3_region'] || 'auto';
-  const publicUrl = configs['s3_public_url'] || '';
+  const endpoint = (configs['s3_endpoint'] || '').trim();
+  const storeAccessKey = s3Secrets ? await s3Secrets.accessKeyStore.get().catch(() => null) : null;
+  const storeSecretKey = s3Secrets ? await s3Secrets.secretKeyStore.get().catch(() => null) : null;
+  // v1.9.77: Secrets Store 優先，若為空或空白則回退到 D1 明文憑證
+  const accessKey = (storeAccessKey ? storeAccessKey.trim() : '') || (configs['s3_access_key'] ? configs['s3_access_key'].trim() : '');
+  const secretKey = (storeSecretKey ? storeSecretKey.trim() : '') || (configs['s3_secret_key'] ? configs['s3_secret_key'].trim() : '');
+  const bucket = (configs['s3_bucket'] || '').trim();
+  const region = (configs['s3_region'] || 'auto').trim();
+  const publicUrl = (configs['s3_public_url'] || '').trim();
 
   if (!endpoint || !accessKey || !secretKey || !bucket) {
     return null;

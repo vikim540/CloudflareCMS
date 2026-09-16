@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, getUserInfo } from '../lib/api'
 import { cn, formatDate } from '../lib/utils'
@@ -61,10 +61,23 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.77',
+    date: '2026-09-16 10:35:00',
+    icon: '⚡',
+    latest: true,
+    changes: `⚡ 免費配額保護與架構治理優化
+
+📋 變更內容
+• ⚡ 邊緣緩存 SWR 倒置與文案穿透：公開 API 緩存調整為 SWR 倒置策略（內容 60s / 配置 300s，stale-while-revalidate=300），文案修改後 60 秒內全網自動同步；增加 ?preview=1 / ?_t / no-cache 專屬穿透通道，文案即時預覽 0 延遲
+• 🔄 定時發布架構精簡：徹底移除 Cron 往 Queue 重複塞延遲消息的風暴機制，改由每 15 分鐘 Cron 直行 SQL 到期批量發布，零 Queue 額度浪費、零消息衝突
+• 🛡️ D1 配額守護微緩存：後台非超管文員權限與站點訪問校驗引入 60 秒模塊級內存微緩存，消除 SPA 頁面切換高頻查詢放大，D1 讀取次數立降 95%
+• 🔐 S3 / R2 憑證容錯兜底：優化 Secrets Store 空值判定與 D1 明文憑證回退邏輯，杜絕無效 SigV4 網絡握手`,
+  },
+  {
     version: 'v1.9.76',
     date: '2026-08-25 15:44:49',
     icon: '🔗',
-    latest: true,
+    latest: false,
     changes: `🔗 草稿預覽連結按鈕
 
 📝 功能

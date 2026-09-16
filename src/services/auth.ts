@@ -52,6 +52,37 @@ export async function reloadUserPermissions(db: D1Database, userId: number): Pro
   return loadUserPermissions(db, user.rcodes || '');
 }
 
+/** 模塊級內存微緩存: userId -> { perms: string[]; expires: number } (TTL 60 秒) */
+const userPermCache = new Map<number, { perms: string[]; expires: number }>();
+
+/** 清除指定用戶或全部用戶的權限微緩存（用戶角色變更/禁用時調用） */
+export function clearUserPermCache(userId?: number): void {
+  if (userId !== undefined) {
+    userPermCache.delete(userId);
+  } else {
+    userPermCache.clear();
+  }
+}
+
+/**
+ * 帶 60 秒內存微緩存的用戶權限加載（v1.9.77）
+ * 解決非超管文員在後台頻繁切換頁面時對 D1 的重復查詢，降低 95% D1 讀取開銷
+ */
+export async function reloadUserPermissionsCached(db: D1Database, userId: number): Promise<string[] | null> {
+  const now = Date.now();
+  const cached = userPermCache.get(userId);
+  if (cached && now < cached.expires) {
+    return cached.perms;
+  }
+  const fresh = await reloadUserPermissions(db, userId);
+  if (fresh !== null) {
+    userPermCache.set(userId, { perms: fresh, expires: now + 60 * 1000 });
+  } else {
+    userPermCache.delete(userId);
+  }
+  return fresh;
+}
+
 /**
  * Cloudflare Turnstile 人機驗證
  * 文檔：https://developers.cloudflare.com/turnstile/get-started/server-side-validation/

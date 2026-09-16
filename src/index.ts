@@ -17,7 +17,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import type { D1Database, KVNamespace, Queue, VectorizeIndex, Ai, RateLimit, Flagship, SecretsStoreSecret } from '@cloudflare/workers-types';
 
 import { extractToken, verifyJwt, type JwtClaims } from './utils/jwt';
-import { isTokenBlacklisted, hasMenuPermission, reloadUserPermissions } from './services/auth';
+import { isTokenBlacklisted, hasMenuPermission, reloadUserPermissions, reloadUserPermissionsCached } from './services/auth';
 import { ok, okData, err, forbidden } from './utils/response';
 import { siteDB, primaryDB, currentSiteId, currentSiteName, resolveBinding, parseSiteRegistry, listRegisteredSites, D1RestClient, createD1Database } from './utils/sitedb';
 import * as authService from './services/auth';
@@ -319,11 +319,27 @@ app.use('/api/v1/*', async (c, next) => {
     const path = c.req.path;
     // 搜索結果不緩存（實時性要求高）
     if (path.includes('/search')) return;
-    // 配置類數據緩存 1 小時，其他公開數據 5 分鐘
-    const ttl = (path.includes('/company') || path.includes('/site') || path.includes('/nav') || path.startsWith('/api/v1/sorts')) ? 3600 : 300;
+
+    // v1.9.77 預覽與即時刷新穿透：文案人員帶 no-cache 頭或 ?preview=1 / ?_t 查詢參數時繞過邊緣緩存
+    const isPreview = c.req.header('Cache-Control') === 'no-cache'
+      || c.req.query('preview') === '1'
+      || Boolean(c.req.query('_t'));
+    if (isPreview) {
+      const headers = new Headers(c.res.headers);
+      headers.set('Cache-Control', 'no-store');
+      c.res = new Response(c.res.body, { status: c.res.status, statusText: c.res.statusText, headers });
+      return;
+    }
+
+    // v1.9.77 SWR 倒置法：配置類 300s，內容類 60s，stale-while-revalidate=300
+    // 確保高頻大眾訪問 0-CPU 攔截省額度，文案修改後 60s 內前台全網自動刷新
+    const isConfig = path.includes('/company') || path.includes('/site') || path.includes('/nav') || path.startsWith('/api/v1/sorts');
+    const maxAge = isConfig ? 300 : 60;
+    const swr = 300;
+
     // 設置緩存頭 + Vary 實現多站點分區
     const headers = new Headers(c.res.headers);
-    headers.set('Cache-Control', `public, max-age=${ttl}, stale-while-revalidate=60`);
+    headers.set('Cache-Control', `public, max-age=${maxAge}, stale-while-revalidate=${swr}`);
     headers.set('Vary', 'X-Site-Id');
     c.res = new Response(c.res.body, { status: c.res.status, statusText: c.res.statusText, headers });
   }
@@ -497,21 +513,21 @@ app.use('/api/v1/admin/*', async (c, next) => {
   const claims = await requireAuth(c);
   if (claims) {
     if (!claims.isSuper) {
-      // 非超管用戶：從數據庫重新加載權限（解決 JWT 中權限過時的問題）
-      const freshPerms = await reloadUserPermissions(primaryDB(c), Number(claims.sub));
+      // 非超管用戶：從數據庫重新加載權限（帶 60s 內存微緩存，解決高頻訪問擊穿 D1 配額）
+      const freshPerms = await reloadUserPermissionsCached(primaryDB(c), Number(claims.sub));
       if (freshPerms === null) {
         // 用戶不存在或已禁用 → 返回 401，觸發前端登出
         return err('用戶已被禁用或不存在', 2006);
       }
       claims.permissions = freshPerms;
 
-      // 多站點訪問權限檢查：非超管用戶只能訪問已分配的站點
+      // 多站點訪問權限檢查：非超管用戶只能訪問已分配的站點（帶 60s 內存微緩存）
       // 站點管理路由（/admin/sites）本身允許訪問（用戶需要查看自己的站點列表）
       const requestedSiteId = c.req.header('X-Site-Id') || 'endoscopy';
       const path = c.req.path;
       const isSiteMgmtRoute = path.startsWith('/api/v1/admin/sites') || path.startsWith('/api/v1/admin/users');
       if (!isSiteMgmtRoute) {
-        const hasAccess = await siteService.checkSiteAccess(
+        const hasAccess = await siteService.checkSiteAccessCached(
           primaryDB(c), Number(claims.sub), requestedSiteId, false,
         );
         if (!hasAccess) {

@@ -19,6 +19,7 @@ import { getS3Config, type S3Secrets } from './storage';
 import { s3PutObject, s3GetObject, s3DeleteObject, s3ListObjects } from '../utils/s3sig';
 import { nowStr, todayStr } from '../utils/datetime';
 import { getConfig } from './config';
+import { clearUserPermCache } from './auth';
 
 /** 超級管理員 ucode, 禁止刪除/禁用 */
 const SUPER_ADMIN_UCODE = '10001';
@@ -328,6 +329,7 @@ export async function handleUpdateUser(
   binds.push(id);
   const sql = `UPDATE ay_user SET ${sets.join(', ')} WHERE id = ?`;
   await db.prepare(sql).bind(...binds).run();
+  clearUserPermCache(id);
 
   return ok('用戶更新成功');
 }
@@ -589,6 +591,9 @@ export async function handleUpdateRole(
     const sql = `UPDATE ay_role SET ${sets.join(', ')} WHERE id = ?`;
     await db.prepare(sql).bind(...binds).run();
   }
+
+  // 角色權限變更後清除所有用戶的微緩存
+  clearUserPermCache();
 
   return ok('角色更新成功');
 }

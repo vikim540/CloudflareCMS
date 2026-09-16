@@ -120,6 +120,35 @@ export async function checkSiteAccess(
   return !!row;
 }
 
+/** 模塊級內存微緩存: `${userId}:${siteId}` -> { hasAccess: boolean; expires: number } (TTL 60 秒) */
+const siteAccessCache = new Map<string, { hasAccess: boolean; expires: number }>();
+
+/** 清除站點訪問權限緩存 */
+export function clearSiteAccessCache(): void {
+  siteAccessCache.clear();
+}
+
+/**
+ * 帶 60 秒內存微緩存的站點權限檢查（v1.9.77）
+ */
+export async function checkSiteAccessCached(
+  db: D1Database,
+  userId: number,
+  siteId: string,
+  isSuper: boolean,
+): Promise<boolean> {
+  if (isSuper) return true;
+  const key = `${userId}:${siteId}`;
+  const now = Date.now();
+  const cached = siteAccessCache.get(key);
+  if (cached && now < cached.expires) {
+    return cached.hasAccess;
+  }
+  const hasAccess = await checkSiteAccess(db, userId, siteId, isSuper);
+  siteAccessCache.set(key, { hasAccess, expires: now + 60 * 1000 });
+  return hasAccess;
+}
+
 /**
  * 獲取用戶已分配的站點 ID 列表（用於用戶管理頁面）
  */

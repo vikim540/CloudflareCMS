@@ -100,59 +100,19 @@ async function logEvent(db: D1Database, level: string, event: string): Promise<v
 /**
  * Cron 定時任務處理器: 每 15 分鐘執行一次。
  *
- * 職責:
- * 1. 掃描未來 24 小時內待發布的草稿文章, 投遞延遲消息到 Queue
- *    (Queue 會在預定時間觸發 handleQueuePublish)
- * 2. 兜底處理: 已過期但仍為草稿的文章直接更新為已發布
- *    (覆蓋 Queue 消息丟失、或定時超過 24 小時的場景)
+ * v1.9.77 架構優化：
+ * 徹底消除每 15 分鐘往 Queue 重複塞延遲消息的風暴問題，改由 Cron 到期直接 SQL 批量發布。
+ * 零 Queue 額度浪費、零消息衝突、15 分鐘精度完全滿足商業官網需求。
  *
  * @param db    D1 數據庫 binding
- * @param queue Cloudflare Queue binding (可為 null, 本地開發無 Queue 時兜底走直接 UPDATE)
+ * @param queue Cloudflare Queue binding (保留類型簽名向後兼容)
+ * @param siteId 站點 ID
  */
 export async function handleScheduledPublish(
   db: D1Database,
   queue: Queue<PublishMessage> | null,
   siteId: string = 'endoscopy',
 ): Promise<void> {
-  // 1. 掃描未來 24 小時內待發布的草稿文章, 投遞延遲消息到 Queue
-  let upcoming: Array<{ id: number; date: string }> = [];
-  try {
-    const result = await db.prepare(
-      `SELECT id, date FROM ay_content
-       WHERE status = '0'
-       AND date > datetime('now', '+8 hours')
-       AND date <= datetime('now', '+8 hours', '+24 hours')`,
-    ).all<{ id: number; date: string }>();
-    upcoming = result.results || [];
-  } catch (e) {
-    console.error('handleScheduledPublish: 查詢待發布文章失敗:', e);
-  }
-
-  // 2. 為每篇文章計算延遲並投遞到 Queue
-  for (const article of upcoming) {
-    if (!article.date) continue;
-    const targetTime = new Date(article.date.replace(' ', 'T') + '+08:00').getTime();
-    const delaySeconds = Math.floor((targetTime - Date.now()) / 1000);
-
-    // 延遲必須在 0 ~ 86400 秒之間 (Cloudflare Queues delaySeconds 限制)
-    if (delaySeconds >= 0 && delaySeconds <= MAX_QUEUE_DELAY_SECONDS) {
-      if (queue) {
-        try {
-          await queue.send(
-            { articleId: article.id, action: 'publish', scheduledAt: article.date, siteId },
-            { delaySeconds: Math.floor(delaySeconds) },
-          );
-        } catch (e) {
-          console.error(`handleScheduledPublish: 文章 ${article.id} 投遞 Queue 失敗:`, e);
-          // Queue 投遞失敗不阻塞, 兜底 UPDATE 會處理
-        }
-      }
-    }
-  }
-
-  // 3. 兜底處理: 僅發布 24 小時內到期的草稿（Queue 消息丟失場景的安全網）
-  //    v1.9.70 修復：原邏輯發布所有過期草稿，導致新建草稿（date 默認 now）被誤發布
-  //    現在僅限 date 在過去 24 小時內的草稿，與掃描窗口對齊
   try {
     const result = await db.prepare(
       `UPDATE ay_content SET status = '1'
@@ -164,10 +124,10 @@ export async function handleScheduledPublish(
 
     const changes = result.meta?.changes ?? 0;
     if (changes > 0) {
-      await logEvent(db, 'publish', `兜底定時發布: ${changes} 篇文章到期, 直接發布`);
+      await logEvent(db, 'publish', `[${siteId}] 定時發布成功: ${changes} 篇文章到期, 已自動發布上線`);
     }
   } catch (e) {
-    console.error('handleScheduledPublish: 兜底發布失敗:', e);
+    console.error(`handleScheduledPublish [${siteId}]: 定時發布失敗:`, e);
   }
 }
 
@@ -264,31 +224,10 @@ export async function handleScheduleArticle(
     return err(`定時發布設置失敗: ${msg}`, 1005);
   }
 
-  // 4. 若 Queue 可用且延遲在 24 小時內, 立即投遞延遲消息
-  let queued = false;
-  if (queue) {
-    const targetTime = new Date(publishDate.replace(' ', 'T') + '+08:00').getTime();
-    const delaySeconds = Math.floor((targetTime - Date.now()) / 1000);
-
-    if (delaySeconds >= 0 && delaySeconds <= MAX_QUEUE_DELAY_SECONDS) {
-      try {
-        await queue.send(
-          { articleId: id, action: 'publish', scheduledAt: publishDate, siteId },
-          { delaySeconds: Math.floor(delaySeconds) },
-        );
-        queued = true;
-      } catch (e) {
-        // Queue 投遞失敗不影響設置結果, cron 兜底會處理
-        console.error(`handleScheduleArticle: 文章 ${id} Queue 投遞失敗:`, e);
-      }
-    }
-    // 延遲超過 24 小時: 不投遞 Queue, 依賴 cron 掃描 (每次掃描未來 24h 窗口)
-  }
-
   await logEvent(
     db,
     'schedule',
-    `定時發布設置: 文章 ${id}「${article.title}」預定 ${publishDate}${queued ? ' (已入隊)' : ' (待 cron 掃描)'}`,
+    `定時發布設置: 文章 ${id}「${article.title}」預定 ${publishDate} 由定時任務自動發布`,
   );
 
   return okData(
@@ -296,9 +235,9 @@ export async function handleScheduleArticle(
       id,
       publishDate,
       status: '0',
-      queued,
+      queued: false,
     },
-    queued ? '定時發布已設置, 將通過隊列準時發布' : '定時發布已設置, 將由定時任務發布',
+    '定時發布已設置，將由定時任務自動發布上線',
   );
 }
 
