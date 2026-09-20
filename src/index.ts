@@ -1134,7 +1134,9 @@ app.post('/api/v1/admin/singles', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const body = await c.req.json();
-  return extraService.handleCreateSingle(siteDB(c), body);
+  const res = await extraService.handleCreateSingle(siteDB(c), body);
+  await clearContentCache(c.env.API_CACHE);
+  return res;
 });
 
 app.put('/api/v1/admin/singles/:id', async (c) => {
@@ -1142,21 +1144,27 @@ app.put('/api/v1/admin/singles/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   const body = await c.req.json();
-  return extraService.handleUpdateSingle(siteDB(c), id, body);
+  const res = await extraService.handleUpdateSingle(siteDB(c), id, body);
+  await clearContentCache(c.env.API_CACHE);
+  return res;
 });
 
 app.delete('/api/v1/admin/singles/:id', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleDeleteSingle(siteDB(c), id);
+  const res = await extraService.handleDeleteSingle(siteDB(c), id);
+  await clearContentCache(c.env.API_CACHE);
+  return res;
 });
 
 app.post('/api/v1/admin/singles/:id/copy', async (c) => {
   const claims = await requireAuth(c);
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
-  return extraService.handleCopySingle(siteDB(c), id);
+  const res = await extraService.handleCopySingle(siteDB(c), id);
+  await clearContentCache(c.env.API_CACHE);
+  return res;
 });
 
 // ===== 後台管理接口 - 友情連結 =====

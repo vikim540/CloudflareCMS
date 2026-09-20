@@ -114,6 +114,20 @@ interface Single {
   terms?: string
 }
 
+/** 從可能已編譯的 HTML 中提取純正文介紹，防止遞歸嵌套落地頁模組 */
+function extractCleanIntro(html: string): string {
+  if (!html) return ''
+  // 1. 若匹配到 compileFullHtml 生成的 text-intro 容器，提取其內部 HTML
+  const introMatch = html.match(/<div class="text-intro[^"]*">([\s\S]*?)<\/div>/i)
+  if (introMatch && introMatch[1]) {
+    let inner = introMatch[1].trim()
+    const nested = inner.match(/<div class="text-intro[^"]*">([\s\S]*?)<\/div>/i)
+    if (nested && nested[1]) inner = nested[1].trim()
+    return inner.replace(/<section class="mb-10 lg:mb-20">[\s\S]*?<\/section>/gi, '').trim()
+  }
+  return html
+}
+
 /** 表單數據結構 */
 interface FormData {
   title: string
@@ -132,6 +146,9 @@ interface FormData {
   whatsapp_phone: string
   whatsapp_text: string
   whatsapp_btn: string
+  package_title: string
+  package_col1: string
+  package_col2: string
   packages: PackageItem[]
   terms: string
 }
@@ -152,6 +169,9 @@ const EMPTY_FORM: FormData = {
   whatsapp_phone: '',
   whatsapp_text: '',
   whatsapp_btn: '立即預約查詢',
+  package_title: '',
+  package_col1: '項目',
+  package_col2: '二人同行',
   packages: [],
   terms: '',
 }
@@ -258,27 +278,44 @@ export default function SingleEdit() {
       const data = res.data
       if (data) {
         let parsedPackages: PackageItem[] = []
+        let parsedTitle = ''
+        let parsedCol1 = '項目'
+        let parsedCol2 = '二人同行'
+
         if (data.packages) {
           try {
             const raw = JSON.parse(data.packages)
             if (Array.isArray(raw)) {
               parsedPackages = raw.map((p, idx) => ({
-                id: `pkg_${idx}_${Date.now()}`,
+                id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
                 name: String(p.name ?? ''),
                 price: String(p.price ?? ''),
               }))
+            } else if (raw && typeof raw === 'object') {
+              parsedTitle = String(raw.title ?? '')
+              parsedCol1 = String(raw.col1 || '項目')
+              parsedCol2 = String(raw.col2 || '二人同行')
+              if (Array.isArray(raw.items)) {
+                parsedPackages = raw.items.map((p, idx) => ({
+                  id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
+                  name: String(p.name ?? ''),
+                  price: String(p.price ?? ''),
+                }))
+              }
             }
           } catch {
             /* 忽略 JSON 解析異常 */
           }
         }
 
+        const cleanIntro = extractCleanIntro(data.content ?? '')
+
         setForm({
           title: data.title ?? '',
           seo_title: data.seo_title ?? '',
           scode: data.scode ?? '0',
           filename: data.filename ?? '',
-          content: data.content ?? '',
+          content: cleanIntro,
           keywords: data.keywords ?? '',
           description: data.description ?? '',
           status: data.status === '1' ? '1' : '0',
@@ -289,6 +326,9 @@ export default function SingleEdit() {
           whatsapp_phone: data.whatsapp_phone ?? '',
           whatsapp_text: data.whatsapp_text ?? '',
           whatsapp_btn: '立即預約查詢',
+          package_title: parsedTitle || data.title || '',
+          package_col1: parsedCol1,
+          package_col2: parsedCol2,
           packages: parsedPackages,
           terms: data.terms ?? '',
         })
@@ -296,9 +336,9 @@ export default function SingleEdit() {
         // 若原數據有 WhatsApp 號碼則自動開啟 Switch，否則預設保持關閉摺疊
         setWhatsappEnabled(Boolean(data.whatsapp_phone && data.whatsapp_phone.trim()))
 
-        // 若 Quill 已初始化，填充內容
-        if (quillRef.current && data.content) {
-          quillRef.current.clipboard.dangerouslyPasteHTML(data.content)
+        // 若 Quill 已初始化，僅填充純正文內容（杜絕整頁 HTML 重複嵌套）
+        if (quillRef.current && cleanIntro) {
+          quillRef.current.clipboard.dangerouslyPasteHTML(cleanIntro)
         }
       }
     } catch (err) {
@@ -394,7 +434,7 @@ export default function SingleEdit() {
         editorContainer.appendChild(styleEl)
 
         if (form.content) {
-          quill.clipboard.dangerouslyPasteHTML(form.content)
+          quill.clipboard.dangerouslyPasteHTML(extractCleanIntro(form.content))
         }
 
         quill.on('text-change', () => {
@@ -491,8 +531,12 @@ export default function SingleEdit() {
         }<img src="${form.banner_mb || form.banner_pc}" alt="${displayTitle}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
       : ''
 
+    const pkgTitle = form.package_title.trim() || form.title
+    const col1Name = form.package_col1.trim() || '項目'
+    const col2Name = form.package_col2.trim() || '二人同行'
+
     const packagesHtml = form.packages.length > 0
-      ? `<div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary text-center">${form.title}</h2></div><div class="text-center text-lg lg:text-3xl rounded-t-3xl max-w-6xl mx-auto mb-5 lg:mb-10"><div class="bg-gradient-to-b from-primary from-30% via-primary to-primary/0 rounded-2xl lg:rounded-4xl overflow-hidden"><div class="flex text-white pt-3 pb-2 lg:pt-7 lg:pb-4"><div class="mx-6 w-25 md:w-[236px] lg:w-[calc(35%-64px)]">項目</div><div class="flex-1">二人同行</div></div><ol class="shadow-md bg-white py-5 lg:py-10 rounded-2xl lg:rounded-4xl relative before:content-[''] before:h-full before:w-[136px] md:before:w-[268px] lg:before:w-[35%] before:bg-bg-soft before:rounded-2xl lg:before:rounded-4xl before:absolute before:left-0 before:top-0 before:shadow-md">${
+      ? `<div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary text-center">${pkgTitle}</h2></div><div class="text-center text-lg lg:text-3xl rounded-t-3xl max-w-6xl mx-auto mb-5 lg:mb-10"><div class="bg-gradient-to-b from-primary from-30% via-primary to-primary/0 rounded-2xl lg:rounded-4xl overflow-hidden"><div class="flex text-white pt-3 pb-2 lg:pt-7 lg:pb-4"><div class="mx-6 w-25 md:w-[236px] lg:w-[calc(35%-64px)]">${col1Name}</div><div class="flex-1">${col2Name}</div></div><ol class="shadow-md bg-white py-5 lg:py-10 rounded-2xl lg:rounded-4xl relative before:content-[''] before:h-full before:w-[136px] md:before:w-[268px] lg:before:w-[35%] before:bg-bg-soft before:rounded-2xl lg:before:rounded-4xl before:absolute before:left-0 before:top-0 before:shadow-md">${
           form.packages.map((pkg) => `<li class="flex items-stretch relative z-10 text-lg sm:text-xl lg:text-3xl font-bold tracking-wider"><h3 class="border-b border-[#A4A4A4] w-[104px] md:w-[236px] lg:w-[calc(35%-64px)] text-desc mx-4 lg:mx-8 py-4 flex justify-center items-center">${pkg.name}</h3><div class="border-b border-[#A4A4A4] flex-1 flex mx-4 lg:mx-8 flex items-center justify-center py-4"><div class="text-center text-desc w-full">${pkg.price}</div></div></li>`).join('')
         }</ol></div></div>`
       : ''
@@ -507,7 +551,7 @@ export default function SingleEdit() {
         }</ul>`
       : ''
 
-    const cleanedIntro = cleanupQuillHtml(rawIntro)
+    const cleanedIntro = cleanupQuillHtml(extractCleanIntro(rawIntro))
 
     return `${bannerHtml}<section class="wrapper mb-15 lg:mb-25"><div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-8 text-primary before:content-[''] before:absolute before:bg-accent before:h-1 before:w-20 before:bottom-4 before:left-1/2 before:-translate-x-1/2">${form.title}</h2></div><div class="text-intro text-justify space-y-1 lg:space-y-2 mb-10 lg:mb-15">${cleanedIntro}</div>${packagesHtml}${whatsappHtml}${termsHtml}</section>`
   }
@@ -546,7 +590,12 @@ export default function SingleEdit() {
         banner_mb: form.banner_mb.trim(),
         whatsapp_phone: whatsappEnabled ? form.whatsapp_phone.trim() : '',
         whatsapp_text: whatsappEnabled ? form.whatsapp_text.trim() : '',
-        packages: JSON.stringify(form.packages),
+        packages: JSON.stringify({
+          title: form.package_title.trim(),
+          col1: form.package_col1.trim(),
+          col2: form.package_col2.trim(),
+          items: form.packages,
+        }),
         terms: form.terms.trim(),
       }
 
@@ -890,6 +939,51 @@ export default function SingleEdit() {
                 <span>➕</span>
                 <span>添加檢查項目</span>
               </button>
+            </div>
+
+            {/* 價目表主標題與兩欄欄位自定義標題 */}
+            <div className="bg-white/80 p-3.5 rounded-lg border border-emerald-200/80 space-y-2">
+              <span className="text-xs font-bold text-emerald-900 block">
+                🏷️ 價目表標題與欄位名稱自定義
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    價目表主標題
+                  </label>
+                  <input
+                    type="text"
+                    value={form.package_title}
+                    onChange={(e) => updateField('package_title', e.target.value)}
+                    placeholder={`留空預設：${form.title || '二人同行'}`}
+                    className="w-full px-3 py-1.5 text-xs bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    左欄標題 (預設: 項目)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.package_col1}
+                    onChange={(e) => updateField('package_col1', e.target.value)}
+                    placeholder="項目"
+                    className="w-full px-3 py-1.5 text-xs bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    右欄標題 (預設: 二人同行)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.package_col2}
+                    onChange={(e) => updateField('package_col2', e.target.value)}
+                    placeholder="二人同行 (或: 優惠價 / 三人同行)"
+                    className="w-full px-3 py-1.5 text-xs bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                </div>
+              </div>
             </div>
 
             {form.packages.length === 0 ? (
