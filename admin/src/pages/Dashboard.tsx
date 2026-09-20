@@ -61,10 +61,34 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.78',
+    date: '2026-09-20 15:05:00',
+    icon: '🚀',
+    latest: true,
+    changes: `🚀 單頁與廣告營銷專題落地頁（Campaign Landing Page）全面重構升級
+
+📋 目錄與路徑架構
+• 🌐 根目錄與子欄目掛載：欄目下拉選單首項提供「根目錄 / (直接作為頂級頁面)」，支援頂級專題（如 /twoperson_discount）與子欄目專題（如 /campaign/twoperson_discount）靈活歸屬
+• 🏷️ 專題自定義別名 (Slug)：支援自定義英文短鏈（如 twoperson_discount），未填寫時自動以自增 ID 兜底（如 /campaign/1）
+• 📋 列表專屬【所屬目錄 / 訪問路徑】列：Singles 列表即時展示完整前台路徑，並提供一鍵複製 API 端點按鈕
+• 📑 一鍵複製專題：新增專題一鍵克隆為草稿副本功能（POST /admin/singles/:id/copy），營銷推廣快速複製上線
+
+🎨 落地頁結構化營銷配置
+• 🖼️ 雙端響應式首圖 Banner：支持獨立配置 PC 寬屏圖與手機豎屏圖，前台自動編譯為 WebP/AVIF <picture> 標籤
+• 💰 套餐價目動態清單：文案人員無需手寫複雜 HTML/Table 代碼，點擊「添加項目」自動生成帶圓角漸變的高質感價目卡片
+• 💬 WhatsApp 預約轉化按鈕：一鍵配置 WhatsApp 號碼與預填諮詢文字，自動生成標準轉化鏈接
+• 📋 條款及細則 (T&C)：多行文本每行一條，自動渲染規範編號清單
+• 🔍 SEO TDK 與 Google SERP 即時預覽卡片：標題、關鍵字、描述字符計數與搜尋引擎真實展示效果預覽
+
+🔧 後端與數據庫 (D1 & API)
+• 遷移 0006_single_landing_page.sql：ay_single 表新增 filename、banner_pc、banner_mb、whatsapp_phone、whatsapp_text、packages、terms 欄位
+• API 智能查詢：GET /api/v1/singles/:param 支援按 filename（Slug）、id、或原有 scode 三重相容查詢`,
+  },
+  {
     version: 'v1.9.77',
     date: '2026-09-16 10:35:00',
     icon: '⚡',
-    latest: true,
+    latest: false,
     changes: `⚡ 免費配額保護與架構治理優化
 
 📋 變更內容

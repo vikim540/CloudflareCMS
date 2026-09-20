@@ -449,9 +449,9 @@ app.get('/api/v1/contents/:idOrSlug', async (c) => {
 // ===== 前台公開接口 - 擴展模塊 =====
 app.get('/api/v1/singles', async (c) => extraService.handleListSingles(siteDB(c)));
 
-app.get('/api/v1/singles/:scode', async (c) => {
-  const scode = c.req.param('scode');
-  return extraService.handleSingleDetail(siteDB(c), scode);
+app.get('/api/v1/singles/:param', async (c) => {
+  const param = c.req.param('param');
+  return extraService.handleSingleDetail(siteDB(c), param);
 });
 
 app.get('/api/v1/links', async (c) => {
@@ -1150,6 +1150,13 @@ app.delete('/api/v1/admin/singles/:id', async (c) => {
   if (!claims) return err('未授權', 2002);
   const id = Number(c.req.param('id')) || 0;
   return extraService.handleDeleteSingle(siteDB(c), id);
+});
+
+app.post('/api/v1/admin/singles/:id/copy', async (c) => {
+  const claims = await requireAuth(c);
+  if (!claims) return err('未授權', 2002);
+  const id = Number(c.req.param('id')) || 0;
+  return extraService.handleCopySingle(siteDB(c), id);
 });
 
 // ===== 後台管理接口 - 友情連結 =====

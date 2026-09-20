@@ -23,6 +23,7 @@ export interface Category {
   scode: string
   pcode: string
   status: string
+  filename?: string
   children?: Category[]
 }
 

@@ -48,7 +48,22 @@ export async function handleAdminGetSingle(db: D1Database, id: number): Promise<
 /** 新增單頁 */
 export async function handleCreateSingle(
   db: D1Database,
-  body: { scode?: string; title?: string; keywords?: string; description?: string; content?: string; sorting?: number; status?: string },
+  body: {
+    scode?: string;
+    title?: string;
+    keywords?: string;
+    description?: string;
+    content?: string;
+    sorting?: number;
+    status?: string;
+    filename?: string;
+    banner_pc?: string;
+    banner_mb?: string;
+    whatsapp_phone?: string;
+    whatsapp_text?: string;
+    packages?: string;
+    terms?: string;
+  },
 ): Promise<Response> {
   const title = body.title;
   if (!title) return err('缺少 title 參數', 1001);
@@ -57,7 +72,7 @@ export async function handleCreateSingle(
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
 
   const result = await db.prepare(
-    "INSERT INTO ay_single (scode, title, keywords, description, content, sorting, status, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO ay_single (scode, title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     body.scode || '',
     title,
@@ -66,6 +81,13 @@ export async function handleCreateSingle(
     body.content || '',
     sorting,
     body.status || '1',
+    body.filename || '',
+    body.banner_pc || '',
+    body.banner_mb || '',
+    body.whatsapp_phone || '',
+    body.whatsapp_text || '',
+    body.packages || '',
+    body.terms || '',
     now,
     now,
   ).run();
@@ -83,7 +105,10 @@ export async function handleUpdateSingle(
   body: Record<string, unknown>,
 ): Promise<Response> {
   const now = nowStr();
-  const allowedFields = ['scode', 'title', 'keywords', 'description', 'content', 'sorting', 'status'];
+  const allowedFields = [
+    'scode', 'title', 'keywords', 'description', 'content', 'sorting', 'status',
+    'filename', 'banner_pc', 'banner_mb', 'whatsapp_phone', 'whatsapp_text', 'packages', 'terms',
+  ];
 
   const sets: string[] = [];
   const binds: (string | number)[] = [];
@@ -110,6 +135,42 @@ export async function handleUpdateSingle(
   return ok('單頁更新成功');
 }
 
+/** 複製單頁 (一鍵克隆為新草稿) */
+export async function handleCopySingle(db: D1Database, id: number): Promise<Response> {
+  const source = await db.prepare('SELECT * FROM ay_single WHERE id = ?').bind(id).first<Record<string, unknown>>();
+  if (!source) return notFound('單頁不存在');
+
+  const now = nowStr();
+  const newTitle = `${source.title || ''} (副本)`;
+  const newFilename = source.filename ? `${source.filename}-copy` : '';
+
+  const result = await db.prepare(
+    `INSERT INTO ay_single (scode, title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime)
+     VALUES (?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    source.scode || '',
+    newTitle,
+    source.keywords || '',
+    source.description || '',
+    source.content || '',
+    Number(source.sorting || 255) + 1,
+    newFilename,
+    source.banner_pc || '',
+    source.banner_mb || '',
+    source.whatsapp_phone || '',
+    source.whatsapp_text || '',
+    source.packages || '',
+    source.terms || '',
+    now,
+    now,
+  ).run();
+
+  if (result.meta.changes > 0) {
+    return okData({ id: result.meta.last_row_id }, '單頁複製成功');
+  }
+  return err('單頁複製失敗', 1005);
+}
+
 /** 刪除單頁 */
 export async function handleDeleteSingle(db: D1Database, id: number): Promise<Response> {
   await db.prepare('DELETE FROM ay_single WHERE id = ?').bind(id).run();
@@ -124,11 +185,19 @@ export async function handleListSingles(db: D1Database): Promise<Response> {
   return okData(result.results, '成功');
 }
 
-/** 公開單頁詳情 (按 scode 查詢) */
-export async function handleSingleDetail(db: D1Database, scode: string): Promise<Response> {
-  const row = await db.prepare(
-    "SELECT * FROM ay_single WHERE scode = ? AND status = '1' LIMIT 1",
-  ).bind(scode).first();
+/** 公開單頁詳情 (支援按 filename slug / id / scode 查詢) */
+export async function handleSingleDetail(db: D1Database, param: string): Promise<Response> {
+  const isNumeric = /^\d+$/.test(param);
+  let row = null;
+  if (isNumeric) {
+    row = await db.prepare(
+      "SELECT * FROM ay_single WHERE (id = ? OR scode = ? OR filename = ?) AND status = '1' LIMIT 1",
+    ).bind(Number(param), param, param).first();
+  } else {
+    row = await db.prepare(
+      "SELECT * FROM ay_single WHERE (filename = ? OR scode = ?) AND status = '1' LIMIT 1",
+    ).bind(param, param).first();
+  }
   if (!row) return notFound('單頁不存在');
   return okData(row, '成功');
 }
