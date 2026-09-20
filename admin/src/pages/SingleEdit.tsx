@@ -202,6 +202,9 @@ export default function SingleEdit() {
   const [activeTab, setActiveTab] = useState<'basic' | 'visual' | 'seo'>('basic')
   const [copied, setCopied] = useState(false)
 
+  // WhatsApp 轉化按鈕開關（預設關閉，摺疊不渲染數據）
+  const [whatsappEnabled, setWhatsappEnabled] = useState(false)
+
   // 媒體庫選擇器開關
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'quill' | 'banner_pc' | 'banner_mb' | null>(null)
 
@@ -289,6 +292,9 @@ export default function SingleEdit() {
           packages: parsedPackages,
           terms: data.terms ?? '',
         })
+
+        // 若原數據有 WhatsApp 號碼則自動開啟 Switch，否則預設保持關閉摺疊
+        setWhatsappEnabled(Boolean(data.whatsapp_phone && data.whatsapp_phone.trim()))
 
         // 若 Quill 已初始化，填充內容
         if (quillRef.current && data.content) {
@@ -471,7 +477,7 @@ export default function SingleEdit() {
   /** 將結構化字段組裝為現代化 HTML */
   const compileFullHtml = (rawIntro: string): string => {
     const hasLandingElements =
-      form.banner_pc || form.banner_mb || form.packages.length > 0 || form.whatsapp_phone || form.terms.trim()
+      form.banner_pc || form.banner_mb || form.packages.length > 0 || (whatsappEnabled && form.whatsapp_phone.trim()) || form.terms.trim()
 
     // 如果沒有使用任何落地頁組件，直接返回純富文本
     if (!hasLandingElements) {
@@ -491,7 +497,7 @@ export default function SingleEdit() {
         }</ol></div></div>`
       : ''
 
-    const whatsappHtml = form.whatsapp_phone.trim()
+    const whatsappHtml = (whatsappEnabled && form.whatsapp_phone.trim())
       ? `<div class="text-center mb-5 lg:mb-10"><a href="https://api.whatsapp.com/send/?phone=${form.whatsapp_phone.trim()}&text=${encodeURIComponent(form.whatsapp_text.trim() || `你好，我想查詢【${displayTitle}】`)}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${form.whatsapp_btn.trim() || '立即預約查詢'}</span></a></div>`
       : ''
 
@@ -538,8 +544,8 @@ export default function SingleEdit() {
         sorting: Number(form.sorting) || 255,
         banner_pc: form.banner_pc.trim(),
         banner_mb: form.banner_mb.trim(),
-        whatsapp_phone: form.whatsapp_phone.trim(),
-        whatsapp_text: form.whatsapp_text.trim(),
+        whatsapp_phone: whatsappEnabled ? form.whatsapp_phone.trim() : '',
+        whatsapp_text: whatsappEnabled ? form.whatsapp_text.trim() : '',
         packages: JSON.stringify(form.packages),
         terms: form.terms.trim(),
       }
@@ -925,36 +931,95 @@ export default function SingleEdit() {
 
           {/* 4. WhatsApp 諮詢轉化按鈕配置 */}
           <div className="border border-indigo-100 bg-indigo-50/20 rounded-xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-indigo-100/80 pb-2.5">
-              <h3 className="text-sm font-bold text-indigo-950 flex items-center gap-2">
-                <span>💬</span>
-                <span>WhatsApp 預約轉化按鈕配置</span>
-              </h3>
-              <span className="text-xs text-indigo-600">留空號碼則不渲染預約按鈕</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">💬</span>
+                <div>
+                  <h3 className="text-sm font-bold text-indigo-950">
+                    WhatsApp 預約轉化按鈕配置
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {whatsappEnabled
+                      ? '已開啟：前台將渲染預約諮詢按鈕'
+                      : '已關閉：前台不會渲染 WhatsApp 轉化按鈕及代碼'}
+                  </p>
+                </div>
+              </div>
+
+              {/* 控制 Switch */}
+              <div className="flex items-center gap-2.5">
+                <span className={cn('text-xs font-medium transition-colors', whatsappEnabled ? 'text-indigo-600 font-semibold' : 'text-muted-foreground')}>
+                  {whatsappEnabled ? '開啟' : '關閉'}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={whatsappEnabled}
+                  onClick={() => setWhatsappEnabled(!whatsappEnabled)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1',
+                    whatsappEnabled ? 'bg-indigo-600' : 'bg-gray-300'
+                  )}
+                  title={whatsappEnabled ? '點擊關閉 WhatsApp 按鈕' : '點擊開啟 WhatsApp 按鈕'}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                      whatsappEnabled ? 'translate-x-5' : 'translate-x-0'
+                    )}
+                  />
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">WhatsApp 號碼</label>
-                <input
-                  type="text"
-                  value={form.whatsapp_phone}
-                  onChange={(e) => updateField('whatsapp_phone', e.target.value)}
-                  placeholder="如: 85267462547"
-                  className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
+            {/* 折疊區域：僅在開啟時展開渲染數據 */}
+            {whatsappEnabled && (
+              <div className="space-y-4 pt-3 border-t border-indigo-100/80">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      WhatsApp 號碼 <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={form.whatsapp_phone}
+                      onChange={(e) => updateField('whatsapp_phone', e.target.value)}
+                      placeholder="如: 85267462547"
+                      className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-mono"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">預填諮詢文字 (用戶點擊時自動帶出)</label>
+                    <input
+                      type="text"
+                      value={form.whatsapp_text}
+                      onChange={(e) => updateField('whatsapp_text', e.target.value)}
+                      placeholder={`如: 你好，我想查詢【${form.title || '二人同行腸胃鏡檢查'}】`}
+                      className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">按鈕顯示文案</label>
+                    <input
+                      type="text"
+                      value={form.whatsapp_btn}
+                      onChange={(e) => updateField('whatsapp_btn', e.target.value)}
+                      placeholder="立即預約查詢"
+                      className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex items-center pt-5">
+                    <span className="text-xs text-muted-foreground">
+                      💡 提示：用戶點擊按鈕將透過 WhatsApp 直達客服，並自動代入上方預填文字。
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">預填諮詢文字 (用戶點擊時自動帶出)</label>
-                <input
-                  type="text"
-                  value={form.whatsapp_text}
-                  onChange={(e) => updateField('whatsapp_text', e.target.value)}
-                  placeholder={`如: 你好，我想查詢【${form.title || '二人同行腸胃鏡檢查'}】`}
-                  className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           {/* 5. 條款及細則 (T&C) */}
