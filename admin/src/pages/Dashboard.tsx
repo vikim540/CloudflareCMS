@@ -61,10 +61,24 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.79',
+    date: '2026-09-20 15:30:00',
+    icon: '✨',
+    latest: true,
+    changes: `✨ 專題落地頁體驗精修、SEO 標題獨立與媒體庫瀑布流
+
+📋 功能精修與排版鬆綁
+• 🏷️ 專題標題與 SEO TDK 獨立：新增 seo_title 獨立字段，內部後台管理名稱（如「二人同行」）與前台 SEO TDK 頁面標題（如「二人同行腸胃鏡檢查計劃｜胃鏡及大腸鏡檢查 - 香港內視鏡中心」）完全分離，兼顧後台簡潔易記與前台精準 SEO
+• 📁 專題欄目下拉選單精準過濾：欄目樹全面接入 ?mcode=1 模型過濾，徹底排除新聞/文章類別（mcode=2），僅展示單頁/專題模型與根目錄，防止文員混淆誤選
+• 📐 列表緊湊排版鬆綁：移除冗餘的獨立排序權重列，操作按鈕設置 whitespace-nowrap 杜絕文字豎排折行，擴大操作空間
+• 🖼️ 媒體庫選擇器瀑布流響應式自適應：MediaPickerModal 全面升級為高度 auto 瀑布流（Masonry Columns）多列排版，PC 寬屏 Banner 與手機長圖等比例完整展示，徹底杜絕正方形縮圖裁切導致無法辨識問題
+• ⚡ 排序權重自動兜底：專題頁面排序權重預設 255，支持同目錄多專題時手動微調，後台操作更加直觀極簡`,
+  },
+  {
     version: 'v1.9.78',
     date: '2026-09-20 15:05:00',
     icon: '🚀',
-    latest: true,
+    latest: false,
     changes: `🚀 單頁與廣告營銷專題落地頁（Campaign Landing Page）全面重構升級
 
 📋 目錄與路徑架構

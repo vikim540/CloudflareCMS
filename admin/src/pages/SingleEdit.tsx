@@ -98,6 +98,7 @@ interface PackageItem {
 interface Single {
   id: number
   title: string
+  seo_title?: string
   scode: string
   content: string
   keywords: string
@@ -116,6 +117,7 @@ interface Single {
 /** 表單數據結構 */
 interface FormData {
   title: string
+  seo_title: string
   scode: string
   filename: string
   content: string
@@ -136,13 +138,14 @@ interface FormData {
 
 const EMPTY_FORM: FormData = {
   title: '',
+  seo_title: '',
   scode: '0',
   filename: '',
   content: '',
   keywords: '',
   description: '',
   status: '1',
-  sorting: 1,
+  sorting: 255,
   banner_pc: '',
   banner_mb: '',
   banner_alt: '',
@@ -232,10 +235,10 @@ export default function SingleEdit() {
     })
   }, [uploadSingle, clearImgError])
 
-  /** 載入欄目樹（使用白名單端點 /all） */
+  /** 載入專題欄目樹（僅過濾單頁/專題模型 mcode=1） */
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await api.get<Category[]>('/admin/sorts/all')
+      const res = await api.get<Category[]>('/admin/sorts/all?mcode=1')
       setCategories(res.data ?? [])
     } catch {
       /* 忽略欄目載入錯誤 */
@@ -269,13 +272,14 @@ export default function SingleEdit() {
 
         setForm({
           title: data.title ?? '',
+          seo_title: data.seo_title ?? '',
           scode: data.scode ?? '0',
           filename: data.filename ?? '',
           content: data.content ?? '',
           keywords: data.keywords ?? '',
           description: data.description ?? '',
           status: data.status === '1' ? '1' : '0',
-          sorting: data.sorting ?? 1,
+          sorting: data.sorting ?? 255,
           banner_pc: data.banner_pc ?? '',
           banner_mb: data.banner_mb ?? '',
           banner_alt: data.title ?? '',
@@ -474,10 +478,11 @@ export default function SingleEdit() {
       return cleanupQuillHtml(rawIntro)
     }
 
+    const displayTitle = form.seo_title || form.title
     const bannerHtml = (form.banner_pc || form.banner_mb)
       ? `<section class="mb-10 lg:mb-20"><div class="banner-wrapper lg:wrapper"><picture>${
           form.banner_pc ? `<source media="(min-width: 1024px)" srcset="${form.banner_pc}">` : ''
-        }<img src="${form.banner_mb || form.banner_pc}" alt="${form.title}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
+        }<img src="${form.banner_mb || form.banner_pc}" alt="${displayTitle}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
       : ''
 
     const packagesHtml = form.packages.length > 0
@@ -487,7 +492,7 @@ export default function SingleEdit() {
       : ''
 
     const whatsappHtml = form.whatsapp_phone.trim()
-      ? `<div class="text-center mb-5 lg:mb-10"><a href="https://api.whatsapp.com/send/?phone=${form.whatsapp_phone.trim()}&text=${encodeURIComponent(form.whatsapp_text.trim() || `你好，我想查詢【${form.title}】`)}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${form.whatsapp_btn.trim() || '立即預約查詢'}</span></a></div>`
+      ? `<div class="text-center mb-5 lg:mb-10"><a href="https://api.whatsapp.com/send/?phone=${form.whatsapp_phone.trim()}&text=${encodeURIComponent(form.whatsapp_text.trim() || `你好，我想查詢【${displayTitle}】`)}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${form.whatsapp_btn.trim() || '立即預約查詢'}</span></a></div>`
       : ''
 
     const termsHtml = form.terms.trim()
@@ -523,13 +528,14 @@ export default function SingleEdit() {
     try {
       const payload = {
         title: form.title.trim(),
+        seo_title: form.seo_title.trim(),
         scode: form.scode || '0',
         filename: form.filename.trim(),
         content: finalContent,
         keywords: form.keywords.trim(),
         description: form.description.trim(),
         status: form.status,
-        sorting: Number(form.sorting) || 1,
+        sorting: Number(form.sorting) || 255,
         banner_pc: form.banner_pc.trim(),
         banner_mb: form.banner_mb.trim(),
         whatsapp_phone: form.whatsapp_phone.trim(),
@@ -655,14 +661,15 @@ export default function SingleEdit() {
           {/* 標題 */}
           <div>
             <label className="block text-sm font-medium mb-1.5">
-              專題標題 <span className="text-destructive">*</span>
+              專題管理名稱（內部標題） <span className="text-destructive">*</span>
+              <span className="text-xs font-normal text-muted-foreground ml-2">用於後台列表管理與辨識，建議簡潔好記</span>
             </label>
             <input
               type="text"
               value={form.title}
               onChange={(e) => updateField('title', e.target.value)}
               className="w-full px-4 py-2.5 text-sm bg-gray-50/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20 focus:bg-white"
-              placeholder="例如：二人同行腸胃鏡檢查計劃｜胃鏡及大腸鏡檢查"
+              placeholder="例如：二人同行"
               required
             />
           </div>
@@ -751,13 +758,14 @@ export default function SingleEdit() {
             <div>
               <label className="block text-sm font-medium mb-1.5">
                 排序權重
-                <span className="text-xs font-normal text-muted-foreground ml-2">數字越小越靠前</span>
+                <span className="text-xs font-normal text-muted-foreground ml-2">預設 255（若同目錄下有多個專題需排序時手動調整）</span>
               </label>
               <input
                 type="number"
                 value={form.sorting}
                 onChange={(e) => updateField('sorting', Number(e.target.value))}
                 className="w-full px-4 py-2.5 text-sm bg-gray-50/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20 focus:bg-white"
+                placeholder="255"
               />
             </div>
           </div>
@@ -980,12 +988,34 @@ export default function SingleEdit() {
                 {pathInfo.fullApiUrl}
               </div>
               <div className="text-lg text-blue-800 font-medium hover:underline cursor-pointer line-clamp-1">
-                {form.title || '頁面標題預覽'}
+                {form.seo_title || form.title || '頁面標題預覽'}
               </div>
               <div className="text-xs text-gray-600 line-clamp-2">
                 {form.description || '請輸入頁面描述，這段內容將顯示在 Google 搜尋結果摘要中，幫助吸引用戶點擊...'}
               </div>
             </div>
+          </div>
+
+          {/* SEO 頁面標題 (Title) */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium">
+                SEO 頁面標題 (Title)
+                <span className="text-xs font-normal text-muted-foreground ml-2">
+                  前台網頁 &lt;title&gt; 與搜尋引擎展示標題，留空自動使用專題管理名稱
+                </span>
+              </label>
+              <span className={cn('text-xs font-mono', form.seo_title.length > 60 ? 'text-amber-600 font-bold' : 'text-muted-foreground')}>
+                {form.seo_title.length > 0 ? `當前: ${form.seo_title.length} 字` : '使用管理名稱'}
+              </span>
+            </div>
+            <input
+              type="text"
+              value={form.seo_title}
+              onChange={(e) => updateField('seo_title', e.target.value)}
+              className="w-full px-4 py-2.5 text-sm bg-gray-50/50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20 focus:bg-white"
+              placeholder="例如：二人同行腸胃鏡檢查計劃｜胃鏡及大腸鏡檢查 - 香港內視鏡中心"
+            />
           </div>
 
           {/* SEO 關鍵字 (Keywords) */}

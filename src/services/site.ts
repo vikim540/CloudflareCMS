@@ -445,8 +445,10 @@ CREATE TABLE IF NOT EXISTS ay_extfield (
   description TEXT, value TEXT, scode TEXT, required TEXT DEFAULT '0', sorting INTEGER DEFAULT 255, status TEXT DEFAULT '1'
 );
 CREATE TABLE IF NOT EXISTS ay_single (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, scode TEXT, title TEXT, keywords TEXT, description TEXT,
-  content TEXT, sorting INTEGER DEFAULT 255, status TEXT DEFAULT '1', createtime TEXT, updatetime TEXT
+  id INTEGER PRIMARY KEY AUTOINCREMENT, scode TEXT, title TEXT, seo_title TEXT DEFAULT '', keywords TEXT, description TEXT,
+  content TEXT, sorting INTEGER DEFAULT 255, status TEXT DEFAULT '1', filename TEXT DEFAULT '', banner_pc TEXT DEFAULT '',
+  banner_mb TEXT DEFAULT '', whatsapp_phone TEXT DEFAULT '', whatsapp_text TEXT DEFAULT '', packages TEXT DEFAULT '', terms TEXT DEFAULT '',
+  createtime TEXT, updatetime TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_model (
   id INTEGER PRIMARY KEY AUTOINCREMENT, mcode TEXT, name TEXT, type TEXT DEFAULT '2', urlname TEXT,

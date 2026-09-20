@@ -252,7 +252,7 @@ export default function MediaPickerModal({
               {onUpload && <p className="text-xs mt-1">點擊上方「上傳圖片」按鈕添加</p>}
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+            <div className="columns-2 sm:columns-3 md:columns-4 gap-3 space-y-3">
               {filteredFiles.map((file) => {
                 const url = getImageUrl(file.key)
                 const fileName = file.key.split('/').pop() || file.key
@@ -266,15 +266,15 @@ export default function MediaPickerModal({
                         onClose()
                       }
                     }}
-                    className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden hover:border-primary hover:shadow-md transition-all text-left group"
+                    className="break-inside-avoid mb-3 w-full bg-white rounded-lg border-2 border-gray-200 overflow-hidden hover:border-primary hover:shadow-md transition-all text-left group block shadow-sm"
                     title={fileName}
                   >
-                    <div className="aspect-square bg-gray-50 flex items-center justify-center overflow-hidden">
+                    <div className="bg-gray-50 flex items-center justify-center overflow-hidden min-h-[60px]">
                       {url ? (
                         <img
                           src={url}
                           alt={fileName}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          className="w-full h-auto object-contain group-hover:scale-[1.02] transition-transform block"
                           loading="lazy"
                           decoding="async"
                           onError={(e) => {
@@ -282,11 +282,11 @@ export default function MediaPickerModal({
                           }}
                         />
                       ) : (
-                        <span className="text-3xl">🖼️</span>
+                        <span className="text-3xl p-4">🖼️</span>
                       )}
                     </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium truncate">{fileName}</p>
+                    <div className="p-2 border-t border-gray-100 bg-white">
+                      <p className="text-xs font-medium truncate text-slate-700">{fileName}</p>
                     </div>
                   </button>
                 )

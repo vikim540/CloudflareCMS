@@ -11,6 +11,7 @@ type SingleStatus = '1' | '0'
 interface Single {
   id: number
   title: string
+  seo_title?: string
   scode: string
   filename?: string
   content: string
@@ -57,13 +58,12 @@ export default function Singles() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [copyingId, setCopyingId] = useState<number | null>(null)
-  const [sortSaving, setSortSaving] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<number | null>(null)
 
-  /** 載入欄目樹（使用白名單端點 /all） */
+  /** 載入專題欄目樹（僅過濾單頁/專題模型 mcode=1） */
   useEffect(() => {
     api
-      .get<Category[]>('/admin/sorts/all')
+      .get<Category[]>('/admin/sorts/all?mcode=1')
       .then((res) => setCategories(res.data ?? []))
       .catch(() => {})
   }, [])
@@ -115,19 +115,6 @@ export default function Singles() {
     }
   }
 
-  /** inline 修改排序 */
-  const handleSortSave = async (id: number, value: number) => {
-    setSortSaving(id)
-    try {
-      await api.put(`/admin/singles/${id}`, { sorting: value })
-      await fetchSingles()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '排序更新失敗')
-    } finally {
-      setSortSaving(null)
-    }
-  }
-
   /** 複製 API 連結 */
   const handleCopyApi = (single: Single) => {
     const slug = single.filename ? single.filename : String(single.id)
@@ -145,6 +132,7 @@ export default function Singles() {
     return singles.filter(
       (s) =>
         s.title.toLowerCase().includes(q) ||
+        (s.seo_title && s.seo_title.toLowerCase().includes(q)) ||
         (s.filename && s.filename.toLowerCase().includes(q)) ||
         (s.scode && s.scode.includes(q))
     )
@@ -170,7 +158,7 @@ export default function Singles() {
           />
           <Link
             to="/singles/new"
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm font-medium shadow-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:opacity-90 transition-opacity text-sm font-medium shadow-sm whitespace-nowrap shrink-0"
           >
             <span>➕</span>
             <span>新增專題</span>
@@ -207,18 +195,17 @@ export default function Singles() {
       {!loading && singles.length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[760px]">
               <thead>
                 <tr className="border-b bg-gray-50/70">
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground w-16">ID</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">專題標題</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground">所屬目錄 / 訪問路徑</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground w-20">排序</th>
-                  <th className="px-4 py-3 text-left font-semibold text-muted-foreground w-24">狀態</th>
-                  <th className="px-4 py-3 text-right font-semibold text-muted-foreground w-44">操作</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-muted-foreground w-16">ID</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-muted-foreground min-w-[200px]">專題名稱</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-muted-foreground min-w-[240px]">所屬目錄 / 訪問路徑</th>
+                  <th className="px-5 py-3.5 text-left font-semibold text-muted-foreground w-24">狀態</th>
+                  <th className="px-5 py-3.5 text-right font-semibold text-muted-foreground w-52 whitespace-nowrap">操作</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {filteredSingles.map((item) => {
                   const badge = getStatusBadge(item.status)
                   const isRoot = !item.scode || item.scode === '0'
@@ -230,96 +217,86 @@ export default function Singles() {
                   return (
                     <tr
                       key={item.id}
-                      className="border-b last:border-0 hover:bg-slate-50/60 transition-colors"
+                      className="hover:bg-slate-50/70 transition-colors"
                     >
-                      <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{item.id}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4 text-muted-foreground font-mono text-xs">{item.id}</td>
+                      <td className="px-5 py-4">
                         <Link
                           to={`/singles/${item.id}`}
-                          className="font-medium text-foreground hover:text-primary transition-colors line-clamp-1"
+                          className="font-medium text-foreground hover:text-primary transition-colors block"
                         >
-                          {item.title}
+                          <div className="font-semibold text-slate-900 line-clamp-1">{item.title}</div>
+                          {item.seo_title && item.seo_title !== item.title && (
+                            <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5" title={item.seo_title}>
+                              SEO: {item.seo_title}
+                            </div>
+                          )}
                         </Link>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             {isRoot ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 font-medium">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-700 font-medium whitespace-nowrap">
                                 <span>🌐</span>
                                 <span>根目錄 (/)</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 font-medium">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 font-medium whitespace-nowrap">
                                 <span>📁</span>
                                 <span>{category ? category.name : `欄目 ${item.scode}`}</span>
                               </span>
                             )}
-                            <code className="text-xs text-slate-500 font-mono">{fullPath}</code>
+                            <code className="text-xs text-slate-600 font-mono font-medium">{fullPath}</code>
                           </div>
-                          <div className="flex items-center gap-2 text-xs">
+                          <div>
                             <button
                               type="button"
                               onClick={() => handleCopyApi(item)}
-                              className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 font-mono transition-colors"
-                              title="複製 API 端點"
+                              className="text-xs text-blue-600 hover:text-blue-800 font-mono transition-colors inline-flex items-center gap-1"
+                              title="點擊複製完整 API 調用地址"
                             >
-                              <span>{copiedId === item.id ? '✅ 已複製' : '📋 API: /api/v1/singles/' + slug}</span>
+                              <span>{copiedId === item.id ? '✅ 已複製端點' : '📋 API: /api/v1/singles/' + slug}</span>
                             </button>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="number"
-                          min={1}
-                          defaultValue={item.sorting ?? 1}
-                          disabled={sortSaving === item.id}
-                          onBlur={(e) => {
-                            const val = Number(e.target.value)
-                            if (val !== (item.sorting ?? 1)) handleSortSave(item.id, val)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur()
-                          }}
-                          className="w-16 px-2 py-1 border rounded-md text-xs text-center focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                          title="數字越小越靠前"
-                        />
-                      </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <span
                           className={cn(
-                            'inline-block px-2.5 py-0.5 rounded-full text-xs font-medium',
+                            'inline-block px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap',
                             badge.className
                           )}
                         >
                           {badge.label}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="px-5 py-4 text-right whitespace-nowrap">
+                        <div className="inline-flex items-center justify-end gap-2">
                           <Link
                             to={`/singles/${item.id}`}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                            title="編輯"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200/70 transition-colors whitespace-nowrap shrink-0 shadow-2xs"
+                            title="編輯此專題"
                           >
                             <span>✏️</span>
                             <span>編輯</span>
                           </Link>
                           <button
+                            type="button"
                             onClick={() => handleCopy(item.id)}
                             disabled={copyingId === item.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg border border-emerald-200/70 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 shadow-2xs"
                             title="一鍵複製此專題"
                           >
                             <span>{copyingId === item.id ? '⏳' : '📑'}</span>
                             <span>複製</span>
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDelete(item.id)}
                             disabled={actionLoading === item.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50"
-                            title="刪除"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg border border-red-200/70 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 shadow-2xs"
+                            title="刪除此專題"
                           >
                             <span>🗑️</span>
                             <span>刪除</span>

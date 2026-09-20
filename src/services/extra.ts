@@ -51,6 +51,7 @@ export async function handleCreateSingle(
   body: {
     scode?: string;
     title?: string;
+    seo_title?: string;
     keywords?: string;
     description?: string;
     content?: string;
@@ -72,10 +73,11 @@ export async function handleCreateSingle(
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
 
   const result = await db.prepare(
-    "INSERT INTO ay_single (scode, title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     body.scode || '',
     title,
+    body.seo_title || '',
     body.keywords || '',
     body.description || '',
     body.content || '',
@@ -106,7 +108,7 @@ export async function handleUpdateSingle(
 ): Promise<Response> {
   const now = nowStr();
   const allowedFields = [
-    'scode', 'title', 'keywords', 'description', 'content', 'sorting', 'status',
+    'scode', 'title', 'seo_title', 'keywords', 'description', 'content', 'sorting', 'status',
     'filename', 'banner_pc', 'banner_mb', 'whatsapp_phone', 'whatsapp_text', 'packages', 'terms',
   ];
 
@@ -145,11 +147,12 @@ export async function handleCopySingle(db: D1Database, id: number): Promise<Resp
   const newFilename = source.filename ? `${source.filename}-copy` : '';
 
   const result = await db.prepare(
-    `INSERT INTO ay_single (scode, title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime)
-     VALUES (?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     source.scode || '',
     newTitle,
+    source.seo_title || '',
     source.keywords || '',
     source.description || '',
     source.content || '',
