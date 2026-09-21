@@ -47,6 +47,9 @@ interface Single {
   whatsapp_btn?: string
   packages?: unknown
   terms?: unknown
+  banner?: { pc?: string; mobile?: string; alt?: string; title?: string; enabled?: boolean }
+  pricing_table?: { title?: string; col1_name?: string; col2_name?: string; items?: PackageItem[]; enabled?: boolean }
+  whatsapp?: { phone?: string; text?: string; button_text?: string; url?: string; enabled?: boolean }
   terms_info?: { enabled?: boolean; count?: number; items?: string[] }
   terms_list?: string[]
 }
@@ -217,9 +220,10 @@ export default function SingleEdit() {
         let parsedCol1 = '項目'
         let parsedCol2 = '二人同行'
 
-        if (data.packages) {
+        const rawPackagesSource = data.pricing_table || data.packages
+        if (rawPackagesSource) {
           try {
-            const raw = typeof data.packages === 'string' ? JSON.parse(data.packages) : data.packages
+            const raw = typeof rawPackagesSource === 'string' ? JSON.parse(rawPackagesSource) : rawPackagesSource
             if (Array.isArray(raw)) {
               parsedPackages = (raw as unknown[]).map((p: any, idx: number) => ({
                 id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
@@ -229,8 +233,8 @@ export default function SingleEdit() {
             } else if (raw && typeof raw === 'object') {
               const r = raw as Record<string, unknown>
               parsedTitle = String(r.title ?? '')
-              parsedCol1 = String(r.col1 || '項目')
-              parsedCol2 = String(r.col2 || '二人同行')
+              parsedCol1 = String(r.col1_name || r.col1 || '項目')
+              parsedCol2 = String(r.col2_name || r.col2 || '二人同行')
               if (Array.isArray(r.items)) {
                 parsedPackages = (r.items as unknown[]).map((p: any, idx: number) => ({
                   id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
@@ -246,15 +250,25 @@ export default function SingleEdit() {
 
         const cleanIntro = extractCleanIntro(data.content ?? '')
 
-        // 容錯 terms：支援 string、string[]、terms_info.items 或 null
+        // 容錯 terms：優先讀取 terms_info.items，兼容 terms_list、string[] 與 raw string
         let parsedTerms = ''
-        if (typeof data.terms === 'string') {
-          parsedTerms = data.terms
+        if (data.terms_info && typeof data.terms_info === 'object' && Array.isArray(data.terms_info.items)) {
+          parsedTerms = (data.terms_info.items as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+        } else if (Array.isArray(data.terms_list)) {
+          parsedTerms = (data.terms_list as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
         } else if (Array.isArray(data.terms)) {
           parsedTerms = (data.terms as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
-        } else if (data.terms_info && typeof data.terms_info === 'object' && Array.isArray(data.terms_info.items)) {
-          parsedTerms = (data.terms_info.items as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+        } else if (typeof data.terms === 'string') {
+          parsedTerms = data.terms
         }
+
+        const bannerPc = safeTrim(data.banner?.pc || data.banner_pc)
+        const bannerMb = safeTrim(data.banner?.mobile || data.banner_mb)
+        const bannerAlt = safeTrim(data.banner?.alt || data.banner_alt)
+        const bannerTitle = safeTrim(data.banner?.title || data.banner_title)
+        const phone = safeTrim(data.whatsapp?.phone || data.whatsapp_phone)
+        const whatsappText = safeTrim(data.whatsapp?.text || data.whatsapp_text)
+        const whatsappBtn = safeTrim(data.whatsapp?.button_text || data.whatsapp_btn) || '立即預約查詢'
 
         setForm({
           title: safeTrim(data.title),
@@ -266,13 +280,13 @@ export default function SingleEdit() {
           description: safeTrim(data.description),
           status: data.status === '1' ? '1' : '0',
           sorting: data.sorting ?? 255,
-          banner_pc: safeTrim(data.banner_pc),
-          banner_mb: safeTrim(data.banner_mb),
-          banner_alt: safeTrim(data.banner_alt),
-          banner_title: safeTrim(data.banner_title),
-          whatsapp_phone: safeTrim(data.whatsapp_phone),
-          whatsapp_text: safeTrim(data.whatsapp_text),
-          whatsapp_btn: safeTrim(data.whatsapp_btn) || '立即預約查詢',
+          banner_pc: bannerPc,
+          banner_mb: bannerMb,
+          banner_alt: bannerAlt,
+          banner_title: bannerTitle,
+          whatsapp_phone: phone,
+          whatsapp_text: whatsappText,
+          whatsapp_btn: whatsappBtn,
           package_title: parsedTitle || safeTrim(data.title),
           package_col1: parsedCol1,
           package_col2: parsedCol2,
@@ -281,8 +295,7 @@ export default function SingleEdit() {
         })
 
         // 若原數據有 WhatsApp 號碼則自動開啟 Switch，否則預設保持關閉摺疊
-        const phoneStr = safeTrim(data.whatsapp_phone)
-        setWhatsappEnabled(Boolean(phoneStr))
+        setWhatsappEnabled(Boolean(phone))
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '載入單頁失敗'

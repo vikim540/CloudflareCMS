@@ -150,8 +150,22 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
 
   const compiledHtml = `${bannerHtml}<section class="wrapper mb-15 lg:mb-25"><div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-8 text-primary before:content-[''] before:absolute before:bg-accent before:h-1 before:w-20 before:bottom-4 before:left-1/2 before:-translate-x-1/2">${title}</h2></div><div class="text-intro text-justify space-y-1 lg:space-y-2 mb-10 lg:mb-15">${content}</div>${packagesHtml}${whatsappHtml}${termsHtml}</section>`;
 
+  // 排除外圍重複與未解析的生數據字段，全面收斂至專屬結構化對象中
+  const {
+    banner_pc: _bpc,
+    banner_mb: _bmb,
+    banner_alt: _balt,
+    banner_title: _btitle,
+    whatsapp_phone: _wphone,
+    whatsapp_text: _wtext,
+    whatsapp_btn: _wbtn,
+    packages: _pkgs,
+    terms: _tms,
+    ...cleanBaseFields
+  } = row;
+
   return {
-    ...row, // 原生所有扁平字段完全保留，向後 100% 兼容
+    ...cleanBaseFields,
     has_banner: hasBanner,
     has_pricing: hasPricing,
     has_whatsapp: hasPhone,
@@ -160,9 +174,7 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
     banner,
     pricing_table: pricingTable,
     whatsapp,
-    terms: termsRaw, // 原生純文本換行字串（100% 保證後台編輯器 <textarea> 兼容）
-    terms_list: terms, // 純字串數組
-    terms_info: termsInfo, // 結構化元數據（含 enabled 與 count）
+    terms_info: termsInfo,
     compiled_html: compiledHtml,
   };
 }
