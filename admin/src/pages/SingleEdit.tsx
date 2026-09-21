@@ -6,86 +6,7 @@ import { LoadingState } from '../components/StateDisplay'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import MediaPickerModal from '../components/MediaPickerModal'
 import { useImageUpload } from '../hooks/useImageUpload'
-import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
-import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
-import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
-import { cleanupQuillHtml, toolbarButtonCSS } from '../lib/quill/htmlCleanup'
-
-/** Quill 全局聲明 */
-declare global {
-  interface Window {
-    Quill?: {
-      new (container: HTMLElement | string, options?: Record<string, unknown>): QuillInstance
-      import: (path: string) => unknown
-      register: (blot: unknown, register?: boolean) => void
-    }
-  }
-}
-
-const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'
-const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
-
-interface QuillInstance {
-  root: HTMLElement
-  getText: () => string
-  getContents: () => unknown
-  setContents: (delta: unknown) => void
-  getSelection: (focus?: boolean) => { index: number; length: number } | null
-  getLength: () => number
-  getIndex: (blot: unknown) => number
-  insertEmbed: (index: number, type: string, value: string | Record<string, string>) => void
-  on: (event: string, callback: () => void) => void
-  clipboard: {
-    dangerouslyPasteHTML: (html: string | number, index?: number, source?: string) => void
-    addMatcher: (selector: number | string, callback: (node: Node, delta: unknown, source: string) => unknown) => void
-  }
-}
-
-let quillLoaded = false
-let quillLoading: Promise<void> | null = null
-
-function loadQuill(): Promise<void> {
-  if (window.Quill) { quillLoaded = true; return Promise.resolve() }
-  if (quillLoading) return quillLoading
-
-  quillLoading = new Promise<void>((resolve, reject) => {
-    if (!document.querySelector(`link[href="${QUILL_CSS_URL}"]`)) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = QUILL_CSS_URL
-      document.head.appendChild(link)
-    }
-
-    let script = document.getElementById('quill-script') as HTMLScriptElement | null
-    if (!script) {
-      script = document.createElement('script')
-      script.id = 'quill-script'
-      script.src = QUILL_JS_URL
-      script.async = true
-      document.head.appendChild(script)
-    }
-
-    script.addEventListener('load', () => { quillLoaded = true; quillLoading = null; resolve() })
-    script.addEventListener('error', () => { quillLoading = null; reject(new Error('Quill 腳本載入失敗')) })
-
-    let attempts = 0
-    const poll = setInterval(() => {
-      attempts++
-      if (window.Quill) {
-        clearInterval(poll)
-        quillLoaded = true
-        quillLoading = null
-        resolve()
-      } else if (attempts >= 50) {
-        clearInterval(poll)
-        quillLoading = null
-        reject(new Error('Quill 載入超時'))
-      }
-    }, 100)
-  })
-
-  return quillLoading
-}
+import { RichTextEditor, type RichTextEditorRef } from '../components/RichTextEditor'
 
 /** 套餐價目項目 */
 interface PackageItem {
@@ -229,12 +150,8 @@ export default function SingleEdit() {
   // 媒體庫選擇器開關
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'quill' | 'banner_pc' | 'banner_mb' | null>(null)
 
-  // Quill 相關引用
-  const editorRef = useRef<HTMLDivElement>(null)
-  const quillRef = useRef<QuillInstance | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [htmlMode, setHtmlMode] = useState(false)
-  const [htmlSource, setHtmlSource] = useState('')
+  // 富文本公共組件引用
+  const richEditorRef = useRef<RichTextEditorRef>(null)
 
   // 圖片壓縮上傳 Hook
   const { uploadSingle, clearError: clearImgError } = useImageUpload({ autoCompress: false })
@@ -336,11 +253,6 @@ export default function SingleEdit() {
 
         // 若原數據有 WhatsApp 號碼則自動開啟 Switch，否則預設保持關閉摺疊
         setWhatsappEnabled(Boolean(data.whatsapp_phone && data.whatsapp_phone.trim()))
-
-        // 若 Quill 已初始化，僅填充純正文內容（杜絕整頁 HTML 重複嵌套）
-        if (quillRef.current && cleanIntro) {
-          quillRef.current.clipboard.dangerouslyPasteHTML(cleanIntro)
-        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '載入單頁失敗')
@@ -358,112 +270,6 @@ export default function SingleEdit() {
       fetchSingle()
     }
   }, [isEdit, fetchSingle])
-
-  /** 初始化 Quill 編輯器 */
-  useEffect(() => {
-    if (loading) return
-    let cancelled = false
-
-    const initEditor = async () => {
-      try {
-        await loadQuill()
-        if (cancelled || !window.Quill || !editorRef.current) return
-
-        if (quillRef.current) {
-          editorRef.current.innerHTML = ''
-        }
-
-        const editorContainer = document.createElement('div')
-        editorRef.current.appendChild(editorContainer)
-
-        const quill = new window.Quill(editorContainer, {
-          theme: 'snow',
-          readOnly: false,
-          placeholder: '請在此輸入專題介紹或正文內容...',
-          modules: {
-            toolbar: {
-              container: [
-                [{ header: [1, 2, 3, 4, 5, 6, false] }],
-                ['bold', 'italic', 'underline', 'strike'],
-                [{ color: [] }, { background: [] }],
-                [{ align: [] }],
-                ['blockquote', 'code-block'],
-                [{ list: 'ordered' }, { list: 'bullet' }],
-                ['link', 'image', 'video-picker', 'faq-picker'],
-                ['clean'],
-                ['html-source'],
-              ],
-              handlers: {
-                image: function () {
-                  setMediaPickerTarget('quill')
-                },
-                'html-source': function () {
-                  if (!htmlMode && quillRef.current) {
-                    setHtmlSource(quillRef.current.root.innerHTML)
-                  }
-                  setHtmlMode(!htmlMode)
-                },
-              },
-            },
-            clipboard: { matchVisual: false },
-          },
-        })
-
-        quillRef.current = quill
-
-        registerFaqPlugin()
-        registerVideoPlugin()
-        registerListPlugin()
-
-        quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node: Node, delta: unknown) => {
-          const el = node as HTMLElement
-          const faqOps = matchFaqElement(el)
-          if (faqOps) {
-            const Delta = window.Quill!.import('delta') as unknown as { new (ops?: unknown[]): unknown }
-            return new Delta(faqOps)
-          }
-          const videoOps = matchVideoIframe(el)
-          if (videoOps) {
-            const Delta = window.Quill!.import('delta') as unknown as { new (ops?: unknown[]): unknown }
-            return new Delta(videoOps)
-          }
-          return delta
-        })
-
-        const styleEl = document.createElement('style')
-        styleEl.textContent = listPluginCSS + faqPluginCSS + toolbarButtonCSS
-        editorContainer.appendChild(styleEl)
-
-        // 自定義按鈕標題提示
-        const htmlBtn = editorContainer.querySelector('.ql-html-source')
-        if (htmlBtn) htmlBtn.setAttribute('title', 'HTML 源碼模式')
-        const videoBtn = editorContainer.querySelector('.ql-video-picker')
-        if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
-        const faqBtn = editorContainer.querySelector('.ql-faq-picker')
-        if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
-
-        if (form.content) {
-          quill.clipboard.dangerouslyPasteHTML(extractCleanIntro(form.content))
-        }
-
-        quill.on('text-change', () => {
-          if (quillRef.current) {
-            setForm((prev) => ({ ...prev, content: quillRef.current!.root.innerHTML }))
-          }
-        })
-      } catch (e) {
-        setError(e instanceof Error ? e.message : '編輯器初始化失敗')
-      }
-    }
-
-    const timer = setTimeout(initEditor, 100)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-      if (editorRef.current) editorRef.current.innerHTML = ''
-      quillRef.current = null
-    }
-  }, [loading])
 
   const updateField = <K extends keyof FormData>(key: K, value: FormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -523,48 +329,6 @@ export default function SingleEdit() {
     })
   }
 
-  /** 將結構化字段組裝為現代化 HTML */
-  const compileFullHtml = (rawIntro: string): string => {
-    const hasLandingElements =
-      form.banner_pc || form.banner_mb || form.packages.length > 0 || (whatsappEnabled && form.whatsapp_phone.trim()) || form.terms.trim()
-
-    // 如果沒有使用任何落地頁組件，直接返回純富文本
-    if (!hasLandingElements) {
-      return cleanupQuillHtml(rawIntro)
-    }
-
-    const displayTitle = form.seo_title || form.title
-    const bannerHtml = (form.banner_pc || form.banner_mb)
-      ? `<section class="mb-10 lg:mb-20"><div class="banner-wrapper lg:wrapper"><picture>${
-          form.banner_pc ? `<source media="(min-width: 1024px)" srcset="${form.banner_pc}">` : ''
-        }<img src="${form.banner_mb || form.banner_pc}" alt="${displayTitle}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
-      : ''
-
-    const pkgTitle = form.package_title.trim() || form.title
-    const col1Name = form.package_col1.trim() || '項目'
-    const col2Name = form.package_col2.trim() || '二人同行'
-
-    const packagesHtml = form.packages.length > 0
-      ? `<div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary text-center">${pkgTitle}</h2></div><div class="text-center text-lg lg:text-3xl rounded-t-3xl max-w-6xl mx-auto mb-5 lg:mb-10"><div class="bg-gradient-to-b from-primary from-30% via-primary to-primary/0 rounded-2xl lg:rounded-4xl overflow-hidden"><div class="flex text-white pt-3 pb-2 lg:pt-7 lg:pb-4"><div class="mx-6 w-25 md:w-[236px] lg:w-[calc(35%-64px)]">${col1Name}</div><div class="flex-1">${col2Name}</div></div><ol class="shadow-md bg-white py-5 lg:py-10 rounded-2xl lg:rounded-4xl relative before:content-[''] before:h-full before:w-[136px] md:before:w-[268px] lg:before:w-[35%] before:bg-bg-soft before:rounded-2xl lg:before:rounded-4xl before:absolute before:left-0 before:top-0 before:shadow-md">${
-          form.packages.map((pkg) => `<li class="flex items-stretch relative z-10 text-lg sm:text-xl lg:text-3xl font-bold tracking-wider"><h3 class="border-b border-[#A4A4A4] w-[104px] md:w-[236px] lg:w-[calc(35%-64px)] text-desc mx-4 lg:mx-8 py-4 flex justify-center items-center">${pkg.name}</h3><div class="border-b border-[#A4A4A4] flex-1 flex mx-4 lg:mx-8 flex items-center justify-center py-4"><div class="text-center text-desc w-full">${pkg.price}</div></div></li>`).join('')
-        }</ol></div></div>`
-      : ''
-
-    const whatsappHtml = (whatsappEnabled && form.whatsapp_phone.trim())
-      ? `<div class="text-center mb-5 lg:mb-10"><a href="https://api.whatsapp.com/send/?phone=${form.whatsapp_phone.trim()}&text=${encodeURIComponent(form.whatsapp_text.trim() || `你好，我想查詢【${displayTitle}】`)}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${form.whatsapp_btn.trim() || '立即預約查詢'}</span></a></div>`
-      : ''
-
-    const termsHtml = form.terms.trim()
-      ? `<div class="flex w-full justify-start mb-2 lg:mb-5"><h3 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary">條款及細則：</h3></div><ul class="text-intro list-decimal list-inside text-normal">${
-          form.terms.split('\n').map((line) => line.trim()).filter(Boolean).map((t) => `<li>${t.replace(/^\d+[\.、\s]*/, '')}</li>`).join('')
-        }</ul>`
-      : ''
-
-    const cleanedIntro = cleanupQuillHtml(extractCleanIntro(rawIntro))
-
-    return `${bannerHtml}<section class="wrapper mb-15 lg:mb-25"><div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-8 text-primary before:content-[''] before:absolute before:bg-accent before:h-1 before:w-20 before:bottom-4 before:left-1/2 before:-translate-x-1/2">${form.title}</h2></div><div class="text-intro text-justify space-y-1 lg:space-y-2 mb-10 lg:mb-15">${cleanedIntro}</div>${packagesHtml}${whatsappHtml}${termsHtml}</section>`
-  }
-
   /** 提交表單 */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -572,15 +336,6 @@ export default function SingleEdit() {
       setError('請輸入單頁標題')
       return
     }
-
-    let editorHtml = form.content
-    if (htmlMode && htmlSource) {
-      editorHtml = htmlSource
-    } else if (quillRef.current) {
-      editorHtml = quillRef.current.root.innerHTML
-    }
-
-    const finalContent = compileFullHtml(editorHtml)
 
     setSaving(true)
     setError('')
@@ -590,7 +345,7 @@ export default function SingleEdit() {
         seo_title: form.seo_title.trim(),
         scode: form.scode || '0',
         filename: form.filename.trim(),
-        content: finalContent,
+        content: form.content.trim(),
         keywords: form.keywords.trim(),
         description: form.description.trim(),
         status: form.status,
@@ -909,44 +664,21 @@ export default function SingleEdit() {
             </div>
           </div>
 
-          {/* 2. 引言與介紹 (Quill 2.0) */}
+          {/* 2. 引言與介紹 (Quill 2.0 公共組件) */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="block text-sm font-medium">
                 專題介紹 / 促銷引言正文
                 <span className="text-xs font-normal text-muted-foreground ml-2">支援富文本、段落排版、多圖與視頻</span>
-                {htmlMode && (
-                  <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-normal">
-                    📝 HTML 源碼模式
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // 將 HTML 源碼寫回編輯器
-                        if (quillRef.current && htmlSource !== '') {
-                          quillRef.current.clipboard.dangerouslyPasteHTML(htmlSource)
-                        }
-                        setHtmlMode(false)
-                      }}
-                      className="ml-2 underline hover:no-underline font-semibold text-blue-700 cursor-pointer"
-                    >
-                      返回編輯器
-                    </button>
-                  </span>
-                )}
               </label>
             </div>
-            {/* 編輯器與 HTML 源碼 textarea 都保持掛載，用 CSS 切換顯示，避免 Quill DOM 被卸載 */}
-            <div
-              ref={editorRef}
-              className={`rounded-xl overflow-hidden border border-input shadow-sm min-h-[220px] ${htmlMode ? 'hidden' : ''}`}
-            />
-            <textarea
-              value={htmlSource}
-              onChange={(e) => setHtmlSource(e.target.value)}
-              rows={12}
-              className={`w-full px-4 py-3 font-mono text-xs bg-slate-900 text-slate-100 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-ring ${htmlMode ? '' : 'hidden'}`}
-              placeholder="在此直接編寫/修改 HTML 源碼..."
-              spellCheck={false}
+            <RichTextEditor
+              ref={richEditorRef}
+              value={form.content}
+              onChange={(html) => updateField('content', html)}
+              onOpenMediaPicker={() => setMediaPickerTarget('quill')}
+              placeholder="請在此輸入專題介紹或正文內容..."
+              minHeightClass="min-h-[220px]"
             />
           </div>
 
@@ -1276,10 +1008,8 @@ export default function SingleEdit() {
             updateField('banner_pc', url)
           } else if (mediaPickerTarget === 'banner_mb') {
             updateField('banner_mb', url)
-          } else if (mediaPickerTarget === 'quill' && quillRef.current) {
-            const range = quillRef.current.getSelection()
-            const insertIndex = range ? range.index : (quillRef.current.getLength() || 0) - 1
-            quillRef.current.insertEmbed(insertIndex, 'image', url)
+          } else if (mediaPickerTarget === 'quill') {
+            richEditorRef.current?.insertImage(url)
           }
           setMediaPickerTarget(null)
         }}

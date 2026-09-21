@@ -38,11 +38,109 @@ export async function handleAdminListSingles(
   return okList(listResult.results, createMeta(pagination.page, pagination.pagesize, total), '成功');
 }
 
+/** 格式化單頁/專題響應 (落實 Headless 結構化輸出 方案 A：始終保留結構 + 空安全預設值) */
+export function formatSingleResponse(row: Record<string, unknown>): Record<string, unknown> {
+  const title = (row.title as string) || '';
+  const seoTitle = (row.seo_title as string) || '';
+  const displayTitle = seoTitle || title;
+  const content = (row.content as string) || '';
+
+  // 1. 橫幅 (Banner)
+  const bannerPc = (row.banner_pc as string) || '';
+  const bannerMb = (row.banner_mb as string) || '';
+  const banner = {
+    pc: bannerPc,
+    mobile: bannerMb,
+    alt: title,
+  };
+
+  // 2. 套餐價目表 (結構始終保留，無數據時給空數組 items: [])
+  let pricingTable = {
+    title: '',
+    col1_name: '項目',
+    col2_name: '二人同行',
+    items: [] as Array<{ id?: string; name: string; price: string }>,
+  };
+  if (row.packages) {
+    try {
+      const parsed = typeof row.packages === 'string' ? JSON.parse(row.packages) : row.packages;
+      if (parsed && typeof parsed === 'object') {
+        pricingTable = {
+          title: parsed.title || '',
+          col1_name: parsed.col1 || '項目',
+          col2_name: parsed.col2 || '二人同行',
+          items: Array.isArray(parsed.items) ? parsed.items : [],
+        };
+      }
+    } catch {
+      // 保持預設空安全對象
+    }
+  }
+
+  // 3. WhatsApp 諮詢轉化 (結構始終保留，enabled 標識開關狀態)
+  const phone = (row.whatsapp_phone as string) || '';
+  const text = (row.whatsapp_text as string) || '';
+  const btn = (row.whatsapp_btn as string) || '立即預約查詢';
+  const hasPhone = Boolean(phone.trim());
+  const whatsapp = {
+    enabled: hasPhone,
+    phone: phone.trim(),
+    text: text.trim(),
+    button_text: btn.trim() || '立即預約查詢',
+    url: hasPhone
+      ? `https://api.whatsapp.com/send/?phone=${phone.trim()}&text=${encodeURIComponent(text.trim() || `你好，我想查詢【${displayTitle}】`)}`
+      : '',
+  };
+
+  // 4. 條款細則 (按行切分為純文本數組)
+  const termsRaw = (row.terms as string) || '';
+  const terms = termsRaw
+    ? termsRaw
+        .split('\n')
+        .map((line) => line.trim().replace(/^\d+[\.、\s]*/, ''))
+        .filter(Boolean)
+    : [];
+
+  // 5. 兜底 compiled_html (供需要整段 HTML 的傳統模板一行渲染)
+  const bannerHtml = (bannerPc || bannerMb)
+    ? `<section class="mb-10 lg:mb-20"><div class="banner-wrapper lg:wrapper"><picture>${
+        bannerPc ? `<source media="(min-width: 1024px)" srcset="${bannerPc}">` : ''
+      }<img src="${bannerMb || bannerPc}" alt="${displayTitle}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
+    : '';
+
+  const packagesHtml = pricingTable.items.length > 0
+    ? `<div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary text-center">${pricingTable.title || title}</h2></div><div class="text-center text-lg lg:text-3xl rounded-t-3xl max-w-6xl mx-auto mb-5 lg:mb-10"><div class="bg-gradient-to-b from-primary from-30% via-primary to-primary/0 rounded-2xl lg:rounded-4xl overflow-hidden"><div class="flex text-white pt-3 pb-2 lg:pt-7 lg:pb-4"><div class="mx-6 w-25 md:w-[236px] lg:w-[calc(35%-64px)]">${pricingTable.col1_name}</div><div class="flex-1">${pricingTable.col2_name}</div></div><ol class="shadow-md bg-white py-5 lg:py-10 rounded-2xl lg:rounded-4xl relative before:content-[''] before:h-full before:w-[136px] md:before:w-[268px] lg:before:w-[35%] before:bg-bg-soft before:rounded-2xl lg:before:rounded-4xl before:absolute before:left-0 before:top-0 before:shadow-md">${
+        pricingTable.items.map((pkg) => `<li class="flex items-stretch relative z-10 text-lg sm:text-xl lg:text-3xl font-bold tracking-wider"><h3 class="border-b border-[#A4A4A4] w-[104px] md:w-[236px] lg:w-[calc(35%-64px)] text-desc mx-4 lg:mx-8 py-4 flex justify-center items-center">${pkg.name}</h3><div class="border-b border-[#A4A4A4] flex-1 flex mx-4 lg:mx-8 flex items-center justify-center py-4"><div class="text-center text-desc w-full">${pkg.price}</div></div></li>`).join('')
+      }</ol></div></div>`
+    : '';
+
+  const whatsappHtml = hasPhone
+    ? `<div class="text-center mb-5 lg:mb-10"><a href="${whatsapp.url}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${whatsapp.button_text}</span></a></div>`
+    : '';
+
+  const termsHtml = terms.length > 0
+    ? `<div class="flex w-full justify-start mb-2 lg:mb-5"><h3 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary">條款及細則：</h3></div><ul class="text-intro list-decimal list-inside text-normal">${
+        terms.map((t) => `<li>${t}</li>`).join('')
+      }</ul>`
+    : '';
+
+  const compiledHtml = `${bannerHtml}<section class="wrapper mb-15 lg:mb-25"><div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-8 text-primary before:content-[''] before:absolute before:bg-accent before:h-1 before:w-20 before:bottom-4 before:left-1/2 before:-translate-x-1/2">${title}</h2></div><div class="text-intro text-justify space-y-1 lg:space-y-2 mb-10 lg:mb-15">${content}</div>${packagesHtml}${whatsappHtml}${termsHtml}</section>`;
+
+  return {
+    ...row, // 原生所有扁平字段完全保留，向後 100% 兼容
+    banner,
+    pricing_table: pricingTable,
+    whatsapp,
+    terms,
+    compiled_html: compiledHtml,
+  };
+}
+
 /** 後台單頁詳情 */
 export async function handleAdminGetSingle(db: D1Database, id: number): Promise<Response> {
-  const row = await db.prepare('SELECT * FROM ay_single WHERE id = ?').bind(id).first();
+  const row = await db.prepare('SELECT * FROM ay_single WHERE id = ?').bind(id).first<Record<string, unknown>>();
   if (!row) return notFound('單頁不存在');
-  return okData(row, '成功');
+  return okData(formatSingleResponse(row), '成功');
 }
 
 /** 新增單頁 */
@@ -187,25 +285,26 @@ export async function handleDeleteSingle(db: D1Database, id: number): Promise<Re
 export async function handleListSingles(db: D1Database): Promise<Response> {
   const result = await db.prepare(
     "SELECT * FROM ay_single WHERE status = '1' ORDER BY sorting ASC, id ASC",
-  ).all();
-  return okData(result.results, '成功');
+  ).all<Record<string, unknown>>();
+  const formatted = (result.results || []).map((row) => formatSingleResponse(row));
+  return okData(formatted, '成功');
 }
 
 /** 公開單頁詳情 (支援按 filename slug / id / scode 查詢) */
 export async function handleSingleDetail(db: D1Database, param: string): Promise<Response> {
   const isNumeric = /^\d+$/.test(param);
-  let row = null;
+  let row: Record<string, unknown> | null = null;
   if (isNumeric) {
     row = await db.prepare(
       "SELECT * FROM ay_single WHERE (id = ? OR scode = ? OR filename = ?) AND status = '1' LIMIT 1",
-    ).bind(Number(param), param, param).first();
+    ).bind(Number(param), param, param).first<Record<string, unknown>>();
   } else {
     row = await db.prepare(
       "SELECT * FROM ay_single WHERE (filename = ? OR scode = ?) AND status = '1' LIMIT 1",
-    ).bind(param, param).first();
+    ).bind(param, param).first<Record<string, unknown>>();
   }
   if (!row) return notFound('單頁不存在');
-  return okData(row, '成功');
+  return okData(formatSingleResponse(row), '成功');
 }
 
 // ============================================================================
