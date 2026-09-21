@@ -48,10 +48,13 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
   // 1. 橫幅 (Banner)
   const bannerPc = (row.banner_pc as string) || '';
   const bannerMb = (row.banner_mb as string) || '';
+  const bannerAlt = (row.banner_alt as string) || '';
+  const bannerTitle = (row.banner_title as string) || '';
   const banner = {
     pc: bannerPc,
     mobile: bannerMb,
-    alt: title,
+    alt: bannerAlt || displayTitle,
+    title: bannerTitle || displayTitle,
   };
 
   // 2. 套餐價目表 (結構始終保留，無數據時給空數組 items: [])
@@ -105,7 +108,7 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
   const bannerHtml = (bannerPc || bannerMb)
     ? `<section class="mb-10 lg:mb-20"><div class="banner-wrapper lg:wrapper"><picture>${
         bannerPc ? `<source media="(min-width: 1024px)" srcset="${bannerPc}">` : ''
-      }<img src="${bannerMb || bannerPc}" alt="${displayTitle}" title="Banner" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
+      }<img src="${bannerMb || bannerPc}" alt="${banner.alt}" title="${banner.title}" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
     : '';
 
   const packagesHtml = pricingTable.items.length > 0
@@ -158,6 +161,8 @@ export async function handleCreateSingle(
     filename?: string;
     banner_pc?: string;
     banner_mb?: string;
+    banner_alt?: string;
+    banner_title?: string;
     whatsapp_phone?: string;
     whatsapp_text?: string;
     whatsapp_btn?: string;
@@ -172,7 +177,7 @@ export async function handleCreateSingle(
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
 
   const result = await db.prepare(
-    "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, banner_alt, banner_title, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     body.scode || '',
     title,
@@ -185,6 +190,8 @@ export async function handleCreateSingle(
     body.filename || '',
     body.banner_pc || '',
     body.banner_mb || '',
+    body.banner_alt || '',
+    body.banner_title || '',
     body.whatsapp_phone || '',
     body.whatsapp_text || '',
     body.whatsapp_btn || '立即預約查詢',
@@ -209,7 +216,7 @@ export async function handleUpdateSingle(
   const now = nowStr();
   const allowedFields = [
     'scode', 'title', 'seo_title', 'keywords', 'description', 'content', 'sorting', 'status',
-    'filename', 'banner_pc', 'banner_mb', 'whatsapp_phone', 'whatsapp_text', 'whatsapp_btn', 'packages', 'terms',
+    'filename', 'banner_pc', 'banner_mb', 'banner_alt', 'banner_title', 'whatsapp_phone', 'whatsapp_text', 'whatsapp_btn', 'packages', 'terms',
   ];
 
   const sets: string[] = [];
@@ -247,8 +254,8 @@ export async function handleCopySingle(db: D1Database, id: number): Promise<Resp
   const newFilename = source.filename ? `${source.filename}-copy` : '';
 
   const result = await db.prepare(
-    `INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime)
-     VALUES (?, ?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, banner_alt, banner_title, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     source.scode || '',
     newTitle,
@@ -260,6 +267,8 @@ export async function handleCopySingle(db: D1Database, id: number): Promise<Resp
     newFilename,
     source.banner_pc || '',
     source.banner_mb || '',
+    source.banner_alt || '',
+    source.banner_title || '',
     source.whatsapp_phone || '',
     source.whatsapp_text || '',
     source.whatsapp_btn || '立即預約查詢',

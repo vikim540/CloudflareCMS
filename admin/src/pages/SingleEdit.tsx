@@ -29,6 +29,8 @@ interface Single {
   filename?: string
   banner_pc?: string
   banner_mb?: string
+  banner_alt?: string
+  banner_title?: string
   whatsapp_phone?: string
   whatsapp_text?: string
   whatsapp_btn?: string
@@ -65,6 +67,7 @@ interface FormData {
   banner_pc: string
   banner_mb: string
   banner_alt: string
+  banner_title: string
   whatsapp_phone: string
   whatsapp_text: string
   whatsapp_btn: string
@@ -88,6 +91,7 @@ const EMPTY_FORM: FormData = {
   banner_pc: '',
   banner_mb: '',
   banner_alt: '',
+  banner_title: '',
   whatsapp_phone: '',
   whatsapp_text: '',
   whatsapp_btn: '立即預約查詢',
@@ -240,7 +244,8 @@ export default function SingleEdit() {
           sorting: data.sorting ?? 255,
           banner_pc: data.banner_pc ?? '',
           banner_mb: data.banner_mb ?? '',
-          banner_alt: data.title ?? '',
+          banner_alt: data.banner_alt ?? '',
+          banner_title: data.banner_title ?? '',
           whatsapp_phone: data.whatsapp_phone ?? '',
           whatsapp_text: data.whatsapp_text ?? '',
           whatsapp_btn: data.whatsapp_btn || '立即預約查詢',
@@ -352,6 +357,8 @@ export default function SingleEdit() {
         sorting: Number(form.sorting) || 255,
         banner_pc: form.banner_pc.trim(),
         banner_mb: form.banner_mb.trim(),
+        banner_alt: form.banner_alt.trim(),
+        banner_title: form.banner_title.trim(),
         whatsapp_phone: whatsappEnabled ? form.whatsapp_phone.trim() : '',
         whatsapp_text: whatsappEnabled ? form.whatsapp_text.trim() : '',
         whatsapp_btn: whatsappEnabled ? (form.whatsapp_btn.trim() || '立即預約查詢') : '',
@@ -660,6 +667,36 @@ export default function SingleEdit() {
                     <img src={form.banner_mb} alt="Mobile Banner 預覽" className="w-full h-full object-cover" />
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Banner SEO 屬性：alt 與 title */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t border-blue-100/80">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Banner 圖片 Alt（替代文字）
+                  <span className="text-xs font-normal text-muted-foreground ml-1.5">SEO 與螢幕閱讀器友好</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.banner_alt}
+                  onChange={(e) => updateField('banner_alt', e.target.value)}
+                  placeholder={`留空預設：${form.seo_title || form.title || '頁面標題'}`}
+                  className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Banner 圖片 Title（懸停提示文字）
+                  <span className="text-xs font-normal text-muted-foreground ml-1.5">滑鼠停留展示文字</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.banner_title}
+                  onChange={(e) => updateField('banner_title', e.target.value)}
+                  placeholder={`留空預設：${form.seo_title || form.title || '頁面標題'}`}
+                  className="w-full px-3 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring/20"
+                />
               </div>
             </div>
           </div>
