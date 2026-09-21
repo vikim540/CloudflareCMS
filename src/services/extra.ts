@@ -50,7 +50,11 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
   const bannerMb = (row.banner_mb as string) || '';
   const bannerAlt = (row.banner_alt as string) || '';
   const bannerTitle = (row.banner_title as string) || '';
+  const hasBanner = Boolean(bannerPc.trim() || bannerMb.trim());
   const banner = {
+    enabled: hasBanner,
+    has_pc: Boolean(bannerPc.trim()),
+    has_mobile: Boolean(bannerMb.trim()),
     pc: bannerPc,
     mobile: bannerMb,
     alt: bannerAlt || displayTitle,
@@ -58,7 +62,7 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
   };
 
   // 2. 套餐價目表 (結構始終保留，無數據時給空數組 items: [])
-  let pricingTable = {
+  let parsedPricing = {
     title: '',
     col1_name: '項目',
     col2_name: '二人同行',
@@ -68,7 +72,7 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
     try {
       const parsed = typeof row.packages === 'string' ? JSON.parse(row.packages) : row.packages;
       if (parsed && typeof parsed === 'object') {
-        pricingTable = {
+        parsedPricing = {
           title: parsed.title || '',
           col1_name: parsed.col1 || '項目',
           col2_name: parsed.col2 || '二人同行',
@@ -79,6 +83,15 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
       // 保持預設空安全對象
     }
   }
+  const hasPricing = parsedPricing.items.length > 0;
+  const pricingTable = {
+    enabled: hasPricing,
+    count: parsedPricing.items.length,
+    title: parsedPricing.title,
+    col1_name: parsedPricing.col1_name,
+    col2_name: parsedPricing.col2_name,
+    items: parsedPricing.items,
+  };
 
   // 3. WhatsApp 諮詢轉化 (結構始終保留，enabled 標識開關狀態)
   const phone = (row.whatsapp_phone as string) || '';
@@ -103,15 +116,23 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
         .map((line) => line.trim().replace(/^\d+[\.、\s]*/, ''))
         .filter(Boolean)
     : [];
+  const hasTerms = terms.length > 0;
+  const termsInfo = {
+    enabled: hasTerms,
+    count: terms.length,
+    items: terms,
+  };
+
+  const hasContent = Boolean(content.trim());
 
   // 5. 兜底 compiled_html (供需要整段 HTML 的傳統模板一行渲染)
-  const bannerHtml = (bannerPc || bannerMb)
+  const bannerHtml = hasBanner
     ? `<section class="mb-10 lg:mb-20"><div class="banner-wrapper lg:wrapper"><picture>${
         bannerPc ? `<source media="(min-width: 1024px)" srcset="${bannerPc}">` : ''
       }<img src="${bannerMb || bannerPc}" alt="${banner.alt}" title="${banner.title}" class="banner w-full aspect-[40/27] lg:aspect-auto max-h-[480px] md:max-h-72 xl:max-h-[480px] object-cover lg:rounded-4xl"></picture></div></section>`
     : '';
 
-  const packagesHtml = pricingTable.items.length > 0
+  const packagesHtml = hasPricing
     ? `<div class="flex w-full justify-center mb-2 lg:mb-5"><h2 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary text-center">${pricingTable.title || title}</h2></div><div class="text-center text-lg lg:text-3xl rounded-t-3xl max-w-6xl mx-auto mb-5 lg:mb-10"><div class="bg-gradient-to-b from-primary from-30% via-primary to-primary/0 rounded-2xl lg:rounded-4xl overflow-hidden"><div class="flex text-white pt-3 pb-2 lg:pt-7 lg:pb-4"><div class="mx-6 w-25 md:w-[236px] lg:w-[calc(35%-64px)]">${pricingTable.col1_name}</div><div class="flex-1">${pricingTable.col2_name}</div></div><ol class="shadow-md bg-white py-5 lg:py-10 rounded-2xl lg:rounded-4xl relative before:content-[''] before:h-full before:w-[136px] md:before:w-[268px] lg:before:w-[35%] before:bg-bg-soft before:rounded-2xl lg:before:rounded-4xl before:absolute before:left-0 before:top-0 before:shadow-md">${
         pricingTable.items.map((pkg) => `<li class="flex items-stretch relative z-10 text-lg sm:text-xl lg:text-3xl font-bold tracking-wider"><h3 class="border-b border-[#A4A4A4] w-[104px] md:w-[236px] lg:w-[calc(35%-64px)] text-desc mx-4 lg:mx-8 py-4 flex justify-center items-center">${pkg.name}</h3><div class="border-b border-[#A4A4A4] flex-1 flex mx-4 lg:mx-8 flex items-center justify-center py-4"><div class="text-center text-desc w-full">${pkg.price}</div></div></li>`).join('')
       }</ol></div></div>`
@@ -121,7 +142,7 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
     ? `<div class="text-center mb-5 lg:mb-10"><a href="${whatsapp.url}" class="text-white w-fit mx-auto rounded-xl lg:rounded-2xl py-1 px-6 lg:py-2 lg:px-11 gap-2 lg:gap-3 flex items-center justify-center" style="background-color:#1b407a;"><span class="iconify i-ic:baseline-whatsapp size-5 lg:size-7" aria-hidden="true"></span><span class="text-base lg:text-xl font-medium">${whatsapp.button_text}</span></a></div>`
     : '';
 
-  const termsHtml = terms.length > 0
+  const termsHtml = hasTerms
     ? `<div class="flex w-full justify-start mb-2 lg:mb-5"><h3 class="w-fit relative font-bold text-2xl lg:text-4xl pb-4 text-primary">條款及細則：</h3></div><ul class="text-intro list-decimal list-inside text-normal">${
         terms.map((t) => `<li>${t}</li>`).join('')
       }</ul>`
@@ -131,10 +152,16 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
 
   return {
     ...row, // 原生所有扁平字段完全保留，向後 100% 兼容
+    has_banner: hasBanner,
+    has_pricing: hasPricing,
+    has_whatsapp: hasPhone,
+    has_terms: hasTerms,
+    has_content: hasContent,
     banner,
     pricing_table: pricingTable,
     whatsapp,
     terms,
+    terms_info: termsInfo,
     compiled_html: compiledHtml,
   };
 }

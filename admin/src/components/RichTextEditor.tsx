@@ -11,8 +11,10 @@ import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
 import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
 import { toolbarButtonCSS } from '../lib/quill/htmlCleanup'
 
-const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.3/quill.min.js'
-const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.3/quill.snow.min.css'
+const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'
+const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
+const QUILL_FALLBACK_JS_URL = 'https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.min.js'
+const QUILL_FALLBACK_CSS_URL = 'https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.min.css'
 
 /** Quill 實例方法聲明 */
 export interface QuillInstance {
@@ -44,7 +46,7 @@ declare global {
 let quillLoaded = false
 let quillLoading: Promise<void> | null = null
 
-/** 全局單例非同步載入 Quill 腳本與樣式 */
+/** 全局單例非同步載入 Quill 腳本與樣式（含 CDN 容災回退） */
 export function loadQuill(): Promise<void> {
   if (window.Quill) {
     quillLoaded = true
@@ -53,32 +55,59 @@ export function loadQuill(): Promise<void> {
   if (quillLoading) return quillLoading
 
   quillLoading = new Promise<void>((resolve, reject) => {
-    if (!document.querySelector(`link[href="${QUILL_CSS_URL}"]`)) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = QUILL_CSS_URL
-      document.head.appendChild(link)
+    // 載入 CSS
+    const loadCss = (href: string, isFallback = false) => {
+      let link = document.querySelector(`link[data-quill-css]`) as HTMLLinkElement | null
+      if (link && isFallback) {
+        link.remove()
+        link = null
+      }
+      if (!link) {
+        link = document.createElement('link')
+        link.rel = 'stylesheet'
+        link.setAttribute('data-quill-css', 'true')
+        link.href = href
+        link.onerror = () => {
+          if (!isFallback) loadCss(QUILL_FALLBACK_CSS_URL, true)
+        }
+        document.head.appendChild(link)
+      }
     }
+    loadCss(QUILL_CSS_URL)
 
-    let script = document.getElementById('quill-script') as HTMLScriptElement | null
-    if (!script) {
-      script = document.createElement('script')
-      script.id = 'quill-script'
-      script.src = QUILL_JS_URL
-      script.async = true
-      document.head.appendChild(script)
+    // 載入 JS（主 CDN 失敗時自動切換 jsdelivr 備用 CDN）
+    const loadScript = (src: string, isFallback = false) => {
+      let script = document.getElementById('quill-script') as HTMLScriptElement | null
+      if (script && isFallback) {
+        script.remove()
+        script = null
+      }
+      if (!script) {
+        script = document.createElement('script')
+        script.id = 'quill-script'
+        script.src = src
+        script.async = true
+        document.head.appendChild(script)
+      }
+
+      script.onload = () => {
+        quillLoaded = true
+        quillLoading = null
+        resolve()
+      }
+      script.onerror = () => {
+        if (!isFallback) {
+          console.warn('Quill 主 CDN (cdnjs) 載入失敗，切換 jsdelivr 備用 CDN...')
+          loadScript(QUILL_FALLBACK_JS_URL, true)
+        } else {
+          quillLoading = null
+          reject(new Error('Quill 腳本載入失敗（主備 CDN 皆不可用）'))
+        }
+      }
     }
+    loadScript(QUILL_JS_URL)
 
-    script.addEventListener('load', () => {
-      quillLoaded = true
-      quillLoading = null
-      resolve()
-    })
-    script.addEventListener('error', () => {
-      quillLoading = null
-      reject(new Error('Quill 腳本載入失敗'))
-    })
-
+    // 輪詢兜底
     let attempts = 0
     const poll = setInterval(() => {
       attempts++
@@ -87,7 +116,7 @@ export function loadQuill(): Promise<void> {
         quillLoaded = true
         quillLoading = null
         resolve()
-      } else if (attempts >= 50) {
+      } else if (attempts >= 60) {
         clearInterval(poll)
         quillLoading = null
         reject(new Error('Quill 載入超時'))
