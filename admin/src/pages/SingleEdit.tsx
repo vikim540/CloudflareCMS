@@ -45,8 +45,10 @@ interface Single {
   whatsapp_phone?: string
   whatsapp_text?: string
   whatsapp_btn?: string
-  packages?: string
-  terms?: string
+  packages?: unknown
+  terms?: unknown
+  terms_info?: { enabled?: boolean; count?: number; items?: string[] }
+  terms_list?: string[]
 }
 
 /** 從可能已編譯的 HTML 中提取純正文介紹，防止遞歸嵌套落地頁模組 */
@@ -217,22 +219,23 @@ export default function SingleEdit() {
 
         if (data.packages) {
           try {
-            const raw = JSON.parse(data.packages)
+            const raw = typeof data.packages === 'string' ? JSON.parse(data.packages) : data.packages
             if (Array.isArray(raw)) {
-              parsedPackages = raw.map((p, idx) => ({
+              parsedPackages = (raw as unknown[]).map((p: any, idx: number) => ({
                 id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
-                name: String(p.name ?? ''),
-                price: String(p.price ?? ''),
+                name: String(p?.name ?? ''),
+                price: String(p?.price ?? ''),
               }))
             } else if (raw && typeof raw === 'object') {
-              parsedTitle = String(raw.title ?? '')
-              parsedCol1 = String(raw.col1 || '項目')
-              parsedCol2 = String(raw.col2 || '二人同行')
-              if (Array.isArray(raw.items)) {
-                parsedPackages = raw.items.map((p, idx) => ({
+              const r = raw as Record<string, unknown>
+              parsedTitle = String(r.title ?? '')
+              parsedCol1 = String(r.col1 || '項目')
+              parsedCol2 = String(r.col2 || '二人同行')
+              if (Array.isArray(r.items)) {
+                parsedPackages = (r.items as unknown[]).map((p: any, idx: number) => ({
                   id: (p && p.id) ? String(p.id) : `pkg_${idx}_${Date.now()}`,
-                  name: String(p.name ?? ''),
-                  price: String(p.price ?? ''),
+                  name: String(p?.name ?? ''),
+                  price: String(p?.price ?? ''),
                 }))
               }
             }
@@ -241,14 +244,16 @@ export default function SingleEdit() {
           }
         }
 
+        const cleanIntro = extractCleanIntro(data.content ?? '')
+
         // 容錯 terms：支援 string、string[]、terms_info.items 或 null
         let parsedTerms = ''
         if (typeof data.terms === 'string') {
           parsedTerms = data.terms
         } else if (Array.isArray(data.terms)) {
           parsedTerms = (data.terms as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
-        } else if (data.terms_info && typeof data.terms_info === 'object' && Array.isArray((data.terms_info as { items?: unknown[] }).items)) {
-          parsedTerms = ((data.terms_info as { items: unknown[] }).items).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+        } else if (data.terms_info && typeof data.terms_info === 'object' && Array.isArray(data.terms_info.items)) {
+          parsedTerms = (data.terms_info.items as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
         }
 
         setForm({
@@ -1103,10 +1108,9 @@ export default function SingleEdit() {
       {/* 圖片壓縮對話框 */}
       {pendingImageUpload && (
         <ImageCompressDialog
-          open={true}
-          file={pendingImageUpload.files[0]}
+          files={pendingImageUpload.files}
           onConfirm={async (compressed) => {
-            const fileToUpload = compressed || pendingImageUpload.files[0]
+            const fileToUpload = (compressed && compressed[0]) || pendingImageUpload.files[0]
             const url = await uploadSingle(fileToUpload)
             pendingImageUpload.callback([url])
             setPendingImageUpload(null)

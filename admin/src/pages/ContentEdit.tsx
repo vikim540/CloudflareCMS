@@ -24,6 +24,7 @@ declare global {
       new (container: HTMLElement | string, options?: Record<string, unknown>): QuillInstance
       import: (path: string) => unknown
       register: (blot: unknown, register?: boolean) => void
+      find?: (node: HTMLElement, bubble?: boolean) => unknown
     }
   }
 }

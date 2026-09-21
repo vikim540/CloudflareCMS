@@ -33,15 +33,7 @@ export interface QuillInstance {
   }
 }
 
-declare global {
-  interface Window {
-    Quill?: {
-      new (container: HTMLElement | string, options?: unknown): QuillInstance
-      import: (path: string) => unknown
-      find?: (node: HTMLElement, bubble?: boolean) => unknown
-    }
-  }
-}
+// 全局 Window.Quill 由項目全局聲明統一管理
 
 let quillLoaded = false
 let quillLoading: Promise<void> | null = null
@@ -290,7 +282,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             },
           })
 
-          quillRef.current = quill
+          quillRef.current = quill as unknown as QuillInstance
 
           // 註冊擴展插件
           registerFaqPlugin()
