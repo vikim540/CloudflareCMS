@@ -166,11 +166,6 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
 
   return {
     ...cleanBaseFields,
-    has_banner: hasBanner,
-    has_pricing: hasPricing,
-    has_whatsapp: hasPhone,
-    has_terms: hasTerms,
-    has_content: hasContent,
     banner,
     pricing_table: pricingTable,
     whatsapp,
