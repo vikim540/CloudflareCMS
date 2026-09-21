@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, type Category } from '../lib/utils'
-import { LoadingState, EmptyState } from '../components/StateDisplay'
+import { LoadingState, EmptyState, ErrorState } from '../components/StateDisplay'
 
 /** 單頁狀態: '1'=已發布, '0'=草稿 */
 type SingleStatus = '1' | '0'
@@ -166,8 +166,8 @@ export default function Singles() {
         </div>
       </div>
 
-      {/* 錯誤提示 */}
-      {error && (
+      {/* 錯誤提示（列表有數據但操作或刷新失敗時） */}
+      {error && singles.length > 0 && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 bg-destructive/10 text-destructive rounded-lg text-sm border border-destructive/20">
           <span>⚠️</span>
           <span>{error}</span>
@@ -176,6 +176,11 @@ export default function Singles() {
 
       {/* 加載中 */}
       {loading && <LoadingState text="載入中..." />}
+
+      {/* 錯誤狀態（列表為空且加載失敗時展示統一 ErrorState 與重試按鈕） */}
+      {!loading && singles.length === 0 && error && (
+        <ErrorState message={error} onRetry={fetchSingles} />
+      )}
 
       {/* 空狀態 */}
       {!loading && singles.length === 0 && !error && (

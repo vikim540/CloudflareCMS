@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { cn, type Category } from '../lib/utils'
-import { LoadingState } from '../components/StateDisplay'
+import { LoadingState, ErrorState } from '../components/StateDisplay'
+import { showGlobalError } from '../components/GlobalErrorToast'
 import ImageCompressDialog from '../components/ImageCompressDialog'
 import MediaPickerModal from '../components/MediaPickerModal'
 import { useImageUpload } from '../hooks/useImageUpload'
@@ -13,6 +14,16 @@ interface PackageItem {
   id: string
   name: string
   price: string
+}
+
+/** 安全去除首尾空白（容錯 Array、Number、Null 等非 String 類型，徹底杜絕 .trim is not a function） */
+function safeTrim(val: unknown): string {
+  if (typeof val === 'string') return val.trim()
+  if (Array.isArray(val)) {
+    return val.map((item) => String(item ?? '').trim()).filter(Boolean).join('\n')
+  }
+  if (val === null || val === undefined) return ''
+  return String(val).trim()
 }
 
 /** 單頁數據結構 */
@@ -230,37 +241,48 @@ export default function SingleEdit() {
           }
         }
 
-        const cleanIntro = extractCleanIntro(data.content ?? '')
+        // 容錯 terms：支援 string、string[]、terms_info.items 或 null
+        let parsedTerms = ''
+        if (typeof data.terms === 'string') {
+          parsedTerms = data.terms
+        } else if (Array.isArray(data.terms)) {
+          parsedTerms = (data.terms as unknown[]).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+        } else if (data.terms_info && typeof data.terms_info === 'object' && Array.isArray((data.terms_info as { items?: unknown[] }).items)) {
+          parsedTerms = ((data.terms_info as { items: unknown[] }).items).map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+        }
 
         setForm({
-          title: data.title ?? '',
-          seo_title: data.seo_title ?? '',
+          title: safeTrim(data.title),
+          seo_title: safeTrim(data.seo_title),
           scode: data.scode ?? '0',
-          filename: data.filename ?? '',
+          filename: safeTrim(data.filename),
           content: cleanIntro,
-          keywords: data.keywords ?? '',
-          description: data.description ?? '',
+          keywords: safeTrim(data.keywords),
+          description: safeTrim(data.description),
           status: data.status === '1' ? '1' : '0',
           sorting: data.sorting ?? 255,
-          banner_pc: data.banner_pc ?? '',
-          banner_mb: data.banner_mb ?? '',
-          banner_alt: data.banner_alt ?? '',
-          banner_title: data.banner_title ?? '',
-          whatsapp_phone: data.whatsapp_phone ?? '',
-          whatsapp_text: data.whatsapp_text ?? '',
-          whatsapp_btn: data.whatsapp_btn || '立即預約查詢',
-          package_title: parsedTitle || data.title || '',
+          banner_pc: safeTrim(data.banner_pc),
+          banner_mb: safeTrim(data.banner_mb),
+          banner_alt: safeTrim(data.banner_alt),
+          banner_title: safeTrim(data.banner_title),
+          whatsapp_phone: safeTrim(data.whatsapp_phone),
+          whatsapp_text: safeTrim(data.whatsapp_text),
+          whatsapp_btn: safeTrim(data.whatsapp_btn) || '立即預約查詢',
+          package_title: parsedTitle || safeTrim(data.title),
           package_col1: parsedCol1,
           package_col2: parsedCol2,
           packages: parsedPackages,
-          terms: data.terms ?? '',
+          terms: parsedTerms,
         })
 
         // 若原數據有 WhatsApp 號碼則自動開啟 Switch，否則預設保持關閉摺疊
-        setWhatsappEnabled(Boolean(data.whatsapp_phone && data.whatsapp_phone.trim()))
+        const phoneStr = safeTrim(data.whatsapp_phone)
+        setWhatsappEnabled(Boolean(phoneStr))
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '載入單頁失敗')
+      const msg = err instanceof Error ? err.message : '載入單頁失敗'
+      setError(msg)
+      showGlobalError('單頁載入失敗', msg, err instanceof Error ? err.stack : undefined)
     } finally {
       setLoading(false)
     }
@@ -337,7 +359,8 @@ export default function SingleEdit() {
   /** 提交表單 */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.title.trim()) {
+    const cleanTitle = safeTrim(form.title)
+    if (!cleanTitle) {
       setError('請輸入單頁標題')
       return
     }
@@ -346,29 +369,37 @@ export default function SingleEdit() {
     setError('')
     try {
       const payload = {
-        title: form.title.trim(),
-        seo_title: form.seo_title.trim(),
+        title: cleanTitle,
+        seo_title: safeTrim(form.seo_title),
         scode: form.scode || '0',
-        filename: form.filename.trim(),
-        content: form.content.trim(),
-        keywords: form.keywords.trim(),
-        description: form.description.trim(),
+        filename: safeTrim(form.filename),
+        content: safeTrim(form.content),
+        keywords: safeTrim(form.keywords),
+        description: safeTrim(form.description),
         status: form.status,
         sorting: Number(form.sorting) || 255,
-        banner_pc: form.banner_pc.trim(),
-        banner_mb: form.banner_mb.trim(),
-        banner_alt: form.banner_alt.trim(),
-        banner_title: form.banner_title.trim(),
-        whatsapp_phone: whatsappEnabled ? form.whatsapp_phone.trim() : '',
-        whatsapp_text: whatsappEnabled ? form.whatsapp_text.trim() : '',
-        whatsapp_btn: whatsappEnabled ? (form.whatsapp_btn.trim() || '立即預約查詢') : '',
+        banner_pc: safeTrim(form.banner_pc),
+        banner_mb: safeTrim(form.banner_mb),
+        banner_alt: safeTrim(form.banner_alt),
+        banner_title: safeTrim(form.banner_title),
+        whatsapp_phone: whatsappEnabled ? safeTrim(form.whatsapp_phone) : '',
+        whatsapp_text: whatsappEnabled ? safeTrim(form.whatsapp_text) : '',
+        whatsapp_btn: whatsappEnabled ? (safeTrim(form.whatsapp_btn) || '立即預約查詢') : '',
         packages: JSON.stringify({
-          title: form.package_title.trim(),
-          col1: form.package_col1.trim(),
-          col2: form.package_col2.trim(),
-          items: form.packages,
+          title: safeTrim(form.package_title),
+          col1: safeTrim(form.package_col1) || '項目',
+          col2: safeTrim(form.package_col2) || '二人同行',
+          items: Array.isArray(form.packages)
+            ? form.packages
+                .map((p) => ({
+                  id: p.id,
+                  name: safeTrim(p.name),
+                  price: safeTrim(p.price),
+                }))
+                .filter((p) => p.name || p.price)
+            : [],
         }),
-        terms: form.terms.trim(),
+        terms: safeTrim(form.terms),
       }
 
       if (isEdit) {
@@ -378,7 +409,9 @@ export default function SingleEdit() {
       }
       navigate('/singles')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存失敗')
+      const msg = err instanceof Error ? err.message : '保存失敗'
+      setError(msg)
+      showGlobalError('專題落地頁保存失敗', msg, err instanceof Error ? err.stack : undefined)
     } finally {
       setSaving(false)
     }
@@ -388,6 +421,14 @@ export default function SingleEdit() {
     return (
       <div className="p-6">
         <LoadingState text="載入中..." />
+      </div>
+    )
+  }
+
+  if (error && !form.title && isEdit) {
+    return (
+      <div className="p-6 max-w-5xl">
+        <ErrorState message={error} onRetry={fetchSingle} />
       </div>
     )
   }

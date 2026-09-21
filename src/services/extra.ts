@@ -160,8 +160,9 @@ export function formatSingleResponse(row: Record<string, unknown>): Record<strin
     banner,
     pricing_table: pricingTable,
     whatsapp,
-    terms,
-    terms_info: termsInfo,
+    terms: termsRaw, // 原生純文本換行字串（100% 保證後台編輯器 <textarea> 兼容）
+    terms_list: terms, // 純字串數組
+    terms_info: termsInfo, // 結構化元數據（含 enabled 與 count）
     compiled_html: compiledHtml,
   };
 }
@@ -193,15 +194,25 @@ export async function handleCreateSingle(
     whatsapp_phone?: string;
     whatsapp_text?: string;
     whatsapp_btn?: string;
-    packages?: string;
-    terms?: string;
+    packages?: unknown;
+    terms?: unknown;
   },
 ): Promise<Response> {
-  const title = body.title;
+  const title = body.title ? String(body.title).trim() : '';
   if (!title) return err('缺少 title 參數', 1001);
 
   const now = nowStr();
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
+
+  const rawPackages = body.packages;
+  const packagesVal = typeof rawPackages === 'object' && rawPackages !== null
+    ? JSON.stringify(rawPackages)
+    : String(rawPackages || '').trim();
+
+  const rawTerms = body.terms;
+  const termsVal = Array.isArray(rawTerms)
+    ? rawTerms.map((t) => String(t ?? '').trim()).filter(Boolean).join('\n')
+    : String(rawTerms || '').trim();
 
   const result = await db.prepare(
     "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, banner_alt, banner_title, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -222,8 +233,8 @@ export async function handleCreateSingle(
     body.whatsapp_phone || '',
     body.whatsapp_text || '',
     body.whatsapp_btn || '立即預約查詢',
-    body.packages || '',
-    body.terms || '',
+    packagesVal,
+    termsVal,
     now,
     now,
   ).run();
@@ -250,10 +261,18 @@ export async function handleUpdateSingle(
   const binds: (string | number)[] = [];
 
   for (const field of allowedFields) {
-    const val = body[field];
-    if (val !== undefined && (typeof val === 'string' || typeof val === 'number')) {
-      sets.push(`${field} = ?`);
-      binds.push(val);
+    let val = body[field];
+    if (val !== undefined) {
+      // 容錯防禦：若前端傳來的是數組或對象，自動轉為存儲字串
+      if (field === 'terms' && Array.isArray(val)) {
+        val = val.map((t) => String(t ?? '').trim()).filter(Boolean).join('\n');
+      } else if (field === 'packages' && typeof val === 'object' && val !== null) {
+        val = JSON.stringify(val);
+      }
+      if (typeof val === 'string' || typeof val === 'number') {
+        sets.push(`${field} = ?`);
+        binds.push(val);
+      }
     }
   }
 
