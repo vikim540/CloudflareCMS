@@ -110,6 +110,7 @@ interface Single {
   banner_mb?: string
   whatsapp_phone?: string
   whatsapp_text?: string
+  whatsapp_btn?: string
   packages?: string
   terms?: string
 }
@@ -325,7 +326,7 @@ export default function SingleEdit() {
           banner_alt: data.title ?? '',
           whatsapp_phone: data.whatsapp_phone ?? '',
           whatsapp_text: data.whatsapp_text ?? '',
-          whatsapp_btn: '立即預約查詢',
+          whatsapp_btn: data.whatsapp_btn || '立即預約查詢',
           package_title: parsedTitle || data.title || '',
           package_col1: parsedCol1,
           package_col2: parsedCol2,
@@ -590,6 +591,7 @@ export default function SingleEdit() {
         banner_mb: form.banner_mb.trim(),
         whatsapp_phone: whatsappEnabled ? form.whatsapp_phone.trim() : '',
         whatsapp_text: whatsappEnabled ? form.whatsapp_text.trim() : '',
+        whatsapp_btn: whatsappEnabled ? (form.whatsapp_btn.trim() || '立即預約查詢') : '',
         packages: JSON.stringify({
           title: form.package_title.trim(),
           col1: form.package_col1.trim(),

@@ -62,6 +62,7 @@ export async function handleCreateSingle(
     banner_mb?: string;
     whatsapp_phone?: string;
     whatsapp_text?: string;
+    whatsapp_btn?: string;
     packages?: string;
     terms?: string;
   },
@@ -73,7 +74,7 @@ export async function handleCreateSingle(
   const sorting = typeof body.sorting === 'number' ? body.sorting : 255;
 
   const result = await db.prepare(
-    "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).bind(
     body.scode || '',
     title,
@@ -88,6 +89,7 @@ export async function handleCreateSingle(
     body.banner_mb || '',
     body.whatsapp_phone || '',
     body.whatsapp_text || '',
+    body.whatsapp_btn || '立即預約查詢',
     body.packages || '',
     body.terms || '',
     now,
@@ -109,7 +111,7 @@ export async function handleUpdateSingle(
   const now = nowStr();
   const allowedFields = [
     'scode', 'title', 'seo_title', 'keywords', 'description', 'content', 'sorting', 'status',
-    'filename', 'banner_pc', 'banner_mb', 'whatsapp_phone', 'whatsapp_text', 'packages', 'terms',
+    'filename', 'banner_pc', 'banner_mb', 'whatsapp_phone', 'whatsapp_text', 'whatsapp_btn', 'packages', 'terms',
   ];
 
   const sets: string[] = [];
@@ -147,8 +149,8 @@ export async function handleCopySingle(db: D1Database, id: number): Promise<Resp
   const newFilename = source.filename ? `${source.filename}-copy` : '';
 
   const result = await db.prepare(
-    `INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, packages, terms, createtime, updatetime)
-     VALUES (?, ?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ay_single (scode, title, seo_title, keywords, description, content, sorting, status, filename, banner_pc, banner_mb, whatsapp_phone, whatsapp_text, whatsapp_btn, packages, terms, createtime, updatetime)
+     VALUES (?, ?, ?, ?, ?, ?, ?, '0', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     source.scode || '',
     newTitle,
@@ -162,6 +164,7 @@ export async function handleCopySingle(db: D1Database, id: number): Promise<Resp
     source.banner_mb || '',
     source.whatsapp_phone || '',
     source.whatsapp_text || '',
+    source.whatsapp_btn || '立即預約查詢',
     source.packages || '',
     source.terms || '',
     now,

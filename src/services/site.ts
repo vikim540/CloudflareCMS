@@ -447,7 +447,7 @@ CREATE TABLE IF NOT EXISTS ay_extfield (
 CREATE TABLE IF NOT EXISTS ay_single (
   id INTEGER PRIMARY KEY AUTOINCREMENT, scode TEXT, title TEXT, seo_title TEXT DEFAULT '', keywords TEXT, description TEXT,
   content TEXT, sorting INTEGER DEFAULT 255, status TEXT DEFAULT '1', filename TEXT DEFAULT '', banner_pc TEXT DEFAULT '',
-  banner_mb TEXT DEFAULT '', whatsapp_phone TEXT DEFAULT '', whatsapp_text TEXT DEFAULT '', packages TEXT DEFAULT '', terms TEXT DEFAULT '',
+  banner_mb TEXT DEFAULT '', whatsapp_phone TEXT DEFAULT '', whatsapp_text TEXT DEFAULT '', whatsapp_btn TEXT DEFAULT '立即預約查詢', packages TEXT DEFAULT '', terms TEXT DEFAULT '',
   createtime TEXT, updatetime TEXT
 );
 CREATE TABLE IF NOT EXISTS ay_model (
