@@ -434,6 +434,14 @@ export default function SingleEdit() {
         styleEl.textContent = listPluginCSS + faqPluginCSS + toolbarButtonCSS
         editorContainer.appendChild(styleEl)
 
+        // 自定義按鈕標題提示
+        const htmlBtn = editorContainer.querySelector('.ql-html-source')
+        if (htmlBtn) htmlBtn.setAttribute('title', 'HTML 源碼模式')
+        const videoBtn = editorContainer.querySelector('.ql-video-picker')
+        if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
+        const faqBtn = editorContainer.querySelector('.ql-faq-picker')
+        if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
+
         if (form.content) {
           quill.clipboard.dangerouslyPasteHTML(extractCleanIntro(form.content))
         }
@@ -907,20 +915,39 @@ export default function SingleEdit() {
               <label className="block text-sm font-medium">
                 專題介紹 / 促銷引言正文
                 <span className="text-xs font-normal text-muted-foreground ml-2">支援富文本、段落排版、多圖與視頻</span>
+                {htmlMode && (
+                  <span className="ml-2 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-normal">
+                    📝 HTML 源碼模式
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // 將 HTML 源碼寫回編輯器
+                        if (quillRef.current && htmlSource !== '') {
+                          quillRef.current.clipboard.dangerouslyPasteHTML(htmlSource)
+                        }
+                        setHtmlMode(false)
+                      }}
+                      className="ml-2 underline hover:no-underline font-semibold text-blue-700 cursor-pointer"
+                    >
+                      返回編輯器
+                    </button>
+                  </span>
+                )}
               </label>
             </div>
-            {/* HTML 源碼模式切換 */}
-            {htmlMode ? (
-              <textarea
-                value={htmlSource}
-                onChange={(e) => setHtmlSource(e.target.value)}
-                rows={12}
-                className="w-full px-4 py-3 font-mono text-sm bg-slate-900 text-slate-100 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-ring"
-                placeholder="在此直接編寫/修改 HTML 源碼..."
-              />
-            ) : (
-              <div ref={editorRef} className="rounded-xl overflow-hidden border border-input shadow-sm min-h-[220px]" />
-            )}
+            {/* 編輯器與 HTML 源碼 textarea 都保持掛載，用 CSS 切換顯示，避免 Quill DOM 被卸載 */}
+            <div
+              ref={editorRef}
+              className={`rounded-xl overflow-hidden border border-input shadow-sm min-h-[220px] ${htmlMode ? 'hidden' : ''}`}
+            />
+            <textarea
+              value={htmlSource}
+              onChange={(e) => setHtmlSource(e.target.value)}
+              rows={12}
+              className={`w-full px-4 py-3 font-mono text-xs bg-slate-900 text-slate-100 rounded-xl border border-slate-700 focus:outline-none focus:ring-2 focus:ring-ring ${htmlMode ? '' : 'hidden'}`}
+              placeholder="在此直接編寫/修改 HTML 源碼..."
+              spellCheck={false}
+            />
           </div>
 
           {/* 3. 套餐價目表 (動態管理) */}
