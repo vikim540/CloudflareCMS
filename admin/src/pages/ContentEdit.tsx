@@ -14,8 +14,7 @@ import { useImageUpload } from '../hooks/useImageUpload'
 // Quill 編輯器插件模組（admin/src/lib/quill/）
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS, extractFaqPairsFromDom } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
-import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
-import { cleanupQuillHtml, toolbarButtonCSS, registerAlignLeft, initToolbarTooltips } from '../lib/quill/htmlCleanup'
+import { cleanupQuillHtml, toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
 declare global {
@@ -1459,8 +1458,13 @@ export default function ContentEdit() {
         styleEl.textContent = listPluginCSS + faqPluginCSS + toolbarButtonCSS
         editorContainer.appendChild(styleEl)
 
-        // 初始化工具欄按鈕提示（Tooltip）
-        initToolbarTooltips(editorContainer)
+        // 自定義按鈕標題
+        const htmlBtn = editorContainer.querySelector('.ql-html-source')
+        if (htmlBtn) htmlBtn.setAttribute('title', 'HTML 源碼模式')
+        const videoBtn = editorContainer.querySelector('.ql-video-picker')
+        if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
+        const faqBtn = editorContainer.querySelector('.ql-faq-picker')
+        if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
 
         // ─── FAQ 塊點擊編輯：點擊 .faq 容器 → 提取數據 → 打開 Modal 編輯 ───
         quill.root.addEventListener('click', (e: MouseEvent) => {

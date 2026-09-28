@@ -45,40 +45,6 @@ export function registerAlignLeft(): void {
   if (icons?.align && !icons.align['left']) icons.align['left'] = icons.align['']
 }
 
-/**
- * 初始化工具列按鈕原生中文 Tooltip 提示
- * 為所有按鈕與下拉選單設置標準 title 屬性，方便文員識別功能
- */
-export function initToolbarTooltips(container: HTMLElement): void {
-  const TOOLBAR_TITLES: Record<string, string> = {
-    '.ql-header': '標題層級',
-    '.ql-size': '文字大小 (Small 小字號適合資料來源/網址)',
-    '.ql-bold': '粗體 (Ctrl+B)',
-    '.ql-italic': '斜體 (Ctrl+I)',
-    '.ql-underline': '下劃線 (Ctrl+U)',
-    '.ql-strike': '刪除線',
-    '.ql-color': '文字顏色',
-    '.ql-background': '背景顏色',
-    '.ql-align': '對齊方式 (靠左/置中/靠右/兩端)',
-    '.ql-blockquote': '引用區塊',
-    '.ql-code-block': '代碼區塊',
-    '.ql-list[value="ordered"]': '有序列表 (數字序號)',
-    '.ql-list[value="bullet"]': '無序列表 (項目符號)',
-    '.ql-link': '插入超連結',
-    '.ql-image': '插入圖片',
-    '.ql-video-picker': '插入視頻',
-    '.ql-faq-picker': '插入 FAQ 問答 (SEO 結構化數據)',
-    '.ql-clean': '清除所有格式',
-    '.ql-html-source': 'HTML 源碼模式',
-  }
-
-  for (const [selector, title] of Object.entries(TOOLBAR_TITLES)) {
-    const el = container.querySelector(selector)
-    if (el && !el.getAttribute('title')) {
-      el.setAttribute('title', title)
-    }
-  }
-}
 
 /** 工具列按鈕 CSS（自定義按鈕圖標） */
 export const toolbarButtonCSS = `
@@ -92,4 +58,31 @@ export const toolbarButtonCSS = `
   .ql-editor .ql-size-small, .ql-size-small { font-size: 0.75em !important; }
   .ql-editor .ql-size-large, .ql-size-large { font-size: 1.5em !important; }
   .ql-editor .ql-size-huge, .ql-size-huge { font-size: 2.5em !important; }
+  /* 標題與字號下拉選單中文自定義 */
+  .ql-snow .ql-picker.ql-header { width: 106px !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label::before { content: '標題' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="1"]::before { content: '標題 1 (H1)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="2"]::before { content: '標題 2 (H2)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="3"]::before { content: '標題 3 (H3)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="4"]::before { content: '標題 4 (H4)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="5"]::before { content: '標題 5 (H5)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-label[data-value="6"]::before { content: '標題 6 (H6)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-options { min-width: 130px !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item::before { content: '正文 (預設)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="1"]::before { content: '標題 1 (H1)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="2"]::before { content: '標題 2 (H2)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="3"]::before { content: '標題 3 (H3)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="4"]::before { content: '標題 4 (H4)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="5"]::before { content: '標題 5 (H5)' !important; }
+  .ql-snow .ql-picker.ql-header .ql-picker-item[data-value="6"]::before { content: '標題 6 (H6)' !important; }
+  .ql-snow .ql-picker.ql-size { width: 96px !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-label::before { content: '字號' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="small"]::before { content: '小字號' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="large"]::before { content: '大字號' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="huge"]::before { content: '特大' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-options { min-width: 140px !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-item::before { content: '標準字號 (預設)' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="small"]::before { content: '小字號 (Small)' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="large"]::before { content: '大字號 (Large)' !important; }
+  .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="huge"]::before { content: '特大字號 (Huge)' !important; }
 `
