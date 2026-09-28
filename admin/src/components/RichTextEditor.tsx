@@ -9,7 +9,7 @@ import React, {
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
 import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
-import { toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
+import { toolbarButtonCSS, registerAlignLeft, initToolbarTooltips } from '../lib/quill/htmlCleanup'
 
 const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'
 const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
@@ -312,13 +312,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           styleEl.textContent = listPluginCSS + faqPluginCSS + toolbarButtonCSS
           editorContainer.appendChild(styleEl)
 
-          // 設置工具列按鈕 Tooltip 提示
-          const htmlBtn = editorContainer.querySelector('.ql-html-source')
-          if (htmlBtn) htmlBtn.setAttribute('title', 'HTML 源碼模式')
-          const videoBtn = editorContainer.querySelector('.ql-video-picker')
-          if (videoBtn) videoBtn.setAttribute('title', '插入視頻')
-          const faqBtn = editorContainer.querySelector('.ql-faq-picker')
-          if (faqBtn) faqBtn.setAttribute('title', '插入 FAQ 問答（SEO 結構化數據）')
+          // 設置工具列按鈕 Tooltip 提示（全按鈕原生中文懸浮提示）
+          initToolbarTooltips(editorContainer)
 
           // 初始化內容填入
           if (value) {

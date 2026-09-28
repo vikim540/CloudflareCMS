@@ -61,10 +61,22 @@ const TABS: { key: TabKey; label: string; icon: string }[] = [
 /** 版本更新歷史（硬編碼，時區：Asia/Hong_Kong） */
 const VERSIONS: VersionEntry[] = [
   {
+    version: 'v1.9.80',
+    date: '2026-09-28 17:15:00',
+    icon: '✨',
+    latest: true,
+    changes: `✨ 編輯器體驗優化：全工具欄原生繁體懸浮提示 (Tooltip)、官方小字號支援與居左排版修復
+
+📋 編輯器與排版體驗
+• 💬 工具欄按鈕原生懸浮提示 (Tooltip)：全工具欄按鈕、下拉選單與自定義插件（標題、字號、粗體、斜體、下劃線、文字顏色、背景顏色、對齊方式、列表、引用、代碼塊、連結、圖片、影片、FAQ、清除格式、HTML 源碼）全面注入繁體中文原生 title 提示，文案編輯滑鼠懸浮即可清楚掌握各功能用法
+• 🔤 官方小字號（Small）下拉支援：於標題選單旁擴充 Quill 官方原生的字體大小（Size）下拉選單，新增 small（小字號 0.75em）選項，專門用於參考來源網址、文獻引用、備註註腳等小字排版需求，不佔據大字正文版面
+• 📐 強制居左樣式 (.ql-align-left) 修復：針對前台或廣告網站全域設定 text-align: justify 導致英文網址長單詞或引用段落排版拉伸異常問題，增加專用類名覆蓋，確保顯式設置居左時穩定靠左對齊`,
+  },
+  {
     version: 'v1.9.79',
     date: '2026-09-20 15:30:00',
     icon: '✨',
-    latest: true,
+    latest: false,
     changes: `✨ 專題落地頁體驗精修、SEO 標題獨立與媒體庫瀑布流
 
 📋 功能精修與排版鬆綁

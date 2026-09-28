@@ -45,6 +45,41 @@ export function registerAlignLeft(): void {
   if (icons?.align && !icons.align['left']) icons.align['left'] = icons.align['']
 }
 
+/**
+ * 初始化工具列按鈕原生中文 Tooltip 提示
+ * 為所有按鈕與下拉選單設置標準 title 屬性，方便文員識別功能
+ */
+export function initToolbarTooltips(container: HTMLElement): void {
+  const TOOLBAR_TITLES: Record<string, string> = {
+    '.ql-header': '標題層級',
+    '.ql-size': '文字大小 (Small 小字號適合資料來源/網址)',
+    '.ql-bold': '粗體 (Ctrl+B)',
+    '.ql-italic': '斜體 (Ctrl+I)',
+    '.ql-underline': '下劃線 (Ctrl+U)',
+    '.ql-strike': '刪除線',
+    '.ql-color': '文字顏色',
+    '.ql-background': '背景顏色',
+    '.ql-align': '對齊方式 (靠左/置中/靠右/兩端)',
+    '.ql-blockquote': '引用區塊',
+    '.ql-code-block': '代碼區塊',
+    '.ql-list[value="ordered"]': '有序列表 (數字序號)',
+    '.ql-list[value="bullet"]': '無序列表 (項目符號)',
+    '.ql-link': '插入超連結',
+    '.ql-image': '插入圖片',
+    '.ql-video-picker': '插入視頻',
+    '.ql-faq-picker': '插入 FAQ 問答 (SEO 結構化數據)',
+    '.ql-clean': '清除所有格式',
+    '.ql-html-source': 'HTML 源碼模式',
+  }
+
+  for (const [selector, title] of Object.entries(TOOLBAR_TITLES)) {
+    const el = container.querySelector(selector)
+    if (el && !el.getAttribute('title')) {
+      el.setAttribute('title', title)
+    }
+  }
+}
+
 /** 工具列按鈕 CSS（自定義按鈕圖標） */
 export const toolbarButtonCSS = `
   /* HTML 源碼按鈕 + FAQ 按鈕 + 視頻按鈕 */
