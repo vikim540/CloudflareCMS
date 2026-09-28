@@ -8,6 +8,7 @@ import React, {
 } from 'react'
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
+import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
 import { toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
 
 const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'

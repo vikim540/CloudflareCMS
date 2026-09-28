@@ -14,6 +14,7 @@ import { useImageUpload } from '../hooks/useImageUpload'
 // Quill 編輯器插件模組（admin/src/lib/quill/）
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS, extractFaqPairsFromDom } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
+import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
 import { cleanupQuillHtml, toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
