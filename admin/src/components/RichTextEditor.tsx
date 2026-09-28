@@ -9,7 +9,7 @@ import React, {
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
 import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
-import { toolbarButtonCSS } from '../lib/quill/htmlCleanup'
+import { toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
 
 const QUILL_JS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.min.js'
 const QUILL_CSS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/quill/2.0.2/quill.snow.min.css'
@@ -237,6 +237,8 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
           const editorContainer = document.createElement('div')
           editorRef.current.appendChild(editorContainer)
 
+          registerAlignLeft()
+
           const quill = new window.Quill(editorContainer, {
             theme: 'snow',
             readOnly: disabled,
@@ -247,7 +249,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
                   [{ header: [1, 2, 3, 4, 5, 6, false] }],
                   ['bold', 'italic', 'underline', 'strike'],
                   [{ color: [] }, { background: [] }],
-                  [{ align: [] }],
+                  [{ align: ['left', 'center', 'right', 'justify'] }],
                   ['blockquote', 'code-block'],
                   [{ list: 'ordered' }, { list: 'bullet' }],
                   ['link', 'image', 'video-picker', 'faq-picker'],

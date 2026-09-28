@@ -15,7 +15,7 @@ import { useImageUpload } from '../hooks/useImageUpload'
 import { registerFaqPlugin, matchFaqElement, faqPluginCSS, extractFaqPairsFromDom } from '../lib/quill/faqPlugin'
 import { registerVideoPlugin, matchVideoIframe } from '../lib/quill/videoPlugin'
 import { registerListPlugin, listPluginCSS } from '../lib/quill/listPlugin'
-import { cleanupQuillHtml, toolbarButtonCSS } from '../lib/quill/htmlCleanup'
+import { cleanupQuillHtml, toolbarButtonCSS, registerAlignLeft } from '../lib/quill/htmlCleanup'
 
 /** Quill 全局聲明（cdnjs Cloudflare CDN 託管） */
 declare global {
@@ -1357,6 +1357,8 @@ export default function ContentEdit() {
         const editorContainer = document.createElement('div')
         editorRef.current.appendChild(editorContainer)
 
+        registerAlignLeft()
+
         const quill = new window.Quill(editorContainer, {
           theme: 'snow',
           readOnly: false,
@@ -1367,7 +1369,7 @@ export default function ContentEdit() {
                 [{ header: [1, 2, 3, 4, 5, 6, false] }],
                 ['bold', 'italic', 'underline', 'strike'],
                 [{ color: [] }, { background: [] }],
-                [{ align: [] }],
+                [{ align: ['left', 'center', 'right', 'justify'] }],
                 ['blockquote', 'code-block'],
                 [{ list: 'ordered' }, { list: 'bullet' }],
                 ['link', 'image', 'video-picker', 'faq-picker'],

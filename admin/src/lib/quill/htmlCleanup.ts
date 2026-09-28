@@ -35,10 +35,22 @@ export function cleanupQuillHtml(html: string): string {
     .replace(/\s+contenteditable="false"/gi, '')
 }
 
+/** 註冊 Quill 靠左對齊類名支援（生成 .ql-align-left，壓制前台預設 justify） */
+export function registerAlignLeft(): void {
+  const w = window as unknown as { Quill?: { import: (path: string) => unknown } }
+  if (!w.Quill) return
+  const Align = w.Quill.import('attributors/class/align') as { whitelist?: string[] }
+  if (Align?.whitelist && !Align.whitelist.includes('left')) Align.whitelist.unshift('left')
+  const icons = w.Quill.import('ui/icons') as Record<string, Record<string, string>>
+  if (icons?.align && !icons.align['left']) icons.align['left'] = icons.align['']
+}
+
 /** 工具列按鈕 CSS（自定義按鈕圖標） */
 export const toolbarButtonCSS = `
   /* HTML 源碼按鈕 + FAQ 按鈕 + 視頻按鈕 */
   .ql-toolbar .ql-video-picker::after { content: "🎥"; font-size: 14px; }
   .ql-toolbar .ql-html-source::after { content: "<>"; font-family: monospace; font-size: 14px; }
   .ql-toolbar .ql-faq-picker::after { content: "❓"; font-size: 14px; }
+  /* 靠左對齊類名樣式，壓制業務前台 text-align: justify */
+  .ql-editor .ql-align-left, .ql-align-left { text-align: left !important; }
 `

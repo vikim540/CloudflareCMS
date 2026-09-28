@@ -72,3 +72,8 @@ b, strong, th, .font-bold { font-weight: 600 !important; }
   max-height: 300px;
   overflow-y: auto;
 }
+
+/* 靠左對齊類名樣式，壓制業務前台 text-align: justify */
+.ql-align-left {
+  text-align: left !important;
+}
