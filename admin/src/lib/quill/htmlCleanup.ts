@@ -53,4 +53,8 @@ export const toolbarButtonCSS = `
   .ql-toolbar .ql-faq-picker::after { content: "❓"; font-size: 14px; }
   /* 靠左對齊類名樣式，壓制業務前台 text-align: justify */
   .ql-editor .ql-align-left, .ql-align-left { text-align: left !important; }
+  /* 官方字號支援（Small 小字號 0.75em 適合參考文獻與 URL 來源） */
+  .ql-editor .ql-size-small, .ql-size-small { font-size: 0.75em !important; }
+  .ql-editor .ql-size-large, .ql-size-large { font-size: 1.5em !important; }
+  .ql-editor .ql-size-huge, .ql-size-huge { font-size: 2.5em !important; }
 `

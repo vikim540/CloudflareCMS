@@ -246,7 +246,7 @@ export const RichTextEditor = forwardRef<RichTextEditorRef, RichTextEditorProps>
             modules: {
               toolbar: {
                 container: [
-                  [{ header: [1, 2, 3, 4, 5, 6, false] }],
+                  [{ header: [1, 2, 3, 4, 5, 6, false] }, { size: ['small', false, 'large', 'huge'] }],
                   ['bold', 'italic', 'underline', 'strike'],
                   [{ color: [] }, { background: [] }],
                   [{ align: ['left', 'center', 'right', 'justify'] }],
